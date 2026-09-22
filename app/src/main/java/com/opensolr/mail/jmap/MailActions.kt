@@ -48,6 +48,13 @@ class MailActions(private val context: Context) {
         }
     }
 
+    /** Out of Trash or Junk, back into the Inbox; [notJunk] also tells Fastmail it was not spam. */
+    fun restoreToInbox(acc: String, ids: List<String>, notJunk: Boolean) {
+        val inbox = db.mailboxByRole(acc, Role.INBOX) ?: return
+        db.moveLocal(acc, ids, inbox.id)
+        enqueue(acc, "restore", JSONObject().put("ids", JSONArray(ids)).put("to", inbox.id).put("notjunk", notJunk))
+    }
+
     /** Every message of a mailbox marked read, on Fastmail too, however many there are. */
     fun readAll(acc: String, box: String) {
         db.readAllLocal(acc, box)
@@ -188,6 +195,17 @@ class MailActions(private val context: Context) {
             }
             "destroy" -> checkSet(jmap.call("Email/set", JSONObject().put("destroy", p.getJSONArray("ids"))))
             "send", "draft" -> sendOrSave(jmap, kind == "send", p)
+            "restore" -> {
+                val update = JSONObject()
+                val to = p.getString("to")
+                val notJunk = p.optBoolean("notjunk")
+                p.getJSONArray("ids").strings().forEach {
+                    val patch = JSONObject().put("mailboxIds", JSONObject().put(to, true))
+                    if (notJunk) patch.put("keywords/\$junk", JSONObject.NULL).put("keywords/\$notjunk", true)
+                    update.put(it, patch)
+                }
+                checkSet(jmap.call("Email/set", JSONObject().put("update", update)))
+            }
             "read_box" -> readBox(jmap, p.getString("box"))
             "empty_box" -> emptyBox(jmap, p.getString("box"))
         }

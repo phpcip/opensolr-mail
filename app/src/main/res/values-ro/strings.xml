@@ -224,4 +224,7 @@
     <string name="deleted_one">Conversație ștearsă</string>
     <string name="flagged_one">Marcat cu flag</string>
     <string name="unflagged_one">Flag scos</string>
+    <string name="haptic_feedback">Feedback haptic</string>
+    <string name="move_to_inbox">Mută în Inbox</string>
+    <string name="not_junk">Nu e spam: mută în Inbox</string>
 </resources>

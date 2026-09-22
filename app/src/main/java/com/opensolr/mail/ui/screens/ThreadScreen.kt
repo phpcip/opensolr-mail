@@ -2,6 +2,7 @@ package com.opensolr.mail.ui.screens
 
 import android.content.Intent
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -269,7 +270,7 @@ fun ThreadScreen(vm: AppViewModel, acc: String, threadId: String) {
 @Composable
 private fun MessageHeader(m: Message, open: Boolean, onCopy: (String) -> Unit, onClick: () -> Unit) {
     val p = LocalPalette.current
-    Column(Modifier.fillMaxWidth().hapticClickable(onClick = onClick).padding(horizontal = 16.dp, vertical = 10.dp)) {
+    Column(Modifier.fillMaxWidth().clickable(onClick = onClick).padding(horizontal = 16.dp, vertical = 10.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(
                 m.sender?.label ?: stringResource(R.string.no_sender), style = MaterialTheme.typography.titleSmall, color = p.ink,

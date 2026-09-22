@@ -224,4 +224,7 @@
     <string name="deleted_one">スレッドを削除しました</string>
     <string name="flagged_one">フラグを付けました</string>
     <string name="unflagged_one">フラグを外しました</string>
+    <string name="haptic_feedback">触覚フィードバック</string>
+    <string name="move_to_inbox">受信トレイに移動</string>
+    <string name="not_junk">迷惑メールではない:受信トレイに移動</string>
 </resources>

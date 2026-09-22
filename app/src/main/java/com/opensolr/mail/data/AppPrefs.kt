@@ -68,6 +68,11 @@ class AppPrefs(context: Context) {
         get() = sp.getBoolean(K_NOTIFY, true)
         set(v) = sp.edit().putBoolean(K_NOTIFY, v).apply()
 
+    /** Taps back on buttons, swipes and scrolling; off silences every haptic in the app. */
+    var haptics: Boolean
+        get() = sp.getBoolean("haptics", true)
+        set(v) = sp.edit().putBoolean("haptics", v).apply()
+
     var remoteImages: Boolean
         get() = sp.getBoolean(K_IMAGES, false)
         set(v) = sp.edit().putBoolean(K_IMAGES, v).apply()

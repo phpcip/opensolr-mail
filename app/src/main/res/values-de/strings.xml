@@ -224,4 +224,7 @@
     <string name="deleted_one">Unterhaltung gelöscht</string>
     <string name="flagged_one">Markiert</string>
     <string name="unflagged_one">Markierung entfernt</string>
+    <string name="haptic_feedback">Haptisches Feedback</string>
+    <string name="move_to_inbox">In den Posteingang</string>
+    <string name="not_junk">Kein Spam: in den Posteingang</string>
 </resources>

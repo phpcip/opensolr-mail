@@ -360,6 +360,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     fun setFlagged(acc: String, ids: kotlin.collections.List<String>, flagged: Boolean) = io { actions.setFlagged(acc, ids, flagged) }
     fun delete(acc: String, ids: kotlin.collections.List<String>) = io { actions.delete(acc, ids) }
     fun archive(acc: String, ids: kotlin.collections.List<String>) = io { actions.archive(acc, ids) }
+    fun restoreToInbox(acc: String, ids: kotlin.collections.List<String>, notJunk: Boolean) = io { actions.restoreToInbox(acc, ids, notJunk) }
 
     /** The last swipe, still undoable: a delete waits here unsent until the bar goes, a flag is undone by flagging back. */
     data class Undo(val id: Long, val text: String, val undo: () -> Unit, val commit: suspend () -> Unit)

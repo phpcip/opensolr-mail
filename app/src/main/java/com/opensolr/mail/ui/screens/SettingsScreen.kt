@@ -64,6 +64,7 @@ fun SettingsScreen(vm: AppViewModel) {
     val view = LocalView.current
     var notify by remember { mutableStateOf(vm.prefs.notifyNewMail) }
     var images by remember { mutableStateOf(vm.prefs.remoteImages) }
+    var haptics by remember { mutableStateOf(vm.prefs.haptics) }
     var confirmRemove by remember { mutableStateOf<String?>(null) }
     var confirmSignOut by remember { mutableStateOf(false) }
     val open = vm.zonesOpen
@@ -220,6 +221,8 @@ fun SettingsScreen(vm: AppViewModel) {
                 Toggle(stringResource(R.string.notify_new_mail), notify) { notify = it; vm.prefs.notifyNewMail = it }
                 Hairline()
                 Toggle(stringResource(R.string.remote_images), images) { images = it; vm.prefs.remoteImages = it }
+                Hairline()
+                Toggle(stringResource(R.string.haptic_feedback), haptics) { haptics = it; vm.prefs.haptics = it; com.opensolr.mail.ui.Haptics.enabled = it }
             }
         }
 

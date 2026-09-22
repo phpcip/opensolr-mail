@@ -233,4 +233,7 @@
     <string name="deleted_one">Conversation deleted</string>
     <string name="flagged_one">Flagged</string>
     <string name="unflagged_one">Flag removed</string>
+    <string name="haptic_feedback">Haptic feedback</string>
+    <string name="move_to_inbox">Move to Inbox</string>
+    <string name="not_junk">Not junk: move to Inbox</string>
 </resources>

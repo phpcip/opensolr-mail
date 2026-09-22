@@ -7,6 +7,7 @@ class MailApp : Application() {
     override fun onCreate() {
         super.onCreate()
         AppText.init(this)
+        com.opensolr.mail.ui.Haptics.enabled = com.opensolr.mail.data.AppPrefs(this).haptics
         Notifier.ensureChannels(this)
     }
 }

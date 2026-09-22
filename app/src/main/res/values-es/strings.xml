@@ -224,4 +224,7 @@
     <string name="deleted_one">Conversación eliminada</string>
     <string name="flagged_one">Marcada</string>
     <string name="unflagged_one">Marca quitada</string>
+    <string name="haptic_feedback">Respuesta háptica</string>
+    <string name="move_to_inbox">Mover a la bandeja de entrada</string>
+    <string name="not_junk">No es spam: mover a la bandeja de entrada</string>
 </resources>

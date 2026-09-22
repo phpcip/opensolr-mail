@@ -497,7 +497,7 @@ private fun HitRow(vm: AppViewModel, h: MailSearch.Hit, multi: Boolean, color: I
     val p = LocalPalette.current
     val view = LocalView.current
     Row(
-        Modifier.fillMaxWidth().clickable { Haptics.tap(view); if (h.threadId.isNotEmpty()) vm.go(Screen.Thread(h.acc, h.threadId)) },
+        Modifier.fillMaxWidth().clickable { if (h.threadId.isNotEmpty()) vm.go(Screen.Thread(h.acc, h.threadId)) },
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Box(Modifier.width(3.dp).height(72.dp).background(if (multi && color != null) Color(color) else Color.Transparent))

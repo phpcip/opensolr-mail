@@ -224,4 +224,7 @@
     <string name="deleted_one">Conversation supprimée</string>
     <string name="flagged_one">Signalée</string>
     <string name="unflagged_one">Signalement retiré</string>
+    <string name="haptic_feedback">Retour haptique</string>
+    <string name="move_to_inbox">Déplacer vers la boîte de réception</string>
+    <string name="not_junk">Pas du spam : vers la boîte de réception</string>
 </resources>

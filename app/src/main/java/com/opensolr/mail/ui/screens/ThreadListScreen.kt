@@ -233,6 +233,12 @@ fun ThreadListScreen(vm: AppViewModel, view: View) {
             )
         }
         if (selected.isNotEmpty()) {
+            // Which bin this view is: Trash and Junk offer the way back to the Inbox.
+            val binRole = when (view) {
+                is View.Unified -> view.role.jmap.takeIf { it == "trash" || it == "junk" }
+                is View.Box -> vm.db.mailbox(view.acc, view.mailboxId)?.role?.takeIf { it == "trash" || it == "junk" }
+                View.Flagged -> null
+            }
             val anyUnread = selected.any { it.unread }
             val anyUnflagged = selected.any { !it.flagged }
             SelectionBar(
@@ -241,6 +247,16 @@ fun ThreadListScreen(vm: AppViewModel, view: View) {
                 onFlag = { run(vm, selected, view) { acc, ids -> vm.setFlagged(acc, ids, anyUnflagged) }; selected = emptySet() },
                 onArchive = { run(vm, selected, view) { acc, ids -> vm.archive(acc, ids) }; selected = emptySet() },
                 onDelete = { run(vm, selected, view) { acc, ids -> vm.delete(acc, ids) }; selected = emptySet() },
+                restoreLabel = when (binRole) {
+                    "junk" -> R.string.not_junk
+                    "trash" -> R.string.move_to_inbox
+                    else -> null
+                },
+                onRestore = {
+                    val notJunk = binRole == "junk"
+                    run(vm, selected, view) { acc, ids -> vm.restoreToInbox(acc, ids, notJunk) }
+                    selected = emptySet()
+                },
             )
         }
     }
@@ -254,10 +270,14 @@ private fun run(vm: AppViewModel, rows: Set<ThreadRow>, view: View?, action: (St
 }
 
 @Composable
-private fun SelectionBar(onRead: () -> Unit, readIcon: Int, onFlag: () -> Unit, onArchive: () -> Unit, onDelete: () -> Unit) {
+private fun SelectionBar(onRead: () -> Unit, readIcon: Int, onFlag: () -> Unit, onArchive: () -> Unit, onDelete: () -> Unit, restoreLabel: Int?, onRestore: () -> Unit) {
     val p = LocalPalette.current
     Column(Modifier.fillMaxWidth().background(p.dockFill)) {
         Hairline()
+        // In Trash and Junk the first thing offered is the way back to the Inbox.
+        if (restoreLabel != null) {
+            com.opensolr.mail.ui.AccentButton(stringResource(restoreLabel), onRestore, Modifier.fillMaxWidth().padding(start = 12.dp, end = 12.dp, top = 10.dp))
+        }
         Row(
             Modifier.fillMaxWidth().padding(bottom = bottomInset()).height(56.dp),
             horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically,
@@ -277,7 +297,7 @@ private fun ThreadRowView(r: ThreadRow, stripe: Color?, selected: Boolean, onCli
     val view = LocalView.current
     Row(
         Modifier.fillMaxWidth().background(if (selected) p.chip else p.paper)
-            .combinedClickable(onClick = { Haptics.tap(view); onClick() }, onLongClick = { Haptics.tick(view, true); onLongClick() }),
+            .combinedClickable(onClick = onClick, onLongClick = { Haptics.tick(view, true); onLongClick() }),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Box(Modifier.width(3.dp).height(68.dp).background(stripe ?: Color.Transparent))
