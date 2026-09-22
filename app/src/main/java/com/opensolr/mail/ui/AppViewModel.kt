@@ -252,7 +252,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     fun removeAccount(a: MailAccount) {
         viewModelScope.launch {
             runCatching { MailPush.remove(ctx, a) }
-            runCatching {
+            if (prefs.signedIn) runCatching {
                 val c = MailIndex(ctx).ensure()
                 SolrClient(c).deleteQuery("account_s:${a.key}")
             }
