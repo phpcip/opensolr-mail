@@ -43,6 +43,11 @@ data class Palette(
     val toolFill: Color,
     /** The bar that appears when photos are ticked: a shade the other two never use. */
     val dockFill: Color,
+    /** A flagged conversation: a warm tint behind its row, and the tile, rim and mark of its flag badge. */
+    val flagFill: Color,
+    val flagTile: Color,
+    val flagRim: Color,
+    val flagMark: Color,
 )
 
 private val LightPalette = Palette(
@@ -59,6 +64,10 @@ private val LightPalette = Palette(
     buttonFill = Color(0xFFF3EFE9),
     toolFill = Color(0xFFFAF7F2),
     dockFill = Color(0xFFEAE4DA),
+    flagFill = Color(0xFFFFF7E0),
+    flagTile = Color(0xFFFDECB3),
+    flagRim = Color(0xFFE3B23C),
+    flagMark = Color(0xFF8A6100),
 )
 
 private val DarkPalette = Palette(
@@ -75,6 +84,10 @@ private val DarkPalette = Palette(
     buttonFill = Color(0xFF111111),
     toolFill = Color(0xFF1A1917),
     dockFill = Color(0xFF26231F),
+    flagFill = Color(0xFF262012),
+    flagTile = Color(0xFF4A3C12),
+    flagRim = Color(0xFF8A6A1A),
+    flagMark = Color(0xFFF5C518),
 )
 
 val LocalPalette = staticCompositionLocalOf { LightPalette }

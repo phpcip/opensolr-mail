@@ -302,8 +302,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    suspend fun threads(view: View, limit: Int): kotlin.collections.List<ThreadRow> = withContext(Dispatchers.IO) {
-        db.threads(view, store.all().map { it.key }.toSet(), limit, 0)
+    /** Conversations of [view]; [flagged] true takes only the flagged ones (pinned on top), false leaves them out. */
+    suspend fun threads(view: View, limit: Int, flagged: Boolean? = null): kotlin.collections.List<ThreadRow> = withContext(Dispatchers.IO) {
+        db.threads(view, store.all().map { it.key }.toSet(), limit, 0, flagged)
     }
 
     suspend fun loadOlder(view: View): Int = withContext(Dispatchers.IO) {

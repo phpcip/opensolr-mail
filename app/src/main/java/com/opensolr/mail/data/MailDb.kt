@@ -323,7 +323,7 @@ class MailDb private constructor(context: Context) : SQLiteOpenHelper(context.ap
      * inside the view; [limit] rows from [offset]. One grouped query, with the per-thread details
      * read back for the page only.
      */
-    fun threads(view: View, accounts: Set<String>, limit: Int, offset: Int): List<ThreadRow> {
+    fun threads(view: View, accounts: Set<String>, limit: Int, offset: Int, flagged: Boolean? = null): List<ThreadRow> {
         if (accounts.isEmpty()) return emptyList()
         val accMarks = accounts.joinToString(",") { "?" }
         val args = ArrayList<String>()
@@ -347,7 +347,9 @@ class MailDb private constructor(context: Context) : SQLiteOpenHelper(context.ap
             }
         }
         val sql = "SELECT acc, thread, MAX(received) AS latest, COUNT(DISTINCT id), MIN(seen), MAX(flagged), MAX(has_att) " +
-            "FROM ($scope) GROUP BY acc, thread ORDER BY latest DESC LIMIT $limit OFFSET $offset"
+            "FROM ($scope) GROUP BY acc, thread" +
+            (when (flagged) { true -> " HAVING MAX(flagged) = 1"; false -> " HAVING MAX(flagged) = 0"; null -> "" }) +
+            " ORDER BY latest DESC LIMIT $limit OFFSET $offset"
         data class G(val acc: String, val thread: String, val latest: Long, val count: Int, val unread: Boolean, val flagged: Boolean, val att: Boolean)
         val groups = readableDatabase.rawQuery(sql, args.toTypedArray()).use { c ->
             generateSequence {

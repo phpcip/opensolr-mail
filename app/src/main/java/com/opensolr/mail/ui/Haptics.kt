@@ -37,6 +37,20 @@ object Haptics {
         view.performHapticFeedback(constant)
     }
 
+    /** The heavy knock of something that matters: a delete, a flag that pins a conversation to the top. */
+    fun heavy(view: View) {
+        if (!enabled) return
+        val vibrator = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            view.context.getSystemService(android.os.VibratorManager::class.java)?.defaultVibrator
+        } else {
+            @Suppress("DEPRECATION") view.context.getSystemService(android.os.Vibrator::class.java)
+        }
+        if (vibrator == null || !vibrator.hasVibrator()) { view.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS); return }
+        val effect = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) android.os.VibrationEffect.createPredefined(android.os.VibrationEffect.EFFECT_HEAVY_CLICK)
+        else android.os.VibrationEffect.createOneShot(45, 255)
+        vibrator.vibrate(effect)
+    }
+
     /** The light tap every button, row, tab and chip gives back. */
     fun tap(view: View) {
         if (!enabled) return

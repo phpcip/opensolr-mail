@@ -84,6 +84,7 @@ fun ThreadListScreen(vm: AppViewModel, view: View) {
         View.Flagged -> "flagged"
     }).first + PAGE)) }
     var rows by remember(view) { mutableStateOf<List<ThreadRow>>(emptyList()) }
+    var pinned by remember(view) { mutableStateOf<List<ThreadRow>>(emptyList()) }
     var loaded by remember(view) { mutableStateOf(false) }
     var exhausted by remember(view) { mutableStateOf(false) }
     var loadingOlder by remember(view) { mutableStateOf(false) }
@@ -102,9 +103,13 @@ fun ThreadListScreen(vm: AppViewModel, view: View) {
     var confirmDelete by remember { mutableStateOf<ThreadRow?>(null) }
     val view0 = LocalView.current
     val hidden = vm.hiddenThreads.keys.toSet()
-    val groups = remember(rows, grouping, accounts, hidden) {
+    val pinnedLabel = stringResource(R.string.flagged)
+    val groups = remember(rows, pinned, grouping, accounts, hidden, pinnedLabel) {
         val shown = if (hidden.isEmpty()) rows else rows.filterNot { (it.acc + ":" + it.threadId) in hidden }
-        groupRows(shown, grouping) { k -> accounts.firstOrNull { it.key == k }?.username ?: k }
+        val top = if (hidden.isEmpty()) pinned else pinned.filterNot { (it.acc + ":" + it.threadId) in hidden }
+        if (grouping == ListGroup.NONE) listOf(RowGroup("all", "", top + shown))
+        else (if (top.isEmpty()) emptyList() else listOf(RowGroup("pinned", pinnedLabel, top))) +
+            groupRows(shown, grouping) { k -> accounts.firstOrNull { it.key == k }?.username ?: k }
     }
 
     val folds = vm.keySet(foldName)
@@ -124,14 +129,28 @@ fun ThreadListScreen(vm: AppViewModel, view: View) {
                     }
                 } else if (!vm.isFolded(foldName, g.key)) rows(g.rows.size)
             }
-            if (loaded && rows.isEmpty()) row()
+            if (loaded && rows.isEmpty() && pinned.isEmpty()) row()
             row()
         }
     }
 
     LaunchedEffect(view, version, limit) {
-        rows = vm.threads(view, limit)
+        // Flagged conversations are pinned above everything else in every view but Flagged itself.
+        if (view == View.Flagged) {
+            rows = vm.threads(view, limit)
+        } else {
+            pinned = vm.threads(view, 500, flagged = true)
+            rows = vm.threads(view, limit, flagged = false)
+        }
         loaded = true
+    }
+    // A conversation just flagged is pinned above everything: bring the top into view so it is seen going there.
+    var pinnedSeen by remember(view) { mutableStateOf<Set<String>?>(null) }
+    LaunchedEffect(pinned) {
+        val now = pinned.map { it.acc + ":" + it.threadId }.toSet()
+        val before = pinnedSeen
+        pinnedSeen = now
+        if (before != null && (now - before).isNotEmpty()) runCatching { listState.animateScrollToItem(0) }
     }
     val atEnd by remember { derivedStateOf { listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index?.let { it >= listState.layoutInfo.totalItemsCount - 3 } == true } }
     LaunchedEffect(atEnd, rows.size) {
@@ -165,7 +184,7 @@ fun ThreadListScreen(vm: AppViewModel, view: View) {
                         }
                     }
                 }
-                if (view !is View.Flagged && rows.any { it.unread }) IconBtn(R.drawable.ic_read_all, { vm.readAll(view) })
+                if (view !is View.Flagged && (rows.any { it.unread } || pinned.any { it.unread })) IconBtn(R.drawable.ic_read_all, { vm.readAll(view) })
                 IconBtn(R.drawable.ic_filters, { vm.go(Screen.Search("filters")) })
                 IconBtn(R.drawable.ic_search, { vm.go(Screen.Search()) })
                 IconBtn(R.drawable.ic_compose, { vm.go(Screen.Compose(ComposeInit())) })
@@ -200,7 +219,7 @@ fun ThreadListScreen(vm: AppViewModel, view: View) {
                   }
                 }
                 }
-                if (loaded && rows.isEmpty()) item {
+                if (loaded && rows.isEmpty() && pinned.isEmpty()) item {
                     Text(
                         stringResource(if (vm.busy) R.string.loading else R.string.empty_view), style = MaterialTheme.typography.bodyMedium,
                         color = p.muted, modifier = Modifier.fillMaxWidth().padding(32.dp),
@@ -222,7 +241,7 @@ fun ThreadListScreen(vm: AppViewModel, view: View) {
                 title = { Text(stringResource(R.string.confirm_delete_title)) },
                 text = { Text(stringResource(if (forever) R.string.confirm_delete_forever else R.string.confirm_delete_trash)) },
                 confirmButton = {
-                    androidx.compose.material3.TextButton(onClick = { Haptics.tick(view0, true); confirmDelete = null; vm.deleteWithUndo(r, view) }) {
+                    androidx.compose.material3.TextButton(onClick = { Haptics.heavy(view0); confirmDelete = null; vm.deleteWithUndo(r, view) }) {
                         Text(stringResource(R.string.delete), color = p.accent, fontWeight = FontWeight.Bold)
                     }
                 },
@@ -296,7 +315,7 @@ private fun ThreadRowView(r: ThreadRow, stripe: Color?, selected: Boolean, onCli
     val p = LocalPalette.current
     val view = LocalView.current
     Row(
-        Modifier.fillMaxWidth().background(if (selected) p.chip else p.paper)
+        Modifier.fillMaxWidth().background(if (selected) p.chip else if (r.flagged) p.flagFill else p.paper)
             .combinedClickable(onClick = onClick, onLongClick = { Haptics.tick(view, true); onLongClick() }),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -325,7 +344,7 @@ private fun ThreadRowView(r: ThreadRow, stripe: Color?, selected: Boolean, onCli
                     maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f),
                 )
                 if (r.hasAttachment) com.opensolr.mail.ui.AttachBadge()
-                if (r.flagged) Icon(painterResource(R.drawable.ic_flag), null, tint = p.accent, modifier = Modifier.size(15.dp))
+                if (r.flagged) com.opensolr.mail.ui.FlagBadge()
             }
             Text(r.preview, style = MaterialTheme.typography.bodySmall, color = p.muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
@@ -390,14 +409,20 @@ private fun ListGroupHeader(label: String, count: Int, open: Boolean, onToggle: 
 private fun SwipeRow(key: Any, onDelete: () -> Unit, onFlag: () -> Unit, enabled: Boolean, content: @Composable () -> Unit) {
     val p = LocalPalette.current
     val view = LocalView.current
-    val state = rememberSwipeToDismissBoxState(positionalThreshold = { it * 0.35f })
-    LaunchedEffect(state.currentValue) {
-        when (state.currentValue) {
-            SwipeToDismissBoxValue.EndToStart -> { Haptics.tick(view, true); onDelete(); state.reset() }
-            SwipeToDismissBoxValue.StartToEnd -> { Haptics.tick(view, true); onFlag(); state.reset() }
-            SwipeToDismissBoxValue.Settled -> Unit
-        }
-    }
+    val deleteNow by androidx.compose.runtime.rememberUpdatedState(onDelete)
+    val flagNow by androidx.compose.runtime.rememberUpdatedState(onFlag)
+    // The swipe acts on release and never settles open, so the row springs back at once and the next swipe always counts.
+    val state = rememberSwipeToDismissBoxState(
+        positionalThreshold = { it * 0.35f },
+        confirmValueChange = { v ->
+            when (v) {
+                SwipeToDismissBoxValue.EndToStart -> { Haptics.heavy(view); deleteNow() }
+                SwipeToDismissBoxValue.StartToEnd -> { Haptics.heavy(view); flagNow() }
+                SwipeToDismissBoxValue.Settled -> Unit
+            }
+            false
+        },
+    )
     androidx.compose.runtime.key(key) {
         SwipeToDismissBox(
             state = state,

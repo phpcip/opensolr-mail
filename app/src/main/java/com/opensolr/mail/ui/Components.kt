@@ -266,6 +266,17 @@ fun ScreenHeader(title: String, onBack: (() -> Unit)?) {
     }
 }
 
+/** The flag of a flagged message, on a warm tile that stands out more than the attachment badge. */
+@Composable
+fun FlagBadge() {
+    val p = LocalPalette.current
+    Box(
+        Modifier.padding(start = 6.dp).background(p.flagTile, SHAPE).border(1.dp, p.flagRim, SHAPE).padding(horizontal = 5.dp, vertical = 2.dp),
+    ) {
+        Icon(painterResource(com.opensolr.mail.R.drawable.ic_flag), null, tint = p.flagMark, modifier = Modifier.size(13.dp))
+    }
+}
+
 /** The paperclip of a message with attachments, on a small tinted tile so it reads at a glance. */
 @Composable
 fun AttachBadge() {

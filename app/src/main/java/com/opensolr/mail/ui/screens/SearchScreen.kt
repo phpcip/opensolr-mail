@@ -497,7 +497,7 @@ private fun HitRow(vm: AppViewModel, h: MailSearch.Hit, multi: Boolean, color: I
     val p = LocalPalette.current
     val view = LocalView.current
     Row(
-        Modifier.fillMaxWidth().clickable { if (h.threadId.isNotEmpty()) vm.go(Screen.Thread(h.acc, h.threadId)) },
+        Modifier.fillMaxWidth().background(if (h.flagged) p.flagFill else p.paper).clickable { if (h.threadId.isNotEmpty()) vm.go(Screen.Thread(h.acc, h.threadId)) },
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Box(Modifier.width(3.dp).height(72.dp).background(if (multi && color != null) Color(color) else Color.Transparent))
@@ -511,7 +511,7 @@ private fun HitRow(vm: AppViewModel, h: MailSearch.Hit, multi: Boolean, color: I
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(h.subject.ifBlank { stringResource(R.string.no_subject) }, style = MaterialTheme.typography.bodyMedium, color = p.ink, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
                 if (h.hasAttachment) com.opensolr.mail.ui.AttachBadge()
-                if (h.flagged) Icon(painterResource(R.drawable.ic_flag), null, tint = p.accent, modifier = Modifier.size(15.dp))
+                if (h.flagged) com.opensolr.mail.ui.FlagBadge()
             }
             Text(highlighted(h.snippet), style = MaterialTheme.typography.bodySmall, color = p.muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
