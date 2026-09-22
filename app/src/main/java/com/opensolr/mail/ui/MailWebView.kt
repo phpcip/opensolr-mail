@@ -1,0 +1,82 @@
+package com.opensolr.mail.ui
+
+import android.annotation.SuppressLint
+import android.content.Context
+import android.content.Intent
+import android.graphics.Color
+import android.net.Uri
+import android.webkit.WebResourceRequest
+import android.webkit.WebResourceResponse
+import android.webkit.WebView
+import android.webkit.WebViewClient
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.viewinterop.AndroidView
+import com.opensolr.mail.data.AccountStore
+import com.opensolr.mail.data.Attachment
+import com.opensolr.mail.jmap.Jmap
+import kotlinx.coroutines.runBlocking
+import java.io.File
+
+/** One message body. Scripts never run; remote images only when allowed; inline images (cid:) come from the message itself. */
+@SuppressLint("SetJavaScriptEnabled")
+@Composable
+fun MailWebView(html: String, acc: String, attachments: List<Attachment>, remoteImages: Boolean, modifier: Modifier = Modifier) {
+    AndroidView(
+        modifier = modifier,
+        factory = { ctx ->
+            WebView(ctx).apply {
+                setBackgroundColor(Color.WHITE)
+                settings.javaScriptEnabled = false
+                settings.allowFileAccess = false
+                settings.allowContentAccess = false
+                settings.useWideViewPort = true
+                settings.loadWithOverviewMode = true
+                settings.builtInZoomControls = true
+                settings.displayZoomControls = false
+                isVerticalScrollBarEnabled = false
+                webViewClient = MailClient(ctx, acc, attachments)
+            }
+        },
+        update = { w ->
+            w.settings.blockNetworkImage = !remoteImages
+            w.settings.blockNetworkLoads = !remoteImages
+            (w.webViewClient as? MailClient)?.attachments = attachments
+            val doc = "<!doctype html><html><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">" +
+                "<style>body{margin:12px;font-family:sans-serif;font-size:15px;line-height:1.45;color:#111;word-wrap:break-word;overflow-wrap:anywhere}" +
+                "img{max-width:100%;height:auto}pre{white-space:pre-wrap}blockquote{margin:0 0 0 8px;padding-left:8px;border-left:2px solid #d9d4cc}</style></head><body>" +
+                html + "</body></html>"
+            if (w.tag != doc.hashCode()) {
+                w.tag = doc.hashCode()
+                w.loadDataWithBaseURL(null, doc, "text/html", "utf-8", null)
+            }
+        },
+    )
+}
+
+private class MailClient(private val context: Context, private val acc: String, var attachments: List<Attachment>) : WebViewClient() {
+
+    override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
+        val uri = request.url
+        if (uri.scheme == "http" || uri.scheme == "https" || uri.scheme == "mailto" || uri.scheme == "tel") {
+            runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, uri).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
+        }
+        return true
+    }
+
+    override fun shouldInterceptRequest(view: WebView, request: WebResourceRequest): WebResourceResponse? {
+        val uri: Uri = request.url
+        if (uri.scheme != "cid") return null
+        val cid = uri.schemeSpecificPart.trim('<', '>')
+        val att = attachments.firstOrNull { it.cid?.trim('<', '>') == cid } ?: return empty()
+        val account = AccountStore.get(context).get(acc) ?: return empty()
+        return runCatching {
+            val dir = File(context.cacheDir, "attachments/inline").apply { mkdirs() }
+            val file = File(dir, att.blobId.filter { it.isLetterOrDigit() || it == '-' || it == '_' })
+            if (!file.exists()) runBlocking { Jmap(context, account).download(att.blobId, att.name, att.type, file) }
+            WebResourceResponse(att.type.ifBlank { "image/*" }, null, file.inputStream())
+        }.getOrElse { empty() }
+    }
+
+    private fun empty() = WebResourceResponse("text/plain", "utf-8", "".byteInputStream())
+}
