@@ -47,6 +47,7 @@ import com.opensolr.mail.ui.TopBar
 import com.opensolr.mail.ui.bottomInset
 import com.opensolr.mail.ui.hapticClickable
 import com.opensolr.mail.ui.FastScroller
+import com.opensolr.mail.ui.itemMotion
 import com.opensolr.mail.ui.theme.LocalPalette
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -117,11 +118,11 @@ fun MailboxesScreen(vm: AppViewModel) {
         }
         Box(Modifier.fillMaxSize()) {
         LazyColumn(Modifier.fillMaxSize(), state = listState) {
-            item { SectionHeader(stringResource(R.string.all_accounts), null, unread["inbox"] ?: 0, "unified" in open) { toggle("unified") } }
+            item(key = "h:unified") { SectionHeader(stringResource(R.string.all_accounts), null, unread["inbox"] ?: 0, "unified" in open) { toggle("unified") } }
             if ("unified" in open) {
-                items(Role.entries.toList()) { role ->
+                items(Role.entries.toList(), key = { "u:" + it.jmap }) { role ->
                     val v = View.Unified(role)
-                    BoxRow(
+                    Box(itemMotion()) { BoxRow(
                         icon = roleIcon(role.jmap), label = stringResource(roleLabel(role)),
                         count = if (role == Role.INBOX || role == Role.JUNK) unread[role.jmap] ?: 0 else 0,
                         indent = 0, color = null,
@@ -130,10 +131,10 @@ fun MailboxesScreen(vm: AppViewModel) {
                             canEmpty = role == Role.TRASH || role == Role.JUNK,
                             onRead = { vm.readAll(v) }, onEmpty = { vm.empty(v) },
                         ),
-                    ) { vm.home(Screen.List(v)) }
+                    ) { vm.home(Screen.List(v)) } }
                 }
-                item {
-                    BoxRow(R.drawable.ic_flag, stringResource(R.string.flagged), 0, 0, null) { vm.home(Screen.List(View.Flagged)) }
+                item(key = "u:flagged") {
+                    Box(itemMotion()) { BoxRow(R.drawable.ic_flag, stringResource(R.string.flagged), 0, 0, null) { vm.home(Screen.List(View.Flagged)) } }
                 }
             }
             accounts.forEach { a ->
@@ -145,13 +146,13 @@ fun MailboxesScreen(vm: AppViewModel) {
                     val ordered = tree(mine.filterNot { isNotes(it) })
                     items(ordered, key = { "${a.key}:${it.first.id}" }) { (b, depth) ->
                         val v = View.Box(a.key, b.id)
-                        BoxRow(
+                        Box(itemMotion()) { BoxRow(
                             roleIcon(b.role), b.name, b.unread, depth, Color(a.color),
                             menu = BoxMenu(b.total, b.role == Role.TRASH.jmap || b.role == Role.JUNK.jmap, { vm.readAll(v) }, { vm.empty(v) }),
-                        ) { vm.home(Screen.List(v)) }
+                        ) { vm.home(Screen.List(v)) } }
                     }
-                    if (notes != null) item {
-                        BoxRow(R.drawable.ic_notes, stringResource(R.string.notes), 0, 0, Color(a.color)) { vm.go(Screen.Notes(a.key)) }
+                    if (notes != null) item(key = "n:" + a.key) {
+                        Box(itemMotion()) { BoxRow(R.drawable.ic_notes, stringResource(R.string.notes), 0, 0, Color(a.color)) { vm.go(Screen.Notes(a.key)) } }
                     }
                 }
             }

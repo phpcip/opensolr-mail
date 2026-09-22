@@ -82,6 +82,7 @@ import com.opensolr.mail.ui.bottomInset
 import com.opensolr.mail.ui.fmtDate
 import com.opensolr.mail.ui.highlighted
 import com.opensolr.mail.ui.FastScroller
+import com.opensolr.mail.ui.itemMotion
 import com.opensolr.mail.ui.theme.LocalPalette
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
@@ -309,16 +310,16 @@ fun SearchScreen(vm: AppViewModel, sheet: String?) {
                 Text(stringResource(R.string.empty_view), style = MaterialTheme.typography.bodyMedium, color = p.muted, modifier = Modifier.padding(24.dp))
             }
             if (groupBy == MailSearch.GroupBy.NONE) {
-                items(shownHits, key = { "h:" + it.acc + ":" + it.emailId }) { h -> HitRow(vm, h, accounts.size > 1, accounts.firstOrNull { it.key == h.acc }?.color) }
+                items(shownHits, key = { "h:" + it.acc + ":" + it.emailId }) { h -> Box(itemMotion()) { HitRow(vm, h, accounts.size > 1, accounts.firstOrNull { it.key == h.acc }?.color) } }
             } else {
                 shownGroups.forEach { g ->
                     val key = groupBy.name + ":" + g.value
                     val folded = vm.isFolded("search_folds", key)
                     item(key = "g:$key") {
-                        GroupHeader(groupValueLabel(groupBy, g.value, accounts), g.total, !folded) { vm.toggleFold("search_folds", key) }
+                        Box(itemMotion()) { GroupHeader(groupValueLabel(groupBy, g.value, accounts), g.total, !folded) { vm.toggleFold("search_folds", key) } }
                     }
                     if (!folded) {
-                        items(g.hits, key = { "gh:$key:" + it.acc + ":" + it.emailId }) { h -> HitRow(vm, h, accounts.size > 1, accounts.firstOrNull { it.key == h.acc }?.color) }
+                        items(g.hits, key = { "gh:$key:" + it.acc + ":" + it.emailId }) { h -> Box(itemMotion()) { HitRow(vm, h, accounts.size > 1, accounts.firstOrNull { it.key == h.acc }?.color) } }
                         if (g.total > g.hits.size) item(key = "more:$key") {
                             Text(
                                 stringResource(R.string.show_all_n, String.format(Locale.US, "%,d", g.total)),

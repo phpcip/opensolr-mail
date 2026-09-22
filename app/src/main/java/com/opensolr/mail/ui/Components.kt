@@ -213,10 +213,16 @@ fun Zone(title: String, badge: Int, open: Boolean, onToggle: () -> Unit, content
                 )
             }
         }
-        if (open) {
-            Spacer(Modifier.height(10.dp))
-            content()
-            Spacer(Modifier.height(18.dp))
+        androidx.compose.animation.AnimatedVisibility(
+            visible = open,
+            enter = androidx.compose.animation.expandVertically(androidx.compose.animation.core.tween(220)) + androidx.compose.animation.fadeIn(androidx.compose.animation.core.tween(220)),
+            exit = androidx.compose.animation.shrinkVertically(androidx.compose.animation.core.tween(180)) + androidx.compose.animation.fadeOut(androidx.compose.animation.core.tween(140)),
+        ) {
+            androidx.compose.foundation.layout.Column {
+                Spacer(Modifier.height(10.dp))
+                content()
+                Spacer(Modifier.height(18.dp))
+            }
         }
     }
 }

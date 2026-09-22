@@ -1,6 +1,7 @@
 package com.opensolr.mail.ui
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -51,7 +52,13 @@ fun AppRoot(vm: AppViewModel) {
             accounts.isEmpty() -> SetupScreen(vm)
             else -> {
                 BackHandler(enabled = vm.stack.size > 1) { vm.back() }
-                when (val s = vm.screen) {
+                androidx.compose.animation.AnimatedContent(
+                    targetState = vm.screen,
+                    transitionSpec = { screenTransition(depth(initialState), depth(targetState)) },
+                    contentKey = { it },
+                    label = "screens",
+                ) { s ->
+                when (s) {
                     Screen.Mailboxes -> MailboxesScreen(vm)
                     is Screen.List -> ThreadListScreen(vm, s.view)
                     is Screen.Thread -> ThreadScreen(vm, s.acc, s.threadId)
@@ -60,6 +67,7 @@ fun AppRoot(vm: AppViewModel) {
                     is Screen.Notes -> NotesScreen(vm, s.acc)
                     is Screen.NoteEdit -> NoteEditScreen(vm, s.acc, s.noteId)
                     Screen.Settings -> SettingsScreen(vm)
+                }
                 }
             }
         }
@@ -77,4 +85,23 @@ fun AppRoot(vm: AppViewModel) {
             }
         }
     }
+}
+
+/** How deep a screen sits: going deeper slides in from the right, going back from the left. */
+private fun depth(s: Screen): Int = when (s) {
+    Screen.Mailboxes -> 0
+    is Screen.List -> 1
+    is Screen.Thread, is Screen.Search, is Screen.Notes, Screen.Settings -> 2
+    is Screen.Compose, is Screen.NoteEdit -> 3
+}
+
+/** A short, quiet slide with a fade; screens at the same depth only cross-fade. */
+private fun screenTransition(from: Int, to: Int): androidx.compose.animation.ContentTransform {
+    val tween = androidx.compose.animation.core.tween<androidx.compose.ui.unit.IntOffset>(260, easing = androidx.compose.animation.core.FastOutSlowInEasing)
+    val fadeIn = androidx.compose.animation.fadeIn(androidx.compose.animation.core.tween(220, delayMillis = 40))
+    val fadeOut = androidx.compose.animation.fadeOut(androidx.compose.animation.core.tween(160))
+    if (from == to) return fadeIn togetherWith fadeOut
+    val sign = if (to > from) 1 else -1
+    return (androidx.compose.animation.slideInHorizontally(tween) { sign * it / 10 } + fadeIn) togetherWith
+        (androidx.compose.animation.slideOutHorizontally(tween) { -sign * it / 14 } + fadeOut)
 }

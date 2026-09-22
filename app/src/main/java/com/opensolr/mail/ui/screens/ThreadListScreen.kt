@@ -62,6 +62,7 @@ import com.opensolr.mail.ui.TopBar
 import com.opensolr.mail.ui.bottomInset
 import com.opensolr.mail.ui.fmtDate
 import com.opensolr.mail.ui.FastScroller
+import com.opensolr.mail.ui.itemMotion
 import com.opensolr.mail.ui.theme.LocalPalette
 
 @Composable
@@ -170,9 +171,10 @@ fun ThreadListScreen(vm: AppViewModel, view: View) {
             LazyColumn(state = listState, modifier = Modifier.fillMaxSize()) {
                 groups.forEach { g ->
                 if (grouping != ListGroup.NONE) item(key = "g:" + g.key) {
-                    ListGroupHeader(g.label, g.rows.size, !vm.isFolded(foldName, g.key)) { vm.toggleFold(foldName, g.key) }
+                    Box(itemMotion()) { ListGroupHeader(g.label, g.rows.size, !vm.isFolded(foldName, g.key)) { vm.toggleFold(foldName, g.key) } }
                 }
                 if (grouping == ListGroup.NONE || !vm.isFolded(foldName, g.key)) items(g.rows, key = { it.acc + ":" + it.threadId }) { r ->
+                  Column(itemMotion()) {
                     SwipeRow(
                         key = r,
                         onDelete = { run(vm, setOf(r), view) { acc, ids -> vm.delete(acc, ids) } },
@@ -189,6 +191,7 @@ fun ThreadListScreen(vm: AppViewModel, view: View) {
                         )
                     }
                     Hairline()
+                  }
                 }
                 }
                 if (loaded && rows.isEmpty()) item {

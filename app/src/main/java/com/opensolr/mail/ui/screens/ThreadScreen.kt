@@ -181,46 +181,52 @@ fun ThreadScreen(vm: AppViewModel, acc: String, threadId: String) {
                 Box(Modifier.scrollMark(threadMarks, m.id, sender + "\n" + fmtDate(m.received))) {
                     MessageHeader(m, open, onCopy = { copy(it) }) { expanded[m.id] = !open }
                 }
-                if (open) {
-                    Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp), horizontalArrangement = Arrangement.End) {
-                        IconBtn(R.drawable.ic_reply, { reply(Replies.Kind.REPLY, m) })
-                        IconBtn(R.drawable.ic_reply_all, { reply(Replies.Kind.REPLY_ALL, m) })
-                        IconBtn(R.drawable.ic_forward, { reply(Replies.Kind.FORWARD, m) })
-                        IconBtn(R.drawable.ic_copy, {
-                            val full = bodies[m.id]
-                            copy(full?.bodyText?.takeIf { it.isNotBlank() } ?: full?.bodyHtml?.let { com.opensolr.mail.jmap.Html.toText(it) } ?: m.preview)
-                        })
-                    }
-                    val full = bodies[m.id]
-                    if (full == null) {
-                        Text(stringResource(R.string.loading), style = MaterialTheme.typography.bodySmall, color = p.muted, modifier = Modifier.padding(16.dp))
-                    } else {
-                        val html = full.bodyHtml.orEmpty().ifBlank { com.opensolr.mail.jmap.Html.fromText(full.bodyText ?: m.preview) }
-                        val hasRemote = Regex("(?i)<img[^>]+src=[\"']?https?:").containsMatchIn(html)
-                        val allow = vm.prefs.remoteImages || images[m.id] == true
-                        if (hasRemote && !allow) {
-                            Text(
-                                stringResource(R.string.load_images), style = MaterialTheme.typography.labelSmall, color = p.accent,
-                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp).hapticClickable { images[m.id] = true },
-                            )
+                androidx.compose.animation.AnimatedVisibility(
+                    visible = open,
+                    enter = androidx.compose.animation.expandVertically(androidx.compose.animation.core.tween(240)) + androidx.compose.animation.fadeIn(androidx.compose.animation.core.tween(240)),
+                    exit = androidx.compose.animation.shrinkVertically(androidx.compose.animation.core.tween(200)) + androidx.compose.animation.fadeOut(androidx.compose.animation.core.tween(160)),
+                ) {
+                    Column {
+                        Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp), horizontalArrangement = Arrangement.End) {
+                            IconBtn(R.drawable.ic_reply, { reply(Replies.Kind.REPLY, m) })
+                            IconBtn(R.drawable.ic_reply_all, { reply(Replies.Kind.REPLY_ALL, m) })
+                            IconBtn(R.drawable.ic_forward, { reply(Replies.Kind.FORWARD, m) })
+                            IconBtn(R.drawable.ic_copy, {
+                                val full = bodies[m.id]
+                                copy(full?.bodyText?.takeIf { it.isNotBlank() } ?: full?.bodyHtml?.let { com.opensolr.mail.jmap.Html.toText(it) } ?: m.preview)
+                            })
                         }
-                        MailWebView(html, acc, full.attachments, allow, Modifier.fillMaxWidth().heightIn(min = 40.dp))
-                        val files = full.attachments.filter { !it.inline || it.cid == null }
-                        if (files.isNotEmpty()) Attachments(files, onSave = { a -> saving = a; saveAs.launch(a.name.ifBlank { "attachment" }) }) { a ->
-                            val a0 = vm.store.get(acc) ?: return@Attachments
-                            scope.launch {
-                                try {
-                                    val dir = File(context.cacheDir, "attachments").apply { mkdirs() }
-                                    val safe = a.name.ifBlank { "file" }.replace(Regex("[^A-Za-z0-9._ -]"), "_").take(100)
-                                    val f = File(dir, safe)
-                                    Jmap(context, a0).download(a.blobId, a.name, a.type, f)
-                                    val uri = FileProvider.getUriForFile(context, context.packageName + ".files", f)
-                                    context.startActivity(
-                                        Intent(Intent.ACTION_VIEW).setDataAndType(uri, a.type.ifBlank { "*/*" })
-                                            .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
-                                    )
-                                } catch (e: Exception) {
-                                    vm.message = e.message
+                        val full = bodies[m.id]
+                        if (full == null) {
+                            Text(stringResource(R.string.loading), style = MaterialTheme.typography.bodySmall, color = p.muted, modifier = Modifier.padding(16.dp))
+                        } else {
+                            val html = full.bodyHtml.orEmpty().ifBlank { com.opensolr.mail.jmap.Html.fromText(full.bodyText ?: m.preview) }
+                            val hasRemote = Regex("(?i)<img[^>]+src=[\"']?https?:").containsMatchIn(html)
+                            val allow = vm.prefs.remoteImages || images[m.id] == true
+                            if (hasRemote && !allow) {
+                                Text(
+                                    stringResource(R.string.load_images), style = MaterialTheme.typography.labelSmall, color = p.accent,
+                                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp).hapticClickable { images[m.id] = true },
+                                )
+                            }
+                            MailWebView(html, acc, full.attachments, allow, Modifier.fillMaxWidth().heightIn(min = 40.dp))
+                            val files = full.attachments.filter { !it.inline || it.cid == null }
+                            if (files.isNotEmpty()) Attachments(files, onSave = { a -> saving = a; saveAs.launch(a.name.ifBlank { "attachment" }) }) { a ->
+                                val a0 = vm.store.get(acc) ?: return@Attachments
+                                scope.launch {
+                                    try {
+                                        val dir = File(context.cacheDir, "attachments").apply { mkdirs() }
+                                        val safe = a.name.ifBlank { "file" }.replace(Regex("[^A-Za-z0-9._ -]"), "_").take(100)
+                                        val f = File(dir, safe)
+                                        Jmap(context, a0).download(a.blobId, a.name, a.type, f)
+                                        val uri = FileProvider.getUriForFile(context, context.packageName + ".files", f)
+                                        context.startActivity(
+                                            Intent(Intent.ACTION_VIEW).setDataAndType(uri, a.type.ifBlank { "*/*" })
+                                                .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
+                                        )
+                                    } catch (e: Exception) {
+                                        vm.message = e.message
+                                    }
                                 }
                             }
                         }
