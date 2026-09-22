@@ -1,6 +1,6 @@
 package com.opensolr.mail.search
 
-/** The canonical Opensolr AI Hints prompt, the same bytes as every other Opensolr implementation (AiPrompt.php). */
+/** The Opensolr AI Hints prompt, the same bytes as every other Opensolr implementation. */
 object AiPrompt {
 
     const val TOP_N = 4
