@@ -8,8 +8,9 @@ calendars in the phone's calendar app. Connect an Opensolr account and every mes
 with the text inside its attachments, becomes searchable by words and by meaning, with AI answers on top.
 
 **[Download the APK](https://github.com/phpcip/opensolr-mail/releases/latest/download/opensolr-mail.apk)** ·
-[Releases](https://github.com/phpcip/opensolr-mail/releases) ·
-[Opensolr](https://opensolr.com)
+[Website](https://opensolr.com/opensolr-mail) ·
+[Documentation](https://opensolr.com/opensolr-mail-docs) ·
+[Releases](https://github.com/phpcip/opensolr-mail/releases)
 
 ---
 
