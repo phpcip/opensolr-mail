@@ -216,4 +216,12 @@
     <string name="vm_update_failed">GitHub に接続できませんでした。少ししてからもう一度お試しください。</string>
     <string name="vm_update_latest">最新バージョンです。</string>
     <string name="vm_update_found">バージョン %1$s が利用可能です。</string>
+    <string name="confirm_delete_title">このスレッドを削除しますか?</string>
+    <string name="confirm_delete_trash">ゴミ箱に移動します。</string>
+    <string name="confirm_delete_forever">Fastmail からも完全に削除されます。</string>
+    <string name="delete">削除</string>
+    <string name="undo">元に戻す</string>
+    <string name="deleted_one">スレッドを削除しました</string>
+    <string name="flagged_one">フラグを付けました</string>
+    <string name="unflagged_one">フラグを外しました</string>
 </resources>

@@ -216,4 +216,12 @@
     <string name="vm_update_failed">Die Prüfung hat GitHub nicht erreicht. Versuche es gleich noch einmal.</string>
     <string name="vm_update_latest">Du hast die neueste Version.</string>
     <string name="vm_update_found">Version %1$s ist verfügbar.</string>
+    <string name="confirm_delete_title">Diese Unterhaltung löschen?</string>
+    <string name="confirm_delete_trash">Sie kommt in den Papierkorb.</string>
+    <string name="confirm_delete_forever">Sie wird endgültig gelöscht, auch bei Fastmail.</string>
+    <string name="delete">Löschen</string>
+    <string name="undo">Rückgängig</string>
+    <string name="deleted_one">Unterhaltung gelöscht</string>
+    <string name="flagged_one">Markiert</string>
+    <string name="unflagged_one">Markierung entfernt</string>
 </resources>

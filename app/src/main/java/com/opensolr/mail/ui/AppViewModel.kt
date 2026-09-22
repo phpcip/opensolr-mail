@@ -360,6 +360,61 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     fun setFlagged(acc: String, ids: kotlin.collections.List<String>, flagged: Boolean) = io { actions.setFlagged(acc, ids, flagged) }
     fun delete(acc: String, ids: kotlin.collections.List<String>) = io { actions.delete(acc, ids) }
     fun archive(acc: String, ids: kotlin.collections.List<String>) = io { actions.archive(acc, ids) }
+
+    /** The last swipe, still undoable: a delete waits here unsent until the bar goes, a flag is undone by flagging back. */
+    data class Undo(val id: Long, val text: String, val undo: () -> Unit, val commit: suspend () -> Unit)
+
+    var undo by mutableStateOf<Undo?>(null)
+        private set
+
+    /** Conversations deleted by a swipe whose undo bar is still up: out of the list, not yet deleted. */
+    val hiddenThreads = androidx.compose.runtime.mutableStateMapOf<String, Boolean>()
+
+    private fun offerUndo(text: String, onUndo: () -> Unit, commit: suspend () -> Unit) {
+        undo?.let { previous -> viewModelScope.launch { previous.commit() } }
+        undo = Undo(System.nanoTime(), text, onUndo, commit)
+    }
+
+    fun undoLast() {
+        val u = undo ?: return
+        undo = null
+        u.undo()
+    }
+
+    /** The undo bar timed out: the action goes through. */
+    fun commitUndo(id: Long) {
+        val u = undo?.takeIf { it.id == id } ?: return
+        undo = null
+        viewModelScope.launch { u.commit() }
+    }
+
+    /** A confirmed swipe delete: hidden at once, sent only when the undo bar is gone. */
+    fun deleteWithUndo(row: ThreadRow, view: View?) {
+        val key = row.acc + ":" + row.threadId
+        hiddenThreads[key] = true
+        offerUndo(ctx.getString(R.string.deleted_one), onUndo = { hiddenThreads.remove(key) }) {
+            val ids = threadIds(row, view)
+            withContext(Dispatchers.IO) { actions.delete(row.acc, ids) }
+            delay(1500)
+            hiddenThreads.remove(key)
+        }
+    }
+
+    /** A swipe flag or unflag, applied at once and undone by putting the flags back as they were. */
+    fun toggleFlagWithUndo(row: ThreadRow) {
+        viewModelScope.launch {
+            val ids = threadIds(row)
+            if (row.flagged) {
+                val before = withContext(Dispatchers.IO) { db.messages(row.acc, ids).filter { it.flagged }.map { it.id } }
+                io { actions.setFlagged(row.acc, ids, false) }
+                offerUndo(ctx.getString(R.string.unflagged_one), onUndo = { io { actions.setFlagged(row.acc, before, true) } }) {}
+            } else {
+                val last = ids.takeLast(1)
+                io { actions.setFlagged(row.acc, last, true) }
+                offerUndo(ctx.getString(R.string.flagged_one), onUndo = { io { actions.setFlagged(row.acc, last, false) } }) {}
+            }
+        }
+    }
     fun move(acc: String, ids: kotlin.collections.List<String>, to: String) = io { actions.move(acc, ids, to) }
 
     /** The real mailboxes behind a view: one per account for a unified role, or the box itself. */

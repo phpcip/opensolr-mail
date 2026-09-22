@@ -216,4 +216,12 @@
     <string name="vm_update_failed">Verificarea nu a ajuns la GitHub. Încearcă din nou peste puțin.</string>
     <string name="vm_update_latest">Ai ultima versiune.</string>
     <string name="vm_update_found">Versiunea %1$s e disponibilă.</string>
+    <string name="confirm_delete_title">Ștergi conversația?</string>
+    <string name="confirm_delete_trash">Ajunge în Trash.</string>
+    <string name="confirm_delete_forever">Se șterge definitiv, și pe Fastmail.</string>
+    <string name="delete">Șterge</string>
+    <string name="undo">Anulează</string>
+    <string name="deleted_one">Conversație ștearsă</string>
+    <string name="flagged_one">Marcat cu flag</string>
+    <string name="unflagged_one">Flag scos</string>
 </resources>

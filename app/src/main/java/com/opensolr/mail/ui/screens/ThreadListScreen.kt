@@ -99,7 +99,13 @@ fun ThreadListScreen(vm: AppViewModel, view: View) {
     var grouping by remember { mutableStateOf(runCatching { ListGroup.valueOf(vm.prefs.listGroup) }.getOrDefault(ListGroup.DAY)) }
     var groupMenu by remember { mutableStateOf(false) }
     val foldName = "listfold_" + scrollKey + "_" + grouping.name
-    val groups = remember(rows, grouping, accounts) { groupRows(rows, grouping) { k -> accounts.firstOrNull { it.key == k }?.username ?: k } }
+    var confirmDelete by remember { mutableStateOf<ThreadRow?>(null) }
+    val view0 = LocalView.current
+    val hidden = vm.hiddenThreads.keys.toSet()
+    val groups = remember(rows, grouping, accounts, hidden) {
+        val shown = if (hidden.isEmpty()) rows else rows.filterNot { (it.acc + ":" + it.threadId) in hidden }
+        groupRows(shown, grouping) { k -> accounts.firstOrNull { it.key == k }?.username ?: k }
+    }
 
     val folds = vm.keySet(foldName)
     val scrollIndex = remember(groups, grouping, folds, loaded) {
@@ -177,8 +183,8 @@ fun ThreadListScreen(vm: AppViewModel, view: View) {
                   Column(itemMotion()) {
                     SwipeRow(
                         key = r,
-                        onDelete = { run(vm, setOf(r), view) { acc, ids -> vm.delete(acc, ids) } },
-                        onFlag = { run(vm, setOf(r), null) { acc, ids -> if (r.flagged) vm.setFlagged(acc, ids, false) else vm.setFlagged(acc, ids.takeLast(1), true) } },
+                        onDelete = { confirmDelete = r },
+                        onFlag = { vm.toggleFlagWithUndo(r) },
                         enabled = selected.isEmpty(),
                     ) {
                         ThreadRowView(
@@ -203,6 +209,28 @@ fun ThreadListScreen(vm: AppViewModel, view: View) {
                 item { Spacer(Modifier.height(bottomInset() + 8.dp)) }
             }
             FastScroller(listState, scrollIndex)
+        }
+        confirmDelete?.let { r ->
+            // A swipe to the left never deletes on its own: it asks first, and the undo bar follows.
+            val forever = when (view) {
+                is View.Unified -> view.role == com.opensolr.mail.data.Role.TRASH || view.role == com.opensolr.mail.data.Role.JUNK
+                is View.Box -> vm.db.mailbox(view.acc, view.mailboxId)?.role.let { it == "trash" || it == "junk" }
+                View.Flagged -> false
+            }
+            androidx.compose.material3.AlertDialog(
+                onDismissRequest = { confirmDelete = null },
+                title = { Text(stringResource(R.string.confirm_delete_title)) },
+                text = { Text(stringResource(if (forever) R.string.confirm_delete_forever else R.string.confirm_delete_trash)) },
+                confirmButton = {
+                    androidx.compose.material3.TextButton(onClick = { Haptics.tick(view0, true); confirmDelete = null; vm.deleteWithUndo(r, view) }) {
+                        Text(stringResource(R.string.delete), color = p.accent, fontWeight = FontWeight.Bold)
+                    }
+                },
+                dismissButton = {
+                    androidx.compose.material3.TextButton(onClick = { Haptics.tick(view0, false); confirmDelete = null }) { Text(stringResource(R.string.cancel), color = p.ink) }
+                },
+                containerColor = p.paper, titleContentColor = p.ink, textContentColor = p.muted,
+            )
         }
         if (selected.isNotEmpty()) {
             val anyUnread = selected.any { it.unread }
@@ -345,7 +373,7 @@ private fun SwipeRow(key: Any, onDelete: () -> Unit, onFlag: () -> Unit, enabled
     val state = rememberSwipeToDismissBoxState(positionalThreshold = { it * 0.35f })
     LaunchedEffect(state.currentValue) {
         when (state.currentValue) {
-            SwipeToDismissBoxValue.EndToStart -> { Haptics.tick(view, true); onDelete() }
+            SwipeToDismissBoxValue.EndToStart -> { Haptics.tick(view, true); onDelete(); state.reset() }
             SwipeToDismissBoxValue.StartToEnd -> { Haptics.tick(view, true); onFlag(); state.reset() }
             SwipeToDismissBoxValue.Settled -> Unit
         }

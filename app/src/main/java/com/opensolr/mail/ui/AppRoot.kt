@@ -3,6 +3,7 @@ package com.opensolr.mail.ui
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.WindowInsets
@@ -69,6 +70,26 @@ fun AppRoot(vm: AppViewModel) {
                     Screen.Settings -> SettingsScreen(vm)
                 }
                 }
+            }
+        }
+
+        vm.undo?.let { u ->
+            val v = androidx.compose.ui.platform.LocalView.current
+            LaunchedEffect(u.id) {
+                delay(5000)
+                vm.commitUndo(u.id)
+            }
+            androidx.compose.foundation.layout.Row(
+                Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(bottom = bottomInset() + 12.dp, start = 12.dp, end = 12.dp)
+                    .background(p.ink).padding(start = 16.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(u.text, style = MaterialTheme.typography.bodyMedium, color = p.paper, modifier = Modifier.weight(1f))
+                Text(
+                    androidx.compose.ui.res.stringResource(com.opensolr.mail.R.string.undo).uppercase(),
+                    style = MaterialTheme.typography.labelLarge, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold, color = p.paper,
+                    modifier = Modifier.clickable { Haptics.tick(v, true); vm.undoLast() }.padding(horizontal = 18.dp, vertical = 16.dp),
+                )
             }
         }
 

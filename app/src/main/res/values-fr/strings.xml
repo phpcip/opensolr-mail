@@ -216,4 +216,12 @@
     <string name="vm_update_failed">La vérification n\'a pas pu joindre GitHub. Réessayez dans un instant.</string>
     <string name="vm_update_latest">Vous avez la dernière version.</string>
     <string name="vm_update_found">La version %1$s est disponible.</string>
+    <string name="confirm_delete_title">Supprimer cette conversation ?</string>
+    <string name="confirm_delete_trash">Elle va dans la corbeille.</string>
+    <string name="confirm_delete_forever">Elle est supprimée définitivement, sur Fastmail aussi.</string>
+    <string name="delete">Supprimer</string>
+    <string name="undo">Annuler</string>
+    <string name="deleted_one">Conversation supprimée</string>
+    <string name="flagged_one">Signalée</string>
+    <string name="unflagged_one">Signalement retiré</string>
 </resources>
