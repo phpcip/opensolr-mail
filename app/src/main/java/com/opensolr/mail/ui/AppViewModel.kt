@@ -490,6 +490,13 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 search.answer(question, top, highlights) { chunk -> if (aiJob === me) aiText = (aiText ?: "") + chunk }
             } catch (e: CancellationException) {
                 throw e
+            } catch (e: com.opensolr.mail.net.QuotaExceededException) {
+                // The allowance ran out: say so, and fetch the plan again so AI greys out at once.
+                aiText = ctx.getString(R.string.search_ai_off_quota)
+                refreshLimits()
+            } catch (e: com.opensolr.mail.net.VectorNotAllowedException) {
+                aiText = ctx.getString(R.string.search_ai_off_plan)
+                refreshLimits()
             } catch (e: Exception) {
                 aiText = e.message ?: ctx.getString(R.string.err_generic)
             } finally {

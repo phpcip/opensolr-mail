@@ -59,6 +59,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
@@ -128,6 +129,8 @@ fun SearchScreen(vm: AppViewModel, sheet: String?) {
     }
     LaunchedEffect(Unit) { vm.refreshLimits(minAgeMs = 5 * 60_000) }
     val limits = vm.limits
+    // AI search, AI answers and their instructions need AI in the plan and allowance left this month; without them, words only.
+    val aiOk = limits?.aiUsable ?: vm.prefs.vectorAllowed
     val view = LocalView.current
     val scope = rememberCoroutineScope()
     val accounts by vm.store.accounts.collectAsState()
@@ -163,6 +166,8 @@ fun SearchScreen(vm: AppViewModel, sheet: String?) {
             error = null
             try {
                 result = vm.search.search(query, filters, groupBy)
+                // AI was asked for but the search came back words only: the plan or the allowance may have changed.
+                if (ai && aiOk && query.isNotBlank() && result?.smart == false) vm.refreshLimits(minAgeMs = 60_000)
                 extraHits = emptyList()
                 fetchedMore = 0
                 extraGroups = emptyList()
@@ -187,7 +192,7 @@ fun SearchScreen(vm: AppViewModel, sheet: String?) {
         vm.searchQuery = query
         vm.searchFilters = filters
     }
-    LaunchedEffect(query, filters, groupBy, ai, fresh) {
+    LaunchedEffect(query, filters, groupBy, ai, fresh, aiOk) {
         if (skipFirst) { skipFirst = false; return@LaunchedEffect }
         if (query.isNotEmpty()) delay(350)
         run()
@@ -321,7 +326,7 @@ fun SearchScreen(vm: AppViewModel, sheet: String?) {
             }
             if (query.isNotEmpty()) IconBtn(R.drawable.ic_close, { query = "" })
             // Lit when the reader has instructions of their own for the AI answer.
-            Icon(
+            if (aiOk) Icon(
                 painterResource(R.drawable.ic_instructions), contentDescription = stringResource(R.string.ai_instructions), tint = if (instructions.isNotBlank()) p.accent else p.ink,
                 modifier = Modifier.size(40.dp).clickable { Haptics.tick(view, false); showInstructions = true }.padding(9.dp),
             )
@@ -360,7 +365,7 @@ fun SearchScreen(vm: AppViewModel, sheet: String?) {
                 }
             }
             Spacer(Modifier.width(8.dp))
-            Toggle(stringResource(R.string.ai), ai) { ai = it; vm.prefs.aiSearch = it }
+            Toggle(stringResource(R.string.ai), ai && aiOk, enabled = aiOk) { ai = it; vm.prefs.aiSearch = it }
             Spacer(Modifier.width(6.dp))
             Toggle(stringResource(R.string.fresh), fresh) { fresh = it; vm.prefs.freshSearch = it }
             Spacer(Modifier.weight(1f))
@@ -370,7 +375,7 @@ fun SearchScreen(vm: AppViewModel, sheet: String?) {
         // What the plan stops right now: a closed index has no search, a spent AI allowance leaves words only.
         if (limits?.closed == true) {
             Column(Modifier.padding(horizontal = 12.dp, vertical = 6.dp)) { com.opensolr.mail.ui.Notice(stringResource(R.string.search_closed_text), title = stringResource(R.string.search_closed_title)) }
-        } else if (ai && limits != null && !limits.aiUsable) {
+        } else if (limits != null && !limits.aiUsable) {
             Text(
                 stringResource(if (limits.vectorAllowed) R.string.search_ai_off_quota else R.string.search_ai_off_plan),
                 style = MaterialTheme.typography.bodySmall, color = p.accent, modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
@@ -380,7 +385,7 @@ fun SearchScreen(vm: AppViewModel, sheet: String?) {
 
         val groupLabels = shownGroups.map { groupValueLabel(groupBy, it.value, accounts) }
         val searchFolds = vm.keySet("search_folds")
-        val hasAnswerCard = r != null && query.isNotBlank() && shownHits.isNotEmpty() && limits?.aiUsable != false
+        val hasAnswerCard = r != null && query.isNotBlank() && shownHits.isNotEmpty() && aiOk
         val hasEmpty = r != null && !loading && shownHits.isEmpty()
         // The rows the list shows, and the same rows for the fast scroller: one list, so both always agree.
         val listed = shownHits.filter { vm.hiddenThreads[keyOf(it)] != true && gone[keyOf(it)] != true }
@@ -747,12 +752,13 @@ private fun IconAction(icon: Int, active: Boolean, badge: Int = 0, onClick: () -
 
 /** A switch-like pill for the AI and Fresh toggles. */
 @Composable
-private fun Toggle(label: String, on: Boolean, onChange: (Boolean) -> Unit) {
+private fun Toggle(label: String, on: Boolean, enabled: Boolean = true, onChange: (Boolean) -> Unit) {
     val p = LocalPalette.current
     val view = LocalView.current
+    // Greyed out and inert when the plan does not allow it.
     Box(
-        Modifier.height(36.dp).background(if (on) p.accentFill else p.paper, Corner).border(1.dp, if (on) p.accentFill else p.hairline, Corner)
-            .clickable { Haptics.toggle(view, !on); onChange(!on) }.padding(horizontal = 12.dp),
+        Modifier.height(36.dp).alpha(if (enabled) 1f else 0.35f).background(if (on) p.accentFill else p.paper, Corner).border(1.dp, if (on) p.accentFill else p.hairline, Corner)
+            .clickable(enabled = enabled) { Haptics.toggle(view, !on); onChange(!on) }.padding(horizontal = 12.dp),
         contentAlignment = Alignment.Center,
     ) { Text(label, style = MaterialTheme.typography.labelLarge, color = if (on) p.onAccentFill else p.ink) }
 }

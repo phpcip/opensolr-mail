@@ -224,8 +224,11 @@ class OpensolrApi(private val prefs: AppPrefs) {
         // Stopping the answer closes the connection at once, so the server stops streaming it too.
         val stop = coroutineContext[kotlinx.coroutines.Job]?.invokeOnCompletion { if (it != null) call.cancel() }
         try { call.execute().use { r ->
-            classify(r.code, "", r.header("Retry-After"))
-            if (!r.isSuccessful) throw ServiceException("HTTP ${r.code}")
+            // A refusal says why in its body: a spent monthly allowance or a plan without AI is told apart from a busy server.
+            if (!r.isSuccessful) {
+                classify(r.code, r.body?.string().orEmpty(), r.header("Retry-After"))
+                throw ServiceException("HTTP ${r.code}")
+            }
             val reader = r.body?.charStream() ?: return@use
             val buf = CharArray(2048)
             while (true) {

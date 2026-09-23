@@ -124,7 +124,9 @@ class MailSearch(private val context: Context) {
             p += "mm" to MM
             p += "df" to "subject_t"
             val lexical = "{!edismax qf=\"$QF\" mm=\"$MM\" v=\$uq}"
-            val vector = if (prefs.aiSearch && prefs.vectorAllowed && embedText.trim().length >= 2) runCatching { vectorOf(connection.indexName, embedText) }.getOrNull() else null
+            // Meaning only when the plan has it and the month's AI allowance is not spent; otherwise words only.
+            val aiOk = prefs.limits?.aiUsable ?: prefs.vectorAllowed
+            val vector = if (prefs.aiSearch && aiOk && embedText.trim().length >= 2) runCatching { vectorOf(connection.indexName, embedText) }.getOrNull() else null
             if (vector != null && ops.hasOps) {
                 p += "uq" to ops.base
                 val fields = QF.split(' ').filter { it.isNotBlank() }.joinToString(" ") { it.substringBefore('^') }
@@ -335,6 +337,8 @@ class MailSearch(private val context: Context) {
      * goes whole, each message a document of its own with only the words its writer added. No other search is made.
      */
     suspend fun answer(question: String, top: List<AiPrompt.Doc>, highlights: Map<String, Map<String, List<String>>>, onChunk: (String) -> Unit) {
+        // No AI answer without AI in the plan or with the month's allowance spent: no request is made.
+        if (!(prefs.limits?.aiUsable ?: prefs.vectorAllowed)) return
         val best = top.take(AiPrompt.TOP_N).mapNotNull { it.score }.maxOrNull() ?: 0.0
         val chosen = top.take(AiPrompt.TOP_N).filter { best <= 0 || it.score == null || it.score >= best * 0.5 }
         if (chosen.isEmpty()) return
