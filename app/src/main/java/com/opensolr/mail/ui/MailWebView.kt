@@ -30,7 +30,7 @@ fun MailWebView(html: String, acc: String, attachments: List<Attachment>, remote
     AndroidView(
         modifier = modifier,
         factory = { ctx ->
-            WebView(ctx).apply {
+            FitWebView(ctx).apply {
                 setBackgroundColor(paper.toArgb())
                 // In the dark theme the message is darkened by the WebView itself, its own colours included,
                 // instead of standing as a white block.
@@ -102,6 +102,11 @@ fun MailWebView(html: String, acc: String, attachments: List<Attachment>, remote
 
 private class MailClient(private val context: Context, private val acc: String, var attachments: List<Attachment>) : WebViewClient() {
 
+    /** A message wider than the screen (a fixed-width newsletter) opens zoomed out to fit it; one that fits is left as it is. */
+    override fun onPageFinished(view: WebView, url: String?) {
+        (view as? FitWebView)?.fitWidthSoon()
+    }
+
     /** After a zoom the WebView takes the height of its zoomed content, so the whole message can be reached. */
     override fun onScaleChanged(view: WebView, oldScale: Float, newScale: Float) {
         view.post { view.requestLayout() }
@@ -130,4 +135,26 @@ private class MailClient(private val context: Context, private val acc: String, 
     }
 
     private fun empty() = WebResourceResponse("text/plain", "utf-8", "".byteInputStream())
+}
+
+/** The message WebView, able to tell how wide its content is, to open every message fitted to the screen. */
+private class FitWebView(context: Context) : WebView(context) {
+    private var fitted = false
+
+    /** Called for each new message: once it is laid out, zoom out so its full width shows. */
+    fun fitWidthSoon() {
+        fitted = false
+        postDelayed({ fitWidth() }, 60)
+        postDelayed({ fitWidth() }, 400)
+    }
+
+    private fun fitWidth() {
+        if (fitted || width <= 0) return
+        val content = computeHorizontalScrollRange()
+        if (content > width * 1.02f) {
+            fitted = true
+            zoomBy((width.toFloat() / content).coerceIn(0.05f, 1f))
+            scrollTo(0, 0)
+        }
+    }
 }
