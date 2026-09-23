@@ -28,7 +28,9 @@ fun rememberListMemory(prefs: AppPrefs, key: String, ready: Boolean): LazyListSt
 fun rememberListMemory(key: String, ready: Boolean, load: () -> Pair<Int, Int>, save: (Int, Int) -> Unit): LazyListState {
     val saved = remember(key) { load() }
     val state = remember(key) { LazyListState(saved.first, saved.second) }
-    var restored by remember(key) { mutableStateOf(saved.first == 0 && saved.second == 0) }
+    // Restored once the rows are there, top included: a list that fills in later otherwise stays on
+    // the row it showed while empty and opens half way down.
+    var restored by remember(key) { mutableStateOf(false) }
     LaunchedEffect(key, ready) {
         if (ready && !restored) {
             state.scrollToItem(saved.first, saved.second)

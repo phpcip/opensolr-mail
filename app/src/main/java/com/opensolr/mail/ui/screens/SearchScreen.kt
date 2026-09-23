@@ -153,6 +153,10 @@ fun SearchScreen(vm: AppViewModel, sheet: String?) {
                 result = vm.search.search(query, filters, groupBy)
                 extraHits = emptyList()
                 extraGroups = emptyList()
+                // A new result always opens at its top: the list would otherwise stay anchored on
+                // whatever row it showed before (the empty list's last row) and land mid-way down.
+                vm.positions["search"] = 0 to 0
+                runCatching { listState.scrollToItem(0) }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -171,9 +175,7 @@ fun SearchScreen(vm: AppViewModel, sheet: String?) {
     LaunchedEffect(query, filters, groupBy, ai, fresh) {
         if (skipFirst) { skipFirst = false; return@LaunchedEffect }
         if (query.isNotEmpty()) delay(350)
-        vm.positions["search"] = 0 to 0
         run()
-        runCatching { listState.scrollToItem(0) }
     }
     LaunchedEffect(result, extraHits, extraGroups) {
         val res = result ?: return@LaunchedEffect
