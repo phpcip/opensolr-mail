@@ -227,4 +227,8 @@
     <string name="haptic_feedback">触覚フィードバック</string>
     <string name="move_to_inbox">受信トレイに移動</string>
     <string name="not_junk">迷惑メールではない:受信トレイに移動</string>
+    <string name="preferences">設定</string>
+    <string name="feedback">フィードバック</string>
+    <string name="n_messages">%1$d 件のメッセージ</string>
+    <string name="preparing_forward">転送を準備中…</string>
 </resources>

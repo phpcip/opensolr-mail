@@ -227,4 +227,8 @@
     <string name="haptic_feedback">Retour haptique</string>
     <string name="move_to_inbox">Déplacer vers la boîte de réception</string>
     <string name="not_junk">Pas du spam : vers la boîte de réception</string>
+    <string name="preferences">Préférences</string>
+    <string name="feedback">Retour</string>
+    <string name="n_messages">%1$d messages</string>
+    <string name="preparing_forward">Préparation du transfert…</string>
 </resources>

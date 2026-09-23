@@ -227,4 +227,8 @@
     <string name="haptic_feedback">Respuesta háptica</string>
     <string name="move_to_inbox">Mover a la bandeja de entrada</string>
     <string name="not_junk">No es spam: mover a la bandeja de entrada</string>
+    <string name="preferences">Preferencias</string>
+    <string name="feedback">Respuesta</string>
+    <string name="n_messages">%1$d mensajes</string>
+    <string name="preparing_forward">Preparando el reenvío…</string>
 </resources>

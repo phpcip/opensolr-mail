@@ -227,6 +227,34 @@ fun Zone(title: String, badge: Int, open: Boolean, onToggle: () -> Unit, content
     }
 }
 
+/** A section inside a zone: a lighter heading with its own chevron, folded until tapped, and remembered. */
+@Composable
+fun SubZone(title: String, open: Boolean, onToggle: () -> Unit, content: @Composable () -> Unit) {
+    val p = LocalPalette.current
+    val view = androidx.compose.ui.platform.LocalView.current
+    androidx.compose.foundation.layout.Column(Modifier.fillMaxWidth()) {
+        Row(
+            Modifier.fillMaxWidth().clickable { Haptics.tick(view, strong = false); onToggle() }.padding(vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(
+                if (open) androidx.compose.material.icons.Icons.Filled.KeyboardArrowDown else androidx.compose.material.icons.Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                contentDescription = null, tint = p.accent, modifier = Modifier.size(20.dp),
+            )
+            Spacer(Modifier.width(6.dp))
+            Text(title, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, color = p.ink)
+        }
+        androidx.compose.animation.AnimatedVisibility(
+            visible = open,
+            enter = androidx.compose.animation.expandVertically(androidx.compose.animation.core.tween(200)) + androidx.compose.animation.fadeIn(androidx.compose.animation.core.tween(200)),
+            exit = androidx.compose.animation.shrinkVertically(androidx.compose.animation.core.tween(160)) + androidx.compose.animation.fadeOut(androidx.compose.animation.core.tween(120)),
+        ) {
+            androidx.compose.foundation.layout.Column(Modifier.padding(start = 26.dp, bottom = 8.dp)) { content() }
+        }
+        Hairline()
+    }
+}
+
 /** A label and its value on one line, with a rule under it. */
 @Composable
 fun InfoRow(label: String, value: String) {

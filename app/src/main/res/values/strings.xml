@@ -236,4 +236,8 @@
     <string name="haptic_feedback">Haptic feedback</string>
     <string name="move_to_inbox">Move to Inbox</string>
     <string name="not_junk">Not junk: move to Inbox</string>
+    <string name="preferences">Preferences</string>
+    <string name="feedback">Feedback</string>
+    <string name="n_messages">%1$d messages</string>
+    <string name="preparing_forward">Preparing the forward…</string>
 </resources>

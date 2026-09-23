@@ -64,6 +64,8 @@ data class ComposeInit(
     val references: String = "",
     val answeredId: String? = null,
     val draftId: String? = null,
+    /** Files already in the app to attach, like the messages of a bulk forward. */
+    val files: kotlin.collections.List<com.opensolr.mail.jmap.MailActions.OutFile> = emptyList(),
 )
 
 class AppViewModel(app: Application) : AndroidViewModel(app) {
@@ -361,6 +363,43 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     fun setFlagged(acc: String, ids: kotlin.collections.List<String>, flagged: Boolean) = io { actions.setFlagged(acc, ids, flagged) }
     fun delete(acc: String, ids: kotlin.collections.List<String>) = io { actions.delete(acc, ids) }
     fun archive(acc: String, ids: kotlin.collections.List<String>) = io { actions.archive(acc, ids) }
+    /**
+     * Forwards the selected conversations together: the newest message of each is attached as an .eml,
+     * read with one Email/get per account and downloaded once, then compose opens with them.
+     */
+    fun forwardSelected(rows: kotlin.collections.List<ThreadRow>) {
+        if (rows.isEmpty()) return
+        toast(R.string.preparing_forward)
+        viewModelScope.launch {
+            val files = ArrayList<com.opensolr.mail.jmap.MailActions.OutFile>()
+            val subjects = ArrayList<String>()
+            withContext(Dispatchers.IO) {
+                val dir = java.io.File(ctx.filesDir, "outbox").apply { mkdirs() }
+                rows.take(20).groupBy { it.acc }.forEach { (acc, rs) ->
+                    val account = store.get(acc) ?: return@forEach
+                    val jmap = com.opensolr.mail.jmap.Jmap(ctx, account)
+                    runCatching {
+                        val r = jmap.call("Email/get", org.json.JSONObject().put("ids", org.json.JSONArray(rs.map { it.latestId })).put("properties", org.json.JSONArray(listOf("id", "blobId", "subject", "size"))))
+                        val list = r.getJSONArray("list")
+                        for (i in 0 until list.length()) {
+                            val o = list.getJSONObject(i)
+                            if (o.optLong("size") > 25L * 1024 * 1024) continue
+                            val subject = o.optString("subject").ifBlank { "message" }
+                            val name = subject.replace(Regex("[^A-Za-z0-9._ -]"), "_").take(80).trim().ifBlank { "message" } + ".eml"
+                            val target = java.io.File(dir, System.nanoTime().toString() + "_" + name)
+                            jmap.download(o.getString("blobId"), name, "message/rfc822", target)
+                            files += com.opensolr.mail.jmap.MailActions.OutFile(target.path, name, "message/rfc822")
+                            subjects += subject
+                        }
+                    }
+                }
+            }
+            if (files.isEmpty()) { toast(R.string.err_generic); return@launch }
+            val subject = if (subjects.size == 1) "Fwd: " + subjects[0] else "Fwd: " + ctx.getString(R.string.n_messages, subjects.size)
+            go(Screen.Compose(ComposeInit(acc = rows.first().acc, subject = subject, files = files)))
+        }
+    }
+
     fun restoreToInbox(acc: String, ids: kotlin.collections.List<String>, notJunk: Boolean) = io { actions.restoreToInbox(acc, ids, notJunk) }
 
     /** The last swipe, still undoable: a delete waits here unsent until the bar goes, a flag is undone by flagging back. */

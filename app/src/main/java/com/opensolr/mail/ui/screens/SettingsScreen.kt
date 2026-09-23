@@ -47,6 +47,7 @@ import com.opensolr.mail.ui.InfoRow
 import com.opensolr.mail.ui.Notice
 import com.opensolr.mail.ui.ScreenHeader
 import com.opensolr.mail.ui.Zone
+import com.opensolr.mail.ui.SubZone
 import com.opensolr.mail.ui.bottomInset
 import com.opensolr.mail.ui.fmtDate
 import com.opensolr.mail.ui.hapticClickable
@@ -80,7 +81,7 @@ fun SettingsScreen(vm: AppViewModel) {
         Column(Modifier.fillMaxSize().verticalScroll(settingsScroll).padding(horizontal = 20.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Box(Modifier.weight(1f)) { ScreenHeader(stringResource(R.string.settings), onBack = { vm.back() }) }
-            val allZones = setOf("updates", "accounts", "index", "search", "opensolr", "reading", "language")
+            val allZones = setOf("updates", "accounts", "opensolr", "index", "preferences", "pref_search", "pref_reading", "pref_feedback", "pref_language")
             val anyOpen = allZones.any { it in open }
             com.opensolr.mail.ui.IconBtn(if (anyOpen) R.drawable.ic_collapse_all else R.drawable.ic_expand_all, { vm.setKeySet("settings_zones", if (anyOpen) emptySet() else allZones) })
         }
@@ -145,6 +146,19 @@ fun SettingsScreen(vm: AppViewModel) {
         }
 
         val warnings = remember(vm.limits) { vm.limits?.let { com.opensolr.mail.ui.PlanInfo.warnings(it) } ?: emptyList() }
+        Zone(stringResource(R.string.opensolr_account), if (!vm.signedIn) 1 else warnings.size, "opensolr" in open, { vm.toggleZone("opensolr") }) {
+            Column {
+                if (!vm.signedIn) {
+                    com.opensolr.mail.ui.NeedsOpensolr(vm)
+                    return@Column
+                }
+                com.opensolr.mail.ui.PlanDetails(vm)
+                Spacer(Modifier.height(10.dp))
+                if (confirmSignOut) AccentButton(stringResource(R.string.confirm_sign_out), { confirmSignOut = false; vm.signOutOpensolr() }, Modifier.fillMaxWidth())
+                else GhostButton(stringResource(R.string.sign_out), { confirmSignOut = true }, Modifier.fillMaxWidth())
+            }
+        }
+
         Zone(stringResource(R.string.idx_title), if (!vm.signedIn || s.error != null || s.noRoom || vm.limits?.closed == true) 1 else 0, "index" in open, { vm.toggleZone("index") }) {
             Column {
                 if (!vm.signedIn) {
@@ -184,60 +198,53 @@ fun SettingsScreen(vm: AppViewModel) {
             }
         }
 
-        Zone(stringResource(R.string.zone_search), 0, "search" in open, { vm.toggleZone("search") }) {
+        Zone(stringResource(R.string.preferences), 0, "preferences" in open, { vm.toggleZone("preferences") }) {
             Column {
-                var lw by remember { mutableStateOf(vm.prefs.lexicalWeight) }
-                Text(stringResource(R.string.alpha_title), style = MaterialTheme.typography.titleSmall, color = p.ink)
-                Text(stringResource(R.string.alpha_value, ((1f - lw) * 100).toInt()), style = MaterialTheme.typography.bodySmall, color = p.muted)
-                androidx.compose.material3.Slider(
-                    value = 1f - lw,
-                    onValueChange = { v -> val next = (1f - v).coerceIn(0f, 1f); if ((next * 20).toInt() != (lw * 20).toInt()) Haptics.tick(view, false); lw = next },
-                    onValueChangeFinished = { vm.prefs.lexicalWeight = lw },
-                    steps = 19,
-                    colors = androidx.compose.material3.SliderDefaults.colors(thumbColor = p.accentFill, activeTrackColor = p.accentFill, inactiveTrackColor = p.hairline),
-                )
-                Row {
-                    Text(stringResource(R.string.alpha_words), style = MaterialTheme.typography.bodySmall, color = p.muted, modifier = Modifier.weight(1f))
-                    Text(stringResource(R.string.alpha_meaning), style = MaterialTheme.typography.bodySmall, color = p.muted)
-                }
-            }
-        }
-
-        Zone(stringResource(R.string.opensolr_account), if (!vm.signedIn) 1 else warnings.size, "opensolr" in open, { vm.toggleZone("opensolr") }) {
-            Column {
-                if (!vm.signedIn) {
-                    com.opensolr.mail.ui.NeedsOpensolr(vm)
-                    return@Column
-                }
-                com.opensolr.mail.ui.PlanDetails(vm)
-                Spacer(Modifier.height(10.dp))
-                if (confirmSignOut) AccentButton(stringResource(R.string.confirm_sign_out), { confirmSignOut = false; vm.signOutOpensolr() }, Modifier.fillMaxWidth())
-                else GhostButton(stringResource(R.string.sign_out), { confirmSignOut = true }, Modifier.fillMaxWidth())
-            }
-        }
-
-        Zone(stringResource(R.string.reading), 0, "reading" in open, { vm.toggleZone("reading") }) {
-            Column {
-                Toggle(stringResource(R.string.notify_new_mail), notify) { notify = it; vm.prefs.notifyNewMail = it }
-                Hairline()
-                Toggle(stringResource(R.string.remote_images), images) { images = it; vm.prefs.remoteImages = it }
-                Hairline()
-                Toggle(stringResource(R.string.haptic_feedback), haptics) { haptics = it; vm.prefs.haptics = it; com.opensolr.mail.ui.Haptics.enabled = it }
-            }
-        }
-
-        Zone(stringResource(R.string.language), 0, "language" in open, { vm.toggleZone("language") }) {
-            Column {
-                val current = AppLanguage.chosen(context)
-                (listOf("" to stringResource(R.string.language_phone)) + AppLanguage.SUPPORTED).forEach { (tag, name) ->
-                    Row(Modifier.fillMaxWidth().hapticClickable { activityOf(context)?.let { AppLanguage.choose(it, tag) } }.height(46.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Text(name, style = MaterialTheme.typography.bodyLarge, color = p.ink, modifier = Modifier.weight(1f))
-                        if (tag == current) Text("✓", style = MaterialTheme.typography.titleSmall, color = p.accent)
+                SubZone(stringResource(R.string.zone_search), "pref_search" in open, { vm.toggleZone("pref_search") }) {
+                Column {
+                    var lw by remember { mutableStateOf(vm.prefs.lexicalWeight) }
+                    Text(stringResource(R.string.alpha_title), style = MaterialTheme.typography.titleSmall, color = p.ink)
+                    Text(stringResource(R.string.alpha_value, ((1f - lw) * 100).toInt()), style = MaterialTheme.typography.bodySmall, color = p.muted)
+                    androidx.compose.material3.Slider(
+                        value = 1f - lw,
+                        onValueChange = { v -> val next = (1f - v).coerceIn(0f, 1f); if ((next * 20).toInt() != (lw * 20).toInt()) Haptics.tick(view, false); lw = next },
+                        onValueChangeFinished = { vm.prefs.lexicalWeight = lw },
+                        steps = 19,
+                        colors = androidx.compose.material3.SliderDefaults.colors(thumbColor = p.accentFill, activeTrackColor = p.accentFill, inactiveTrackColor = p.hairline),
+                    )
+                    Row {
+                        Text(stringResource(R.string.alpha_words), style = MaterialTheme.typography.bodySmall, color = p.muted, modifier = Modifier.weight(1f))
+                        Text(stringResource(R.string.alpha_meaning), style = MaterialTheme.typography.bodySmall, color = p.muted)
                     }
+                }
+                }
+                SubZone(stringResource(R.string.reading), "pref_reading" in open, { vm.toggleZone("pref_reading") }) {
+                Column {
+                    Toggle(stringResource(R.string.notify_new_mail), notify) { notify = it; vm.prefs.notifyNewMail = it }
                     Hairline()
+                    Toggle(stringResource(R.string.remote_images), images) { images = it; vm.prefs.remoteImages = it }
+                }
+                }
+                SubZone(stringResource(R.string.feedback), "pref_feedback" in open, { vm.toggleZone("pref_feedback") }) {
+                Column {
+                    Toggle(stringResource(R.string.haptic_feedback), haptics) { haptics = it; vm.prefs.haptics = it; com.opensolr.mail.ui.Haptics.enabled = it }
+                }
+                }
+                SubZone(stringResource(R.string.language), "pref_language" in open, { vm.toggleZone("pref_language") }) {
+                Column {
+                    val current = AppLanguage.chosen(context)
+                    (listOf("" to stringResource(R.string.language_phone)) + AppLanguage.SUPPORTED).forEach { (tag, name) ->
+                        Row(Modifier.fillMaxWidth().hapticClickable { activityOf(context)?.let { AppLanguage.choose(it, tag) } }.height(46.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Text(name, style = MaterialTheme.typography.bodyLarge, color = p.ink, modifier = Modifier.weight(1f))
+                            if (tag == current) Text("✓", style = MaterialTheme.typography.titleSmall, color = p.accent)
+                        }
+                        Hairline()
+                    }
+                }
                 }
             }
         }
+
         Spacer(Modifier.height(bottomInset() + 40.dp))
     }
         }

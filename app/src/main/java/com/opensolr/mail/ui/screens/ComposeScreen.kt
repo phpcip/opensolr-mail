@@ -78,7 +78,7 @@ fun ComposeScreen(vm: AppViewModel, init: ComposeInit) {
     var subject by remember { mutableStateOf(init.subject) }
     val signature = identity?.signature?.takeIf { it.isNotBlank() }?.let { "\n\n-- \n$it" }.orEmpty()
     var body by remember { mutableStateOf(if (init.draftId != null) init.body else signature + init.body) }
-    val files = remember { mutableStateListOf<MailActions.OutFile>() }
+    val files = remember { mutableStateListOf<MailActions.OutFile>().apply { addAll(init.files) } }
     var picking by remember { mutableStateOf(false) }
     var leaving by remember { mutableStateOf(false) }
     val dirty = to != init.to || cc != init.cc || bcc.isNotBlank() || subject != init.subject || body.trim() != (signature + init.body).trim() || files.isNotEmpty()
@@ -104,6 +104,10 @@ fun ComposeScreen(vm: AppViewModel, init: ComposeInit) {
 
     Column(Modifier.fillMaxSize()) {
         TopBar(stringResource(R.string.new_message), onBack = { if (dirty) leaving = true else vm.back() }) {
+            IconBtn(R.drawable.ic_drafts, {
+                val o = outgoing()
+                if (o == null) vm.toast(R.string.no_identity) else { vm.saveDraft(o); vm.back() }
+            })
             IconBtn(R.drawable.ic_attach, { pick.launch("*/*") })
             IconBtn(R.drawable.ic_send, {
                 val o = outgoing()

@@ -42,6 +42,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -107,18 +108,27 @@ fun ThreadListScreen(vm: AppViewModel, view: View) {
     val groups = remember(rows, pinned, grouping, accounts, hidden, pinnedLabel) {
         val shown = if (hidden.isEmpty()) rows else rows.filterNot { (it.acc + ":" + it.threadId) in hidden }
         val top = if (hidden.isEmpty()) pinned else pinned.filterNot { (it.acc + ":" + it.threadId) in hidden }
-        if (grouping == ListGroup.NONE) listOf(RowGroup("all", "", top + shown))
-        else (if (top.isEmpty()) emptyList() else listOf(RowGroup("pinned", pinnedLabel, top))) +
-            groupRows(shown, grouping) { k -> accounts.firstOrNull { it.key == k }?.username ?: k }
+        (if (top.isEmpty()) emptyList() else listOf(RowGroup("pinned", pinnedLabel, top))) +
+            (if (grouping == ListGroup.NONE) listOf(RowGroup("all", "", shown)) else groupRows(shown, grouping) { k -> accounts.firstOrNull { it.key == k }?.username ?: k })
     }
 
+    // The pinned Flagged section starts folded and remembers being opened, apart from the day groups.
+    val pinName = "pinopen_" + scrollKey
+    val pinOpen = "open" in vm.keySet(pinName)
+    fun folded(key: String): Boolean = when (key) {
+        "pinned" -> !pinOpen
+        "all" -> false
+        else -> vm.isFolded(foldName, key)
+    }
+    fun toggleGroup(key: String) = if (key == "pinned") vm.toggleKey(pinName, "open") else vm.toggleFold(foldName, key)
+
     val folds = vm.keySet(foldName)
-    val scrollIndex = remember(groups, grouping, folds, loaded) {
+    val scrollIndex = remember(groups, grouping, folds, pinOpen, loaded) {
         val dayLabel = java.text.SimpleDateFormat("EEE, MM/dd/yyyy", java.util.Locale.getDefault())
         com.opensolr.mail.ui.ScrollIndex().apply {
             groups.forEach { g ->
-                if (grouping != ListGroup.NONE) head(g.label)
-                if (grouping == ListGroup.NONE) {
+                if (g.key != "all") head(g.label)
+                if (g.key == "all") {
                     // A flat list still has titles to feel: the day each conversation belongs to.
                     var lastDay = Long.MIN_VALUE
                     var label = ""
@@ -127,7 +137,7 @@ fun ThreadListScreen(vm: AppViewModel, view: View) {
                         if (day != lastDay) { lastDay = day; label = dayLabel.format(java.util.Date(r.received)) }
                         row(label)
                     }
-                } else if (!vm.isFolded(foldName, g.key)) rows(g.rows.size)
+                } else if (!folded(g.key)) rows(g.rows.size)
             }
             if (loaded && rows.isEmpty() && pinned.isEmpty()) row()
             row()
@@ -168,9 +178,12 @@ fun ThreadListScreen(vm: AppViewModel, view: View) {
     Column(Modifier.fillMaxSize()) {
         if (selected.isEmpty()) {
             TopBar(viewTitle(vm, view), onBack = { vm.go(Screen.Mailboxes) }) {
-                if (grouping != ListGroup.NONE) {
-                    val anyOpen = vm.anyUnfolded(foldName, groups.map { it.key })
-                    IconBtn(if (anyOpen) R.drawable.ic_collapse_all else R.drawable.ic_expand_all, { vm.foldAll(foldName, anyOpen) })
+                if (groups.any { it.key != "all" }) {
+                    val anyOpen = groups.any { it.key != "all" && !folded(it.key) }
+                    IconBtn(if (anyOpen) R.drawable.ic_collapse_all else R.drawable.ic_expand_all, {
+                        vm.foldAll(foldName, anyOpen)
+                        vm.setKeySet(pinName, if (anyOpen) emptySet() else setOf("open"))
+                    })
                 }
                 Box {
                     IconBtn(R.drawable.ic_group, { groupMenu = true }, tint = if (grouping != ListGroup.NONE) p.accent else null)
@@ -195,10 +208,10 @@ fun ThreadListScreen(vm: AppViewModel, view: View) {
         RefreshBox(refreshing = vm.busy, onRefresh = { vm.refresh() }, modifier = Modifier.weight(1f)) {
             LazyColumn(state = listState, modifier = Modifier.fillMaxSize()) {
                 groups.forEach { g ->
-                if (grouping != ListGroup.NONE) item(key = "g:" + g.key) {
-                    Box(itemMotion()) { ListGroupHeader(g.label, g.rows.size, !vm.isFolded(foldName, g.key)) { vm.toggleFold(foldName, g.key) } }
+                if (g.key != "all") item(key = "g:" + g.key) {
+                    Box(itemMotion()) { ListGroupHeader(g.label, g.rows.size, !folded(g.key)) { toggleGroup(g.key) } }
                 }
-                if (grouping == ListGroup.NONE || !vm.isFolded(foldName, g.key)) items(g.rows, key = { it.acc + ":" + it.threadId }) { r ->
+                if (!folded(g.key)) items(g.rows, key = { it.acc + ":" + it.threadId }) { r ->
                   Column(itemMotion()) {
                     SwipeRow(
                         key = r,
@@ -266,6 +279,7 @@ fun ThreadListScreen(vm: AppViewModel, view: View) {
                 onFlag = { run(vm, selected, view) { acc, ids -> vm.setFlagged(acc, ids, anyUnflagged) }; selected = emptySet() },
                 onArchive = { run(vm, selected, view) { acc, ids -> vm.archive(acc, ids) }; selected = emptySet() },
                 onDelete = { run(vm, selected, view) { acc, ids -> vm.delete(acc, ids) }; selected = emptySet() },
+                onForward = { vm.forwardSelected(selected.toList()); selected = emptySet() },
                 restoreLabel = when (binRole) {
                     "junk" -> R.string.not_junk
                     "trash" -> R.string.move_to_inbox
@@ -289,7 +303,7 @@ private fun run(vm: AppViewModel, rows: Set<ThreadRow>, view: View?, action: (St
 }
 
 @Composable
-private fun SelectionBar(onRead: () -> Unit, readIcon: Int, onFlag: () -> Unit, onArchive: () -> Unit, onDelete: () -> Unit, restoreLabel: Int?, onRestore: () -> Unit) {
+private fun SelectionBar(onRead: () -> Unit, readIcon: Int, onFlag: () -> Unit, onArchive: () -> Unit, onDelete: () -> Unit, onForward: () -> Unit, restoreLabel: Int?, onRestore: () -> Unit) {
     val p = LocalPalette.current
     Column(Modifier.fillMaxWidth().background(p.dockFill)) {
         Hairline()
@@ -303,6 +317,7 @@ private fun SelectionBar(onRead: () -> Unit, readIcon: Int, onFlag: () -> Unit, 
         ) {
             IconBtn(readIcon, onRead)
             IconBtn(R.drawable.ic_flag, onFlag)
+            IconBtn(R.drawable.ic_forward, onForward)
             IconBtn(R.drawable.ic_archive, onArchive, strong = true)
             IconBtn(R.drawable.ic_delete, onDelete, strong = true)
         }
@@ -315,13 +330,20 @@ private fun ThreadRowView(r: ThreadRow, stripe: Color?, selected: Boolean, onCli
     val p = LocalPalette.current
     val view = LocalView.current
     Row(
-        Modifier.fillMaxWidth().background(if (selected) p.chip else if (r.flagged) p.flagFill else p.paper)
+        Modifier.fillMaxWidth().background(if (selected) p.accent.copy(alpha = 0.16f).compositeOver(p.paper) else if (r.flagged) p.flagFill else p.paper)
             .combinedClickable(onClick = onClick, onLongClick = { Haptics.tick(view, true); onLongClick() }),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Box(Modifier.width(3.dp).height(68.dp).background(stripe ?: Color.Transparent))
-        Spacer(Modifier.width(9.dp))
-        com.opensolr.mail.ui.Avatar(if (r.fromName == r.fromEmail) "" else r.fromName, r.fromEmail)
+        Box(Modifier.width(if (selected) 5.dp else 3.dp).height(68.dp).background(if (selected) p.accentFill else stripe ?: Color.Transparent))
+        Spacer(Modifier.width(if (selected) 7.dp else 9.dp))
+        // A selected conversation trades its initials for a filled tick, so a selection reads at a glance.
+        if (selected) {
+            Box(Modifier.size(34.dp).background(p.accentFill, androidx.compose.foundation.shape.CircleShape), contentAlignment = Alignment.Center) {
+                Icon(painterResource(R.drawable.ic_check), null, tint = p.onAccentFill, modifier = Modifier.size(22.dp))
+            }
+        } else {
+            com.opensolr.mail.ui.Avatar(if (r.fromName == r.fromEmail) "" else r.fromName, r.fromEmail)
+        }
         Column(Modifier.weight(1f).padding(start = 10.dp, end = 12.dp, top = 6.dp, bottom = 6.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 if (r.unread) {
@@ -407,6 +429,8 @@ private fun ListGroupHeader(label: String, count: Int, open: Boolean, onToggle: 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun SwipeRow(key: Any, onDelete: () -> Unit, onFlag: () -> Unit, enabled: Boolean, content: @Composable () -> Unit) {
+    // A fresh swipe state whenever the row changes (a flag moves it to the pinned group), so it never lands half open.
+    androidx.compose.runtime.key(key) {
     val p = LocalPalette.current
     val view = LocalView.current
     val deleteNow by androidx.compose.runtime.rememberUpdatedState(onDelete)
@@ -423,7 +447,7 @@ private fun SwipeRow(key: Any, onDelete: () -> Unit, onFlag: () -> Unit, enabled
             false
         },
     )
-    androidx.compose.runtime.key(key) {
+    run {
         SwipeToDismissBox(
             state = state,
             enableDismissFromStartToEnd = enabled,
@@ -442,5 +466,6 @@ private fun SwipeRow(key: Any, onDelete: () -> Unit, onFlag: () -> Unit, enabled
             },
             content = { content() },
         )
+    }
     }
 }
