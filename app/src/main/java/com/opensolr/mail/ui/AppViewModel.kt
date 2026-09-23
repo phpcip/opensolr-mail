@@ -372,13 +372,10 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     suspend fun openThread(acc: String, threadId: String): kotlin.collections.List<Message> = withContext(Dispatchers.IO) {
         val account = store.get(acc) ?: return@withContext emptyList()
-        // The change stream keeps local threads complete; the server is asked only for a thread not held here (a search hit from years ago).
-        var list = db.thread(acc, threadId)
-        if (list.isEmpty()) {
-            runCatching { sync.fetchThread(account, threadId) }
-            list = db.thread(acc, threadId)
-        }
-        list
+        // The whole conversation, every folder: the phone holds only the mail it synced (Inbox pages, recent
+        // changes), so the server is asked which messages the thread has and only the missing ones are fetched.
+        runCatching { sync.fetchThread(account, threadId) }
+        db.thread(acc, threadId)
     }
 
     /** Bodies of every message in [list] that has none yet, in one request per account. */

@@ -861,7 +861,7 @@ class MailIndexer(private val context: Context) {
         const val VECTOR = "embeddings_vec"
         /** How soon a write made for an action of the reader is searchable. */
         private const val LIVE_ACTION_MS = 500
-        const val DOC_VERSION = 8
+        const val DOC_VERSION = 9
         /** The most one text may weigh at batch_embed; a longer one is cut to it. Three to five times
          *  the embedder's own window of 512 tokens, so the vector is the same one it would have made
          *  of the whole text, in any language, without carrying the rest over the wire. */
@@ -918,7 +918,13 @@ class MailIndexer(private val context: Context) {
          * The account as the shared index knows it: derived from the Fastmail address, so every phone
          * of the same Opensolr account writes one copy of each message under the same id.
          */
-        fun indexKey(account: MailAccount): String = indexKeyOf(account.username)
+        /**
+         * The account as the shared index knows it: its Fastmail mailbox, not the address it was signed in with.
+         * The same mailbox on any phone writes one copy of each message, and two different mailboxes never mix,
+         * whatever addresses they were signed in with.
+         */
+        fun indexKey(account: MailAccount): String =
+            if (account.jmapAccountId.isBlank()) indexKeyOf(account.username) else indexKeyOf("jmap:" + account.jmapAccountId)
 
         fun indexKeyOf(username: String): String =
             java.security.MessageDigest.getInstance("SHA-256").digest(username.trim().lowercase().toByteArray())

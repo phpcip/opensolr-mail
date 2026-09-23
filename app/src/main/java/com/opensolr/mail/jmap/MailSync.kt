@@ -259,7 +259,10 @@ class MailSync(private val context: Context) {
         val jmap = Jmap(context, account)
         val r = jmap.call("Thread/get", JSONObject().put("ids", JSONArray().put(threadId)))
         val ids = r.getJSONArray("list").optJSONObject(0)?.optJSONArray("emailIds")?.strings().orEmpty()
-        db.upsertMessages(getHeaders(jmap, ids))
+        // Only the messages this phone does not hold yet: your replies in Sent, older ones, anything in another folder.
+        val held = db.messages(account.key, ids).map { it.id }.toHashSet()
+        val missing = ids.filterNot { it in held }
+        if (missing.isNotEmpty()) db.upsertMessages(getHeaders(jmap, missing))
     }
 
     /** The body and attachments of one message, cached locally. */
