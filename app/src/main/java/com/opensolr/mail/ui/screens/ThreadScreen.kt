@@ -230,40 +230,26 @@ fun ThreadScreen(vm: AppViewModel, acc: String, threadId: String) {
                             MailWebView(html, acc, full.attachments, allow, Modifier.fillMaxWidth().heightIn(min = 40.dp))
                             val files = full.attachments.filter { !it.inline || it.cid == null }
                             if (files.isNotEmpty()) Attachments(files, onSave = { a ->
-                                // Saved straight into Downloads; the save picker only where Android has no Downloads store (before 10).
+                                // Download only: the file goes to Downloads, the system notification opens it later.
                                 val a0 = vm.store.get(acc) ?: return@Attachments
+                                vm.toast(R.string.att_downloading, com.opensolr.mail.ui.AttachmentDownloads.fileName(a))
                                 scope.launch {
-                                    try {
-                                        val f = AttachmentFiles.fetch(context, a0, a)
-                                        val type = withContext(Dispatchers.IO) { AttachmentFiles.typeOf(f, a.name, a.type) }
-                                        if (withContext(Dispatchers.IO) { AttachmentFiles.inDownloads(context, f, AttachmentFiles.nameOf(a), type) } != null) vm.toast(R.string.att_saved_downloads, AttachmentFiles.nameOf(a))
-                                        else { saving = a; saveAs.launch(AttachmentFiles.nameOf(a)) }
-                                    } catch (e: CancellationException) { throw e } catch (e: Exception) { vm.message = e.message }
+                                    when (val r = com.opensolr.mail.ui.AttachmentDownloads.download(context, a0, a)) {
+                                        is com.opensolr.mail.ui.AttachmentDownloads.Result.Done -> vm.toast(R.string.att_saved_downloads, com.opensolr.mail.ui.AttachmentDownloads.fileName(a))
+                                        is com.opensolr.mail.ui.AttachmentDownloads.Result.Failed -> vm.message = r.reason
+                                    }
                                 }
                             }) { a ->
+                                // Open: the whole file is downloaded into Downloads first, then that file is opened.
                                 val a0 = vm.store.get(acc) ?: return@Attachments
+                                vm.toast(R.string.att_downloading, com.opensolr.mail.ui.AttachmentDownloads.fileName(a))
                                 scope.launch {
-                                    try {
-                                        // First the whole file is downloaded and saved into Downloads, then that saved file
-                                        // is handed to the app that opens it (Adobe or any other), never a half-read stream.
-                                        vm.toast(R.string.att_opening, AttachmentFiles.nameOf(a))
-                                        val f = AttachmentFiles.fetch(context, a0, a)
-                                        val type = withContext(Dispatchers.IO) { AttachmentFiles.typeOf(f, a.name, a.type) }
-                                        val saved = withContext(Dispatchers.IO) { AttachmentFiles.inDownloads(context, f, AttachmentFiles.nameOf(a), type) }
-                                        val uri = saved ?: FileProvider.getUriForFile(context, context.packageName + ".files", f)
-                                        val view = Intent(Intent.ACTION_VIEW).setDataAndType(uri, type)
-                                            .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
-                                        try {
-                                            context.startActivity(view)
-                                            vm.message = null
-                                        } catch (e: android.content.ActivityNotFoundException) {
-                                            if (saved != null) vm.toast(R.string.att_no_app_saved, AttachmentFiles.nameOf(a))
-                                            else { saving = a; saveAs.launch(AttachmentFiles.nameOf(a)) }
+                                    when (val r = com.opensolr.mail.ui.AttachmentDownloads.download(context, a0, a)) {
+                                        is com.opensolr.mail.ui.AttachmentDownloads.Result.Done -> {
+                                            if (com.opensolr.mail.ui.AttachmentDownloads.open(context, r.uri, r.type)) vm.message = null
+                                            else vm.toast(R.string.att_no_app_saved, com.opensolr.mail.ui.AttachmentDownloads.fileName(a))
                                         }
-                                    } catch (e: CancellationException) {
-                                        throw e
-                                    } catch (e: Exception) {
-                                        vm.message = e.message
+                                        is com.opensolr.mail.ui.AttachmentDownloads.Result.Failed -> vm.message = r.reason
                                     }
                                 }
                             }
@@ -387,7 +373,12 @@ private fun Attachments(files: List<com.opensolr.mail.data.Attachment>, onSave: 
                 Spacer(Modifier.width(6.dp))
                 Text(fmtSize(a.size), style = MaterialTheme.typography.labelSmall, color = p.muted)
                 Spacer(Modifier.width(4.dp))
-                Box(Modifier.size(30.dp).hapticClickable { onSave(a) }, contentAlignment = Alignment.Center) {
+                // The download is a button of its own, bordered, next to the name that opens the file.
+                Box(
+                    Modifier.size(34.dp).background(p.buttonFill, RoundedCornerShape(2.dp)).border(1.dp, p.accent, RoundedCornerShape(2.dp))
+                        .hapticClickable { onSave(a) },
+                    contentAlignment = Alignment.Center,
+                ) {
                     Icon(painterResource(R.drawable.ic_download), null, tint = p.accent, modifier = Modifier.size(18.dp))
                 }
             }

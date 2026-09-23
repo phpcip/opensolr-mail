@@ -85,13 +85,16 @@ class Jmap(private val context: Context, val account: MailAccount) {
         return Http.mail.newCall(req).execute()
     }
 
+    /** The address a blob is downloaded from. */
+    fun downloadUrlOf(blobId: String, name: String, type: String): String = account.downloadUrl
+        .replace("{accountId}", enc(accountId))
+        .replace("{blobId}", enc(blobId))
+        .replace("{name}", enc(name.ifBlank { "file" }))
+        .replace("{type}", enc(type.ifBlank { "application/octet-stream" }))
+
     /** Downloads a blob to [target]. */
     suspend fun download(blobId: String, name: String, type: String, target: File) = withContext(Dispatchers.IO) {
-        val url = account.downloadUrl
-            .replace("{accountId}", enc(accountId))
-            .replace("{blobId}", enc(blobId))
-            .replace("{name}", enc(name.ifBlank { "file" }))
-            .replace("{type}", enc(type.ifBlank { "application/octet-stream" }))
+        val url = downloadUrlOf(blobId, name, type)
         suspend fun get(force: Boolean): Response {
             val token = FastmailAuth.accessToken(context, account.key, force)
             return Http.mail.newCall(Request.Builder().url(url).header("Authorization", "Bearer $token").build()).execute()

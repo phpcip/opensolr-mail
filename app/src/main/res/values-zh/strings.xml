@@ -283,4 +283,5 @@
     <string name="show_quoted">显示引用内容</string>
     <string name="hide_quoted">隐藏引用内容</string>
     <string name="att_saved_downloads">已保存到“下载”：%1$s</string>
+    <string name="att_downloading">正在下载 %1$s…</string>
 </resources>
