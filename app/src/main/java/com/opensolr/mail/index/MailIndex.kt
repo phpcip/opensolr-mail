@@ -9,23 +9,30 @@ import com.opensolr.mail.net.ServiceException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
-import java.security.MessageDigest
 import java.util.TimeZone
 
-/** The one Opensolr Index that holds the mail of this Opensolr account, found or created, with the configuration the app ships. */
+/**
+ * The Opensolr Index of this phone, as in Opensolr Photos: mail_<device id>__dense. Found again after a reinstall
+ * (its schema checked, emptied and set up anew when the app ships a newer one), or created with the app's
+ * configuration. Every phone has its own; no phone ever writes into another's.
+ */
 class MailIndex(private val context: Context) {
 
     private val prefs = AppPrefs(context)
     private val api = OpensolrApi(prefs)
 
-    /** mail_<16 hex of the account email>__dense: every phone of the same account finds the same index. */
-    fun nameFor(email: String): String {
-        val d = MessageDigest.getInstance("SHA-256").digest(email.trim().lowercase().toByteArray())
-        return "mail_" + d.take(8).joinToString("") { "%02x".format(it) } + "__dense"
-    }
+    /** The phone's own id, the same one Opensolr Photos uses: it survives a reinstall of the app. */
+    val deviceId: String
+        @android.annotation.SuppressLint("HardwareIds")
+        get() = android.provider.Settings.Secure.getString(context.contentResolver, android.provider.Settings.Secure.ANDROID_ID)
+            .orEmpty().lowercase().filter { it in 'a'..'z' || it in '0'..'9' }.take(32)
+            .ifEmpty { prefs.deviceId.lowercase().filter { it in 'a'..'f' || it in '0'..'9' }.take(32) }
+
+    /** mail_<device id>__dense: this phone's own index. */
+    val ownName: String get() = "mail_" + deviceId + "__dense"
 
     suspend fun ensure(): IndexConnection = lock.withLock {
-        val name = nameFor(prefs.email)
+        val name = ownName
         IndexConnection.fromJson(prefs.connectionJson)?.takeIf { it.indexName == name && verified == name }?.let { return@withLock it }
 
         val exists = api.indexNames().contains(name)

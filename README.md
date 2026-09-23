@@ -33,7 +33,7 @@ with the text inside its attachments, becomes searchable by words and by meaning
 ## Search needs an Opensolr account
 
 Mail, notes and calendars work with a Fastmail account alone. Search lives in an **Opensolr Index** that
-the app creates in your Opensolr account (`mail_<hash of your Opensolr email>__dense`), so without an
+the app creates in your Opensolr account, one per phone (`mail_<device id>__dense`), so without an
 Opensolr account there is no search and no AI answers, and new mail is checked every 15 minutes instead
 of arriving at once, because instant push goes through the relay on opensolr.com.
 
