@@ -24,6 +24,15 @@ class MailDb private constructor(context: Context) : SQLiteOpenHelper(context.ap
         db.enableWriteAheadLogging()
     }
 
+    override fun onOpen(db: SQLiteDatabase) {
+        createHidden(db)
+    }
+
+    /** Conversations deleted here, kept out of search until the index has caught up; [forever] when destroyed. */
+    private fun createHidden(db: SQLiteDatabase) {
+        db.execSQL("CREATE TABLE IF NOT EXISTS hidden (acc TEXT NOT NULL, thread TEXT NOT NULL, until INTEGER NOT NULL, forever INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (acc, thread))")
+    }
+
     override fun onCreate(db: SQLiteDatabase) {
         db.execSQL("CREATE TABLE mailbox (acc TEXT NOT NULL, id TEXT NOT NULL, name TEXT NOT NULL, parent TEXT, role TEXT, sort INTEGER NOT NULL DEFAULT 0, total INTEGER NOT NULL DEFAULT 0, unread INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (acc, id))")
         db.execSQL("CREATE INDEX mailbox_role ON mailbox (role)")
@@ -44,6 +53,7 @@ class MailDb private constructor(context: Context) : SQLiteOpenHelper(context.ap
         db.execSQL("CREATE TABLE ops (id INTEGER PRIMARY KEY AUTOINCREMENT, acc TEXT NOT NULL, kind TEXT NOT NULL, payload TEXT NOT NULL, created INTEGER NOT NULL, tries INTEGER NOT NULL DEFAULT 0)")
         db.execSQL("CREATE TABLE index_queue (acc TEXT NOT NULL, msg TEXT NOT NULL, op TEXT NOT NULL, PRIMARY KEY (acc, msg))")
         db.execSQL("CREATE TABLE notified (acc TEXT NOT NULL, msg TEXT NOT NULL, at INTEGER NOT NULL, PRIMARY KEY (acc, msg))")
+        createHidden(db)
     }
 
     override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) = Unit
@@ -172,7 +182,7 @@ class MailDb private constructor(context: Context) : SQLiteOpenHelper(context.ap
         val db = writableDatabase
         db.beginTransaction()
         try {
-            listOf("mailbox", "message", "msg_box", "state", "identity", "ops", "index_queue", "notified").forEach {
+            listOf("mailbox", "message", "msg_box", "state", "identity", "ops", "index_queue", "notified", "hidden").forEach {
                 db.delete(it, "acc = ?", arrayOf(acc))
             }
             db.setTransactionSuccessful()
@@ -404,6 +414,53 @@ class MailDb private constructor(context: Context) : SQLiteOpenHelper(context.ap
             val marks = chunk.joinToString(",") { "?" }
             readableDatabase.rawQuery("SELECT thread, COUNT(*) FROM message WHERE acc = ? AND thread IN ($marks) GROUP BY thread", arrayOf(acc) + chunk).use { c ->
                 while (c.moveToNext()) out[c.getString(0)] = c.getInt(1)
+            }
+        }
+        return out
+    }
+
+    /** Keeps [threads] of [acc] out of search for a day, by then long written to the index. */
+    fun hide(acc: String, threads: Collection<String>, forever: Boolean) {
+        if (threads.isEmpty()) return
+        val until = System.currentTimeMillis() + 86_400_000L
+        val db = writableDatabase
+        db.beginTransaction()
+        try {
+            threads.forEach { t ->
+                db.insertWithOnConflict("hidden", null, ContentValues().apply {
+                    put("acc", acc); put("thread", t); put("until", until); put("forever", if (forever) 1 else 0)
+                }, SQLiteDatabase.CONFLICT_REPLACE)
+            }
+            db.setTransactionSuccessful()
+        } finally {
+            db.endTransaction()
+        }
+        touch()
+    }
+
+    fun unhide(acc: String, threads: Collection<String>) {
+        if (threads.isEmpty()) return
+        threads.distinct().chunked(400).forEach { chunk ->
+            writableDatabase.delete("hidden", "acc = ? AND thread IN (${chunk.joinToString(",") { "?" }})", arrayOf(acc) + chunk)
+        }
+        touch()
+    }
+
+    /** Conversations to keep out of search now, per account, with whether each is gone for good; expired rows go. */
+    fun hidden(): List<Triple<String, String, Boolean>> {
+        writableDatabase.delete("hidden", "until < ?", arrayOf(System.currentTimeMillis().toString()))
+        return readableDatabase.rawQuery("SELECT acc, thread, forever FROM hidden", null).use { c ->
+            generateSequence { if (c.moveToNext()) Triple(c.getString(0), c.getString(1), c.getInt(2) != 0) else null }.toList()
+        }
+    }
+
+    /** The conversations the messages [ids] of [acc] belong to. */
+    fun threadsOf(acc: String, ids: Collection<String>): Set<String> {
+        if (ids.isEmpty()) return emptySet()
+        val out = HashSet<String>()
+        ids.distinct().chunked(400).forEach { chunk ->
+            readableDatabase.rawQuery("SELECT DISTINCT thread FROM message WHERE acc = ? AND id IN (${chunk.joinToString(",") { "?" }})", arrayOf(acc) + chunk).use { c ->
+                while (c.moveToNext()) out += c.getString(0)
             }
         }
         return out

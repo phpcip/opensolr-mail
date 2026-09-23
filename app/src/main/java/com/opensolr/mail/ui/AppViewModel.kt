@@ -438,7 +438,10 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    fun restoreToInbox(acc: String, ids: kotlin.collections.List<String>, notJunk: Boolean) = io { actions.restoreToInbox(acc, ids, notJunk) }
+    fun restoreToInbox(acc: String, ids: kotlin.collections.List<String>, notJunk: Boolean) = io {
+        db.unhide(acc, db.threadsOf(acc, ids))
+        actions.restoreToInbox(acc, ids, notJunk)
+    }
 
     /**
      * The AI answer, kept here and not in the screen: it runs to the end whatever the screen does
@@ -511,7 +514,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     fun deleteWithUndo(row: ThreadRow, view: View?, onUndone: () -> Unit = {}) {
         val key = row.acc + ":" + row.threadId
         hiddenThreads[key] = true
-        offerUndo(ctx.getString(R.string.deleted_one), onUndo = { hiddenThreads.remove(key); onUndone() }) {
+        // Out of search from the swipe on, also while Undo is still offered; Undo lets it back.
+        io { db.hide(row.acc, listOf(row.threadId), forever = false) }
+        offerUndo(ctx.getString(R.string.deleted_one), onUndo = { hiddenThreads.remove(key); io { db.unhide(row.acc, listOf(row.threadId)) }; onUndone() }) {
             val ids = deleteIds(row, view)
             withContext(Dispatchers.IO) { actions.delete(row.acc, ids) }
             delay(1500)
@@ -575,7 +580,10 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             is View.Box -> withContext(Dispatchers.IO) { db.mailboxes(row.acc).firstOrNull { it.id == view.mailboxId }?.role } in setOf("trash", "junk")
             else -> false
         }
-        return threadIds(row, if (bin) view else null)
+        val ids = threadIds(row, if (bin) view else null)
+        // Out of search at once and for good, whatever the index still says: a Trash or Junk delete is final.
+        withContext(Dispatchers.IO) { db.hide(row.acc, listOf(row.threadId), forever = bin) }
+        return ids
     }
 
     suspend fun threadIds(row: ThreadRow, view: View? = null): kotlin.collections.List<String> = withContext(Dispatchers.IO) {

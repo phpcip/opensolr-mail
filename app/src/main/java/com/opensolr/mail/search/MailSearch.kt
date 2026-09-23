@@ -141,6 +141,18 @@ class MailSearch(private val context: Context) {
         p += "fq" to "{!terms f=account_s v=\$f_acc}"
         p += "f_acc" to local.joinToString(",") { MailIndexer.indexKey(it) }
         if (!filters.includeTrash) p += "fq" to "-mailbox_role_ss:(trash OR junk)"
+        // Conversations deleted on this phone stay out even before the index has them in Trash; when Trash is
+        // searched, only those deleted for good.
+        val hide = com.opensolr.mail.data.MailDb.get(context).hidden()
+            .filter { (acc, _, forever) -> forever || !filters.includeTrash }
+            .filter { (acc, _, _) -> local.any { it.key == acc } }
+            .map { it.second }.distinct()
+        if (hide.isNotEmpty()) {
+            p += "fq" to "{!bool must=\$hideAll must_not=\$hideQ}"
+            p += "hideAll" to "*:*"
+            p += "hideQ" to "{!terms f=thread_id_s v=\$hideT}"
+            p += "hideT" to hide.joinToString(",")
+        }
         filters.facets.forEach { (field, values) ->
             if (values.isEmpty() || field !in Filters.FACETS) return@forEach
             val param = "f_" + field
