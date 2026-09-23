@@ -833,8 +833,10 @@ class MailIndexer(private val context: Context) {
     companion object {
         const val VECTOR = "embeddings_vec"
         const val DOC_VERSION = 7
-        /** The most one text may weigh at batch_embed; a longer one is cut to it. */
-        private const val MAX_EMBED_BYTES = 40_000
+        /** The most one text may weigh at batch_embed; a longer one is cut to it. Three to five times
+         *  the embedder's own window of 512 tokens, so the vector is the same one it would have made
+         *  of the whole text, in any language, without carrying the rest over the wire. */
+        private const val MAX_EMBED_BYTES = 8_000
 
         /** [text] at its first [MAX_EMBED_BYTES] bytes, cut between characters, never inside one. */
         fun fitToEmbed(text: String): String {
