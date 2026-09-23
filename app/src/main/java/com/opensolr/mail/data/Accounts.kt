@@ -73,7 +73,9 @@ class AccountStore private constructor(context: Context) {
     @SuppressLint("ApplySharedPref")
     @Synchronized
     fun put(account: MailAccount) {
-        val list = _accounts.value.filterNot { it.key == account.key } + account
+        // A changed account keeps its place; only a new one goes at the end.
+        val current = _accounts.value
+        val list = if (current.any { it.key == account.key }) current.map { if (it.key == account.key) account else it } else current + account
         sp.edit().putString(K_LIST, JSONArray(list.map { it.toJson() }).toString()).commit()
         _accounts.value = list
     }
