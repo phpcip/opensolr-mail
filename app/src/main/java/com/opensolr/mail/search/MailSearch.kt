@@ -263,8 +263,8 @@ class MailSearch(private val context: Context) {
                 ?: d.optString("preview_t").ifBlank { body }
             val to = d.optJSONArray("to_tm")?.let { a -> (0 until a.length()).joinToString(", ") { a.getString(it) } }.orEmpty()
             aiDocs += AiPrompt.Doc(
-                id = id, score = if (d.has("score")) d.optDouble("score") else null, title = d.optString("subject_t"),
-                description = "From: ${d.optString("from_t")} | To: $to | Date: ${localDate(d.optString("received_dt"))}", text = "",
+                id = id, score = if (d.has("score")) d.optDouble("score") else null, title = "Subject: " + d.optString("subject_t"),
+                description = "From: ${d.optString("from_t")}\nTo: $to\nDate: ${localDate(d.optString("received_dt"))}", text = "",
             )
             if (h != null) hlMap[id] = mapOf(
                 "title" to (h.optJSONArray("subject_t")?.let { a -> (0 until a.length()).map { a.getString(it) } } ?: emptyList()),
@@ -414,8 +414,8 @@ class MailSearch(private val context: Context) {
                 if (text.isBlank() && id != d.id) return@forEach
                 add(
                     AiPrompt.Doc(
-                        id = id, score = null, title = m.optString("subject_t").ifBlank { d.title },
-                        description = "From: ${m.optString("from_t")} | To: $to | Date: ${localDate(m.optString("received_dt"))}",
+                        id = id, score = null, title = m.optString("subject_t").takeIf { it.isNotBlank() }?.let { "Subject: $it" } ?: d.title,
+                        description = "From: ${m.optString("from_t")}\nTo: $to\nDate: ${localDate(m.optString("received_dt"))}",
                         text = "",
                     ),
                     m, text,
@@ -491,8 +491,9 @@ class MailSearch(private val context: Context) {
         .replace(Regex("\n\\s*\n+"), "\n")
         .trim()
 
+    /** The date as the model reads it best: "24 May 2026", in the phone's own time. */
     private fun localDate(iso: String): String = runCatching {
-        java.text.SimpleDateFormat("MM/dd/yyyy HH:mm", Locale.US).format(java.util.Date(java.time.Instant.parse(iso).toEpochMilli()))
+        java.text.SimpleDateFormat("d MMMM yyyy", Locale.US).format(java.util.Date(java.time.Instant.parse(iso).toEpochMilli()))
     }.getOrDefault(iso)
 
     /** A query is embedded once per app run: typing back to an earlier text costs no AI request. */
