@@ -510,7 +510,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         val key = row.acc + ":" + row.threadId
         hiddenThreads[key] = true
         offerUndo(ctx.getString(R.string.deleted_one), onUndo = { hiddenThreads.remove(key) }) {
-            val ids = threadIds(row, view)
+            val ids = deleteIds(row, view)
             withContext(Dispatchers.IO) { actions.delete(row.acc, ids) }
             delay(1500)
             hiddenThreads.remove(key)
@@ -563,6 +563,19 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     /** Messages of a thread held locally, for the thread's bulk actions. */
     /** The messages of a conversation that belong to [view]: a move or delete never drags the Sent copies along. */
+    /**
+     * What a delete takes: the whole conversation, every copy in every folder, so it goes to Trash at once.
+     * In Trash and Junk only what is there, which is then deleted for good.
+     */
+    suspend fun deleteIds(row: ThreadRow, view: View?): kotlin.collections.List<String> {
+        val bin = when (view) {
+            is View.Unified -> view.role == com.opensolr.mail.data.Role.TRASH || view.role == com.opensolr.mail.data.Role.JUNK
+            is View.Box -> withContext(Dispatchers.IO) { db.mailboxes(row.acc).firstOrNull { it.id == view.mailboxId }?.role } in setOf("trash", "junk")
+            else -> false
+        }
+        return threadIds(row, if (bin) view else null)
+    }
+
     suspend fun threadIds(row: ThreadRow, view: View? = null): kotlin.collections.List<String> = withContext(Dispatchers.IO) {
         val msgs = db.thread(row.acc, row.threadId)
         when (view) {

@@ -45,6 +45,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
+import androidx.compose.foundation.layout.height
 import com.opensolr.mail.ui.theme.LocalPalette
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
@@ -197,17 +198,21 @@ fun BoxScope.FastScroller(state: LazyListState, index: ScrollIndex, minItems: In
             job = scope.launch { state.scrollToItem(target, into.roundToInt()) }
         }
 
-        Box(
-            Modifier.align(Alignment.CenterEnd).fillMaxHeight().width(TRACK).pointerInput(travelPx) {
+        // Only the thumb takes the finger, and only while it shows: the rest of the right edge stays the rows',
+        // so a swipe that starts at the edge of the screen reaches the row under it.
+        val thumbTop = travelPx * fraction
+        val top by androidx.compose.runtime.rememberUpdatedState(thumbTop)
+        if (alpha > 0.05f || dragging) Box(
+            Modifier.align(Alignment.TopEnd).offset { IntOffset(0, thumbTop.roundToInt()) }.width(TRACK).height(THUMB).pointerInput(travelPx) {
                 detectVerticalDragGestures(
-                    onDragStart = { o -> dragging = true; aimed = -1; Haptics.tick(view, false); aimAt(o.y) },
+                    onDragStart = { o -> dragging = true; aimed = -1; Haptics.tick(view, false); aimAt(top + o.y) },
                     onDragEnd = { dragging = false; aimed = -1 },
                     onDragCancel = { dragging = false; aimed = -1 },
-                    onVerticalDrag = { change, _ -> change.consume(); aimAt(change.position.y) },
+                    onVerticalDrag = { change, _ -> change.consume(); aimAt(top + change.position.y) },
                 )
             },
         )
-        Thumb(travelPx * fraction, alpha, dragging)
+        Thumb(thumbTop, alpha, dragging)
         if (dragging && aimed >= 0) {
             Bubble(index.labels.getOrNull(aimed).orEmpty(), (travelPx * fraction - liftPx).coerceAtLeast(0f))
         }
@@ -265,18 +270,20 @@ fun BoxScope.FastScroller(state: ScrollState, marks: ScrollMarks, minScreens: Fl
             scope.launch { state.scrollTo(wanted) }
         }
 
-        Box(
-            Modifier.align(Alignment.CenterEnd).fillMaxHeight().width(TRACK).pointerInput(travelPx) {
+        val px = if (dragging && aimedPx >= 0) aimedPx else state.value
+        val thumbY = travelPx * px / state.maxValue.coerceAtLeast(1)
+        // Only the thumb takes the finger, and only while it shows.
+        val top by androidx.compose.runtime.rememberUpdatedState(thumbY)
+        if (alpha > 0.05f || dragging) Box(
+            Modifier.align(Alignment.TopEnd).offset { IntOffset(0, thumbY.roundToInt()) }.width(TRACK).height(THUMB).pointerInput(travelPx) {
                 detectVerticalDragGestures(
-                    onDragStart = { o -> dragging = true; aimedPx = -1; Haptics.tick(view, false); aimAt(o.y) },
+                    onDragStart = { o -> dragging = true; aimedPx = -1; Haptics.tick(view, false); aimAt(top + o.y) },
                     onDragEnd = { dragging = false; aimedPx = -1 },
                     onDragCancel = { dragging = false; aimedPx = -1 },
-                    onVerticalDrag = { change, _ -> change.consume(); aimAt(change.position.y) },
+                    onVerticalDrag = { change, _ -> change.consume(); aimAt(top + change.position.y) },
                 )
             },
         )
-        val px = if (dragging && aimedPx >= 0) aimedPx else state.value
-        val thumbY = travelPx * px / state.maxValue.coerceAtLeast(1)
         Thumb(thumbY, alpha, dragging)
         if (dragging) {
             val title = titleAt(px)

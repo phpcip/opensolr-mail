@@ -290,7 +290,11 @@ fun ThreadListScreen(vm: AppViewModel, view: View) {
                 readLabel = if (anyUnread) R.string.tool_read else R.string.tool_unread,
                 onFlag = { run(vm, selected, view) { acc, ids -> vm.setFlagged(acc, ids, anyUnflagged) }; selected = emptySet() },
                 onArchive = { run(vm, selected, view) { acc, ids -> vm.archive(acc, ids) }; selected = emptySet() },
-                onDelete = { run(vm, selected, view) { acc, ids -> vm.delete(acc, ids) }; selected = emptySet() },
+                onDelete = {
+                    val rows = selected
+                    vm.viewModelScopeLaunch { rows.groupBy { it.acc }.forEach { (acc, rs) -> vm.delete(acc, rs.flatMap { vm.deleteIds(it, view) }) } }
+                    selected = emptySet()
+                },
                 onForward = { vm.forwardSelected(selected.toList()); selected = emptySet() },
                 restoreLabel = when (binRole) {
                     "junk" -> R.string.not_junk
