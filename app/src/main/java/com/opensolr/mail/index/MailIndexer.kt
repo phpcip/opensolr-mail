@@ -408,12 +408,13 @@ class MailIndexer(private val context: Context) {
         }
         val images = all.filter { isImage(it.second) }
         val documents = all - images.toSet()
-        // A picture never leaves the phone as it is: only a 1024 px JPEG copy goes to OCR.
-        images.chunked(5).forEach { chunk ->
+        // A picture never leaves the phone as it is: only a 1024 px JPEG copy is read, for what it
+        // shows (caption and labels) and for the text printed in it, 10 to a call.
+        images.chunked(10).forEach { chunk ->
             val copies = chunk.map { (_, a) -> download(a)?.let { f -> shrink(f).also { f.delete() } } }
             val sendable = chunk.indices.filter { copies[it] != null }
             if (sendable.isEmpty()) return@forEach
-            val read = runCatching { api.imageOcr(index, sendable.map { copies[it]!! }) }.getOrDefault(emptyList())
+            val read = runCatching { api.imageToText(index, sendable.map { copies[it]!! }) }.getOrDefault(emptyList())
             sendable.forEachIndexed { j, i -> val (id, a) = chunk[i]; read.getOrNull(j)?.let { texts[id]?.append(a.name)?.append(":\n")?.append(it)?.append("\n\n") } }
         }
         // Documents go at most 5 and 25 MB to a call.

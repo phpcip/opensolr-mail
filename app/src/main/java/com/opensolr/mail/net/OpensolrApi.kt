@@ -158,6 +158,29 @@ class OpensolrApi(private val prefs: AppPrefs) {
         (0 until jpegs.size).map { i -> results.optJSONObject(i)?.takeIf { it.optBoolean("status") }?.optString("text")?.takeIf { it.isNotBlank() } }
     }
 
+    /**
+     * What up to 10 pictures show and say (image_to_text): the Florence caption, the labels and the
+     * text printed in them, as one paragraph per picture for the index; null per picture with nothing.
+     */
+    suspend fun imageToText(name: String, jpegs: List<ByteArray>): List<String?> = withContext(Dispatchers.IO) {
+        val form = FormBody.Builder().add("email", email).add("api_key", key).add("index_name", name)
+            .add("images", JSONArray(jpegs.map { android.util.Base64.encodeToString(it, android.util.Base64.NO_WRAP) }).toString())
+            .build()
+        val text = execute(Request.Builder().url(AI + "image_to_text").post(form).build())
+        val results = obj(text).optJSONArray("results") ?: throw ServiceException(message(text))
+        (0 until jpegs.size).map { i ->
+            val r = results.optJSONObject(i)?.takeIf { it.optBoolean("status") } ?: return@map null
+            val caption = r.optString("caption").trim()
+            val labels = r.optJSONArray("labels")?.let { a -> (0 until a.length()).mapNotNull { a.optJSONObject(it)?.optString("label")?.takeIf { l -> l.isNotBlank() } } }.orEmpty()
+            val ocr = r.optString("ocr_text").trim()
+            buildString {
+                if (caption.isNotEmpty()) append("Shows: ").append(caption).append('\n')
+                if (labels.isNotEmpty()) append("Labels: ").append(labels.joinToString(", ")).append('\n')
+                if (ocr.isNotEmpty()) append("Text: ").append(ocr)
+            }.trim().takeIf { it.isNotEmpty() }
+        }
+    }
+
     /** The text of up to 5 documents sent as files (doc_to_text); null per document with no text. Throws [EndpointMissingException] where the endpoint is not live yet. */
     suspend fun docToText(name: String, docs: List<Pair<String, ByteArray>>): List<String?> = withContext(Dispatchers.IO) {
         val body = JSONObject().put("email", email).put("api_key", key).put("index_name", name)

@@ -3,8 +3,8 @@ package com.opensolr.mail.search
 /** The Opensolr AI Hints prompt, the same bytes as every other Opensolr implementation. */
 object AiPrompt {
 
-    const val TOP_N = 4
-    const val MAX_WORDS = 1500
+    const val TOP_N = 10
+    const val MAX_WORDS = 900
 
     data class Doc(val id: String, val score: Double?, val title: String, val description: String, val text: String, val textT: String = "")
 
