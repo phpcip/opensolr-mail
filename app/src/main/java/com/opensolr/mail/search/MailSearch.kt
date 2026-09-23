@@ -379,26 +379,19 @@ class MailSearch(private val context: Context) {
             runCatching { db.messages(acc, ms.map { it.optString("email_id_s") }.distinct()) }.getOrDefault(emptyList()).forEach { held[acc + ":" + it.id] = it }
         }
         fun heldOf(m: JSONObject) = localKey[m.optString("account_s")]?.let { held[it + ":" + m.optString("email_id_s")] }
-        val out = ArrayList<AiPrompt.Doc>()
+        // Each message as its own words and its attachments' text, kept apart: the words of every message go
+        // first, and attachments only get what room is left, shared evenly, so one message carrying a stack of
+        // contract PDFs can never crowd out the messages themselves.
+        class Part(val doc: AiPrompt.Doc, val body: String, val att: String)
+        val parts = ArrayList<Part>()
         val used = HashSet<String>()
-        // The budget is in characters, what the model's tokens follow: mail text (numbers, addresses, links,
-        // diacritics) runs close to 2.5 characters a token, and the answer needs its own 8k tokens of the window.
-        var left = AI_CHARS
-        fun add(doc: AiPrompt.Doc) {
-            if (left <= 0 || !used.add(doc.id)) return
-            var text = cutWords(doc.text, AI_DOC_WORDS)
-            val room = left - doc.title.length - doc.description.length - DOC_OVERHEAD
-            if (room <= 0) { left = 0; return }
-            if (text.length > room) text = text.substring(0, text.lastIndexOf(' ', room).takeIf { it > 0 } ?: room)
-            left -= text.length + doc.title.length + doc.description.length + DOC_OVERHEAD
-            out += doc.copy(text = text, score = null)
-        }
+        fun add(doc: AiPrompt.Doc, text: Pair<String, String>) { if (used.add(doc.id)) parts += Part(doc, text.first, text.second) }
         for (d in chosen) {
             val hit = own[d.id]
             val conversation = hit?.let { whole[it.optString("account_s") to it.optString("thread_id_s")] }.orEmpty()
             if (hit == null) continue
             if (conversation.size <= 1) {
-                add(d.copy(text = messageText(hit, heldOf(hit), emptyList())))
+                add(d, messageText(hit, heldOf(hit), emptyList()))
                 continue
             }
             // The conversation in its order; each message loses the lines it repeats from those before it.
@@ -409,16 +402,43 @@ class MailSearch(private val context: Context) {
                 val text = messageText(m, heldOf(m), earlier)
                 earlier += m.optString("body_t")
                 // A message that only repeats what came before adds nothing to read.
-                if (text.isBlank() && id != d.id) return@forEach
+                if (text.first.isBlank() && text.second.isBlank() && id != d.id) return@forEach
                 add(
                     AiPrompt.Doc(
                         id = id, score = null, title = m.optString("subject_t").ifBlank { d.title },
                         description = "From: ${m.optString("from_t")} | To: $to | Date: ${localDate(m.optString("received_dt"))}",
-                        text = text,
-                    )
+                        text = "",
+                    ),
+                    text,
                 )
             }
         }
+        // The budget is in characters, what the model's tokens follow: mail text (numbers, addresses, links,
+        // diacritics) runs close to 2.5 characters a token, and the answer needs its own 8k tokens of the window.
+        var left = AI_CHARS
+        val bodies = ArrayList<String>()
+        for (part in parts) {
+            val head = part.doc.title.length + part.doc.description.length + DOC_OVERHEAD
+            val body = cutChars(cutWords(part.body, AI_DOC_WORDS), (left - head).coerceAtLeast(0))
+            left -= head + body.length
+            bodies += body
+        }
+        val atts = Array(parts.size) { "" }
+        var waiting = parts.indices.filter { parts[it].att.isNotEmpty() && left > 0 }
+        while (waiting.isNotEmpty() && left > ATT_LABEL.length) {
+            val share = left / waiting.size
+            // Short attachment texts go whole; what they leave unused goes to the longer ones.
+            val fits = waiting.filter { parts[it].att.length + ATT_LABEL.length <= share }
+            if (fits.isEmpty()) {
+                waiting.forEach { i -> atts[i] = cutChars(parts[i].att, share - ATT_LABEL.length) }
+                break
+            }
+            fits.forEach { i -> atts[i] = parts[i].att; left -= parts[i].att.length + ATT_LABEL.length }
+            waiting = waiting - fits.toSet()
+        }
+        val out = parts.mapIndexed { i, part ->
+            part.doc.copy(text = (bodies[i] + if (atts[i].isNotEmpty()) ATT_LABEL + atts[i] else "").trim(), score = null)
+        }.let { docs -> val picked = chosen.map { it.id }.toSet(); docs.filter { it.text.isNotEmpty() || it.id in picked } }
         val ctx = AiPrompt.context(out, highlights, topN = out.size, maxWords = AI_DOC_WORDS)
         if (ctx.isEmpty()) return
         api.aiAnswer(connection.indexName, AiPrompt.instruction(ctx, question), onChunk)
@@ -427,15 +447,20 @@ class MailSearch(private val context: Context) {
     /**
      * What the writer of one message added: the quote cut where the mail program marked it (from the
      * HTML this phone holds), else at an "On ... wrote:" / Original Message / Outlook header line, then
-     * every line already written in [earlier] messages of the conversation dropped.
+     * every line already written in [earlier] messages of the conversation dropped; and apart from it,
+     * the text of its attachments.
      */
-    private fun messageText(d: JSONObject, local: com.opensolr.mail.data.Message?, earlier: List<String>): String {
+    private fun messageText(d: JSONObject, local: com.opensolr.mail.data.Message?, earlier: List<String>): Pair<String, String> {
         val html = local?.bodyHtml.orEmpty()
         val fresh = if (html.isNotBlank()) freshPart(com.opensolr.mail.jmap.Html.withoutQuotes(html))
         else freshPart(local?.bodyText?.takeIf { it.isNotBlank() } ?: d.optString("body_t"))
-        val body = flatten(notRepeated(fresh, earlier))
-        val att = flatten(d.optString("attachment_text_t"))
-        return (body + if (att.isNotEmpty()) "\nAttachment text: $att" else "").trim()
+        return flatten(notRepeated(fresh, earlier)) to flatten(d.optString("attachment_text_t"))
+    }
+
+    private fun cutChars(text: String, max: Int): String {
+        if (text.length <= max) return text
+        if (max <= 0) return ""
+        return text.substring(0, text.lastIndexOf(' ', max).takeIf { it > 0 } ?: max)
     }
 
     /** Lines of [text] already present in an earlier message are a quote that escaped the marks: they go. */
@@ -524,6 +549,7 @@ class MailSearch(private val context: Context) {
         private const val AI_DOC_WORDS = 10_000
         private const val AI_CHARS = 64_000
         private const val DOC_OVERHEAD = 120
+        private const val ATT_LABEL = "\nAttachment text: "
         /** A repeated line this long is a quote; shorter ones ("Thanks,", "Hi John") can be written again. */
         private const val MIN_REPEAT_CHARS = 16
         private val FORWARD_LINE = Regex("(?i)-{2,}\\s*Forwarded message|^Begin forwarded message")
