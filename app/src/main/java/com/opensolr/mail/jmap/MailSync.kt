@@ -86,8 +86,18 @@ class MailSync(private val context: Context) {
             db.queueIndex(acc, updated.filterNot { it in createdSet }, OP_META)
 
             val inboxIds = db.mailboxes(acc).filter { it.role == Role.INBOX.jmap }.map { it.id }.toHashSet()
+            // New mail from a sender reported as spam goes to Junk at once and never notifies.
+            val blocked = db.blocked(acc)
+            val spam = if (blocked.isEmpty()) emptyList() else fetched.filter { m ->
+                m.id in createdSet && m.mailboxIds.any { bx -> bx in inboxIds } && m.from.any { it.email.lowercase() in blocked }
+            }
+            if (spam.isNotEmpty()) {
+                MailActions(context).reportJunk(acc, spam.map { it.id }, block = false)
+                com.opensolr.mail.sync.Work.runOps(context)
+            }
+            val spamIds = spam.map { it.id }.toHashSet()
             val recent = System.currentTimeMillis() - 6 * 3_600_000L
-            arrived += fetched.filter { it.id in createdSet && !it.seen && !it.draft && it.received > recent && it.mailboxIds.any { bx -> bx in inboxIds } }
+            arrived += fetched.filter { it.id in createdSet && it.id !in spamIds && !it.seen && !it.draft && it.received > recent && it.mailboxIds.any { bx -> bx in inboxIds } }
 
             since = r.getString("newState")
             db.setState(acc, STATE_EMAIL, since)

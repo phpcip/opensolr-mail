@@ -285,6 +285,7 @@ fun ThreadScreen(vm: AppViewModel, acc: String, threadId: String) {
                 }, tint = if (latest?.flagged == true) p.accent else null)
                 IconBtn(R.drawable.ic_unread, { vm.setSeen(acc, messages.map { it.id }, false); vm.back() })
                 IconBtn(R.drawable.ic_move, { moving = true }, strong = true)
+                IconBtn(R.drawable.ic_junk, { vm.reportJunk(acc, actionable()); vm.toast(R.string.reported_junk); vm.back() }, strong = true)
                 IconBtn(R.drawable.ic_archive, { vm.archive(acc, actionable()); vm.back() }, strong = true)
                 IconBtn(R.drawable.ic_delete, { vm.delete(acc, actionable()); vm.back() }, strong = true)
             }

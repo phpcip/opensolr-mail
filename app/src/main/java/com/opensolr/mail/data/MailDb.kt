@@ -31,7 +31,25 @@ class MailDb private constructor(context: Context) : SQLiteOpenHelper(context.ap
     /** Conversations deleted here, kept out of search until the index has caught up; [forever] when destroyed. */
     private fun createHidden(db: SQLiteDatabase) {
         db.execSQL("CREATE TABLE IF NOT EXISTS hidden (acc TEXT NOT NULL, thread TEXT NOT NULL, until INTEGER NOT NULL, forever INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (acc, thread))")
+        // Senders reported as spam: whatever they send next goes straight to Junk.
+        db.execSQL("CREATE TABLE IF NOT EXISTS blocked (acc TEXT NOT NULL, email TEXT NOT NULL, at INTEGER NOT NULL, PRIMARY KEY (acc, email))")
     }
+
+    fun block(acc: String, emails: Collection<String>) {
+        val now = System.currentTimeMillis()
+        emails.map { it.trim().lowercase() }.filter { it.contains('@') }.distinct().forEach { e ->
+            writableDatabase.insertWithOnConflict("blocked", null, ContentValues().apply { put("acc", acc); put("email", e); put("at", now) }, SQLiteDatabase.CONFLICT_REPLACE)
+        }
+    }
+
+    fun unblock(acc: String, emails: Collection<String>) {
+        emails.map { it.trim().lowercase() }.distinct().forEach { e -> writableDatabase.delete("blocked", "acc = ? AND email = ?", arrayOf(acc, e)) }
+    }
+
+    fun blocked(acc: String): Set<String> =
+        readableDatabase.rawQuery("SELECT email FROM blocked WHERE acc = ?", arrayOf(acc)).use { c ->
+            generateSequence { if (c.moveToNext()) c.getString(0) else null }.toHashSet()
+        }
 
     override fun onCreate(db: SQLiteDatabase) {
         db.execSQL("CREATE TABLE mailbox (acc TEXT NOT NULL, id TEXT NOT NULL, name TEXT NOT NULL, parent TEXT, role TEXT, sort INTEGER NOT NULL DEFAULT 0, total INTEGER NOT NULL DEFAULT 0, unread INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (acc, id))")
@@ -182,7 +200,7 @@ class MailDb private constructor(context: Context) : SQLiteOpenHelper(context.ap
         val db = writableDatabase
         db.beginTransaction()
         try {
-            listOf("mailbox", "message", "msg_box", "state", "identity", "ops", "index_queue", "notified", "hidden").forEach {
+            listOf("mailbox", "message", "msg_box", "state", "identity", "ops", "index_queue", "notified", "hidden", "blocked").forEach {
                 db.delete(it, "acc = ?", arrayOf(acc))
             }
             db.setTransactionSuccessful()

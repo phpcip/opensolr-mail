@@ -284,4 +284,6 @@
     <string name="hide_quoted">引用を隠す</string>
     <string name="att_saved_downloads">ダウンロードに保存しました: %1$s</string>
     <string name="att_downloading">%1$s をダウンロード中…</string>
+    <string name="tool_junk">迷惑</string>
+    <string name="reported_junk">迷惑メールとして報告: 迷惑メールへ移動し、差出人をブロックしました</string>
 </resources>

@@ -284,4 +284,6 @@
     <string name="hide_quoted">Ocultar texto citado</string>
     <string name="att_saved_downloads">Guardado en Descargas: %1$s</string>
     <string name="att_downloading">Descargando %1$s…</string>
+    <string name="tool_junk">Spam</string>
+    <string name="reported_junk">Marcado como spam: movido a No deseado, el remitente está bloqueado</string>
 </resources>

@@ -401,6 +401,21 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     fun setFlagged(acc: String, ids: kotlin.collections.List<String>, flagged: Boolean) = io { actions.setFlagged(acc, ids, flagged) }
     fun delete(acc: String, ids: kotlin.collections.List<String>) = io { actions.delete(acc, ids) }
     fun archive(acc: String, ids: kotlin.collections.List<String>) = io { actions.archive(acc, ids) }
+    fun reportJunk(acc: String, ids: kotlin.collections.List<String>) = io { actions.reportJunk(acc, ids) }
+
+    /** Whole conversations reported as spam, kept out of lists and search at once. */
+    fun reportJunkRows(rows: kotlin.collections.List<ThreadRow>) {
+        if (rows.isEmpty()) return
+        rows.forEach { hiddenThreads[it.acc + ":" + it.threadId] = true }
+        viewModelScope.launch {
+            rows.groupBy { it.acc }.forEach { (acc, rs) ->
+                val ids = rs.flatMap { threadIds(it) }
+                withContext(Dispatchers.IO) { db.hide(acc, rs.map { it.threadId }, forever = false) }
+                io { actions.reportJunk(acc, ids) }
+            }
+            toast(R.string.reported_junk)
+        }
+    }
     /**
      * Forwards the selected conversations together: the newest message of each is attached as an .eml,
      * read with one Email/get per account and downloaded once, then compose opens with them.

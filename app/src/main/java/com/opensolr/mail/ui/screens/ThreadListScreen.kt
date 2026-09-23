@@ -314,6 +314,7 @@ fun ThreadListScreen(vm: AppViewModel, view: View) {
                     selected = emptySet()
                 },
                 onForward = { vm.forwardSelected(selected.toList()); selected = emptySet() },
+                onJunk = if (binRole == null) ({ vm.reportJunkRows(selected.toList()); selected = emptySet() }) else null,
                 restoreLabel = when (binRole) {
                     "junk" -> R.string.not_junk
                     "trash" -> R.string.move_to_inbox
@@ -337,7 +338,7 @@ private fun run(vm: AppViewModel, rows: Set<ThreadRow>, view: View?, action: (St
 }
 
 @Composable
-internal fun SelectionBar(onRead: () -> Unit, readIcon: Int, readLabel: Int, onFlag: () -> Unit, onArchive: () -> Unit, onDelete: () -> Unit, onForward: () -> Unit, restoreLabel: Int?, onRestore: () -> Unit) {
+internal fun SelectionBar(onRead: () -> Unit, readIcon: Int, readLabel: Int, onFlag: () -> Unit, onArchive: () -> Unit, onDelete: () -> Unit, onForward: () -> Unit, restoreLabel: Int?, onRestore: () -> Unit, onJunk: (() -> Unit)? = null) {
     val p = LocalPalette.current
     Column(Modifier.fillMaxWidth().background(p.dockFill)) {
         Hairline()
@@ -349,6 +350,7 @@ internal fun SelectionBar(onRead: () -> Unit, readIcon: Int, readLabel: Int, onF
                 com.opensolr.mail.ui.Tool(R.drawable.ic_flag, stringResource(R.string.tool_flag), onClick = onFlag),
                 com.opensolr.mail.ui.Tool(R.drawable.ic_forward, stringResource(R.string.tool_forward), onClick = onForward),
                 com.opensolr.mail.ui.Tool(R.drawable.ic_archive, stringResource(R.string.tool_archive), strong = true, onClick = onArchive),
+                onJunk?.let { com.opensolr.mail.ui.Tool(R.drawable.ic_junk, stringResource(R.string.tool_junk), strong = true, onClick = it) },
                 com.opensolr.mail.ui.Tool(R.drawable.ic_delete, stringResource(R.string.delete), strong = true, onClick = onDelete),
             ),
             Modifier.padding(start = 12.dp, end = 12.dp, top = 10.dp, bottom = bottomInset() + 10.dp),

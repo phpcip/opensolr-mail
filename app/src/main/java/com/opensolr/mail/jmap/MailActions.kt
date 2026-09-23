@@ -51,6 +51,8 @@ class MailActions(private val context: Context) {
     /** Out of Trash or Junk, back into the Inbox; [notJunk] also tells Fastmail it was not spam. */
     fun restoreToInbox(acc: String, ids: List<String>, notJunk: Boolean) {
         val inbox = db.mailboxByRole(acc, Role.INBOX) ?: return
+        // Not junk after all: its senders are no longer blocked.
+        if (notJunk) db.unblock(acc, db.messages(acc, ids).flatMap { m -> m.from.map { it.email } })
         db.moveLocal(acc, ids, inbox.id)
         enqueue(acc, "restore", JSONObject().put("ids", JSONArray(ids)).put("to", inbox.id).put("notjunk", notJunk))
     }
@@ -65,6 +67,21 @@ class MailActions(private val context: Context) {
     fun empty(acc: String, box: String) {
         db.emptyLocal(acc, box)
         enqueue(acc, "empty_box", JSONObject().put("box", box))
+    }
+
+    /**
+     * Reported as spam: the messages go to Junk marked as junk, which teaches Fastmail's spam filter, and their
+     * senders are blocked on this phone, so whatever they send next goes straight to Junk too.
+     */
+    fun reportJunk(acc: String, ids: List<String>, block: Boolean = true) {
+        val junk = db.mailboxByRole(acc, Role.JUNK) ?: return
+        if (ids.isEmpty()) return
+        if (block) {
+            val mine = db.identities(acc).map { it.email.lowercase() }.toSet()
+            db.block(acc, db.messages(acc, ids).flatMap { m -> m.from.map { it.email.lowercase() } }.filter { it !in mine })
+        }
+        db.moveLocal(acc, ids, junk.id)
+        enqueue(acc, "junk", JSONObject().put("ids", JSONArray(ids)).put("to", junk.id))
     }
 
     fun archive(acc: String, ids: List<String>) {
@@ -156,7 +173,7 @@ class MailActions(private val context: Context) {
                 merged.forEach { db.opDone(it.id) }
                 val ids = payload.optJSONArray("ids")?.strings().orEmpty()
                 when (op.kind) {
-                    "seen", "flag", "move", "restore" -> changed.getOrPut(op.acc) { LinkedHashSet() } += ids
+                    "seen", "flag", "move", "restore", "junk" -> changed.getOrPut(op.acc) { LinkedHashSet() } += ids
                     "destroy" -> destroyed.getOrPut(op.acc) { LinkedHashSet() } += ids
                     "empty_box" -> emptied += op.acc to payload.optString("box")
                 }
@@ -223,6 +240,14 @@ class MailActions(private val context: Context) {
                     val patch = JSONObject().put("mailboxIds", JSONObject().put(to, true))
                     if (notJunk) patch.put("keywords/\$junk", JSONObject.NULL).put("keywords/\$notjunk", true)
                     update.put(it, patch)
+                }
+                checkSet(jmap.call("Email/set", JSONObject().put("update", update)))
+            }
+            "junk" -> {
+                val update = JSONObject()
+                val to = p.getString("to")
+                p.getJSONArray("ids").strings().forEach {
+                    update.put(it, JSONObject().put("mailboxIds", JSONObject().put(to, true)).put("keywords/\$junk", true).put("keywords/\$notjunk", JSONObject.NULL))
                 }
                 checkSet(jmap.call("Email/set", JSONObject().put("update", update)))
             }

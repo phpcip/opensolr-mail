@@ -284,4 +284,6 @@
     <string name="hide_quoted">Zitierten Text ausblenden</string>
     <string name="att_saved_downloads">In Downloads gespeichert: %1$s</string>
     <string name="att_downloading">%1$s wird heruntergeladen…</string>
+    <string name="tool_junk">Spam</string>
+    <string name="reported_junk">Als Spam gemeldet: in Junk verschoben, Absender blockiert</string>
 </resources>

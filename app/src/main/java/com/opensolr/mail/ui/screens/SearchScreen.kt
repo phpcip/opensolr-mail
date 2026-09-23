@@ -432,6 +432,10 @@ fun SearchScreen(vm: AppViewModel, sheet: String?) {
                     selectedKeys = emptySet()
                 },
                 onForward = { vm.forwardSelected(selectedRows); selectedKeys = emptySet() },
+                onJunk = if (selectedRows.none { binOf[it.acc + ":" + it.threadId] == "junk" }) ({
+                    selectedRows.forEach { gone[it.acc + ":" + it.threadId] = true }
+                    vm.reportJunkRows(selectedRows); selectedKeys = emptySet()
+                }) else null,
                 // Results that all lie in Trash, or all in Junk, can go back to the Inbox, as from those folders.
                 restoreLabel = selectedRows.map { binOf[it.acc + ":" + it.threadId].orEmpty() }.distinct().singleOrNull()?.let {
                     when (it) { "junk" -> R.string.not_junk; "trash" -> R.string.move_to_inbox; else -> null }

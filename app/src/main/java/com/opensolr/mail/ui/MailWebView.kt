@@ -86,7 +86,7 @@ fun MailWebView(html: String, acc: String, attachments: List<Attachment>, remote
             w.settings.blockNetworkLoads = !remoteImages
             (w.webViewClient as? MailClient)?.attachments = attachments
             val doc = "<!doctype html><html><head><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">" +
-                "<style>body{margin:12px;font-family:sans-serif;font-size:15px;line-height:1.45;color:#111;word-wrap:break-word;overflow-wrap:anywhere}" +
+                "<style>body{margin:12px;font-family:sans-serif;font-size:15px;line-height:1.45;color:#111;overflow-wrap:break-word}td,th{overflow-wrap:normal;word-break:normal}" +
                 "img{max-width:100%;height:auto}pre{white-space:pre-wrap}blockquote{margin:0 0 0 8px;padding-left:8px;border-left:2px solid #d9d4cc}" +
                 "details.osq{margin-top:14px}details.osq>summary{display:inline-block;list-style:none;cursor:pointer;font-size:14px;font-weight:600;color:#a8481b;" +
                 "padding:6px 12px;border:1px solid #d9d4cc;background:#f3efe9;border-radius:2px}details.osq>summary::-webkit-details-marker{display:none}" +

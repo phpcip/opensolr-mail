@@ -293,4 +293,6 @@
     <string name="hide_quoted">Hide quoted text</string>
     <string name="att_saved_downloads">Saved to Downloads: %1$s</string>
     <string name="att_downloading">Downloading %1$s…</string>
+    <string name="tool_junk">Spam</string>
+    <string name="reported_junk">Reported as spam: moved to Junk, the sender is blocked</string>
 </resources>
