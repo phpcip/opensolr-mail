@@ -323,4 +323,5 @@
     <string name="ai_instructions_hint">例如：只给我简短、聚焦的要点列表</string>
     <string name="save">保存</string>
     <string name="clear">清除</string>
+    <string name="regenerate">重新生成</string>
 </resources>

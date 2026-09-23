@@ -425,7 +425,7 @@ fun SearchScreen(vm: AppViewModel, sheet: String?) {
             if (hasAnswerCard) item(key = "ai") {
                 // The answer shown belongs to the question typed now; another question offers a new one.
                 val mine = vm.aiQuestion == query
-                AnswerCard(if (mine) vm.aiText else null, mine && vm.aiRunning) {
+                AnswerCard(if (mine) vm.aiText else null, mine && vm.aiRunning, onClose = { vm.stopAi() }) {
                     // The first rows of the list on screen, in their order, go to the answer: nothing else.
                     val res = r ?: return@AnswerCard
                     val rows = if (groupBy.field != null) shownGroups.flatMap { it.hits } else shownHits
@@ -876,7 +876,7 @@ private fun HitRow(vm: AppViewModel, h: MailSearch.Hit, multi: Boolean, color: I
 }
 
 @Composable
-private fun AnswerCard(answer: String?, answering: Boolean, onAsk: () -> Unit) {
+private fun AnswerCard(answer: String?, answering: Boolean, onClose: () -> Unit, onAsk: () -> Unit) {
     val p = LocalPalette.current
     val view = LocalView.current
     Column(Modifier.fillMaxWidth().padding(10.dp).background(p.band, Corner).border(1.dp, p.hairline, Corner).padding(12.dp)) {
@@ -887,8 +887,19 @@ private fun AnswerCard(answer: String?, answering: Boolean, onAsk: () -> Unit) {
                 Text(stringResource(R.string.ask_answer), style = MaterialTheme.typography.labelLarge, color = p.accent)
             }
         } else {
-            Text(stringResource(R.string.answer).uppercase(), style = MaterialTheme.typography.labelMedium, color = p.muted)
-            Spacer(Modifier.height(6.dp))
+            // Regenerate asks again over the same results; close stops the answer and clears it.
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(stringResource(R.string.answer).uppercase(), style = MaterialTheme.typography.labelMedium, color = p.muted, modifier = Modifier.weight(1f))
+                Icon(
+                    painterResource(R.drawable.ic_idx_reload), contentDescription = stringResource(R.string.regenerate), tint = p.ink,
+                    modifier = Modifier.size(36.dp).clickable { Haptics.tick(view, true); onAsk() }.padding(8.dp),
+                )
+                Icon(
+                    painterResource(R.drawable.ic_close), contentDescription = stringResource(R.string.ops_close), tint = p.ink,
+                    modifier = Modifier.size(36.dp).clickable { Haptics.tick(view, false); onClose() }.padding(8.dp),
+                )
+            }
+            Spacer(Modifier.height(2.dp))
             if (answer.isNullOrBlank()) Text(stringResource(R.string.thinking), style = MaterialTheme.typography.bodyMedium, color = p.muted)
             else androidx.compose.foundation.text.selection.SelectionContainer { Markdown(answer) }
         }

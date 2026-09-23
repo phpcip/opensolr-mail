@@ -323,4 +323,5 @@
     <string name="ai_instructions_hint">例：短く要点を絞った箇条書きだけ</string>
     <string name="save">保存</string>
     <string name="clear">消去</string>
+    <string name="regenerate">再生成</string>
 </resources>

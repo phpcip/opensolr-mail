@@ -323,4 +323,5 @@
     <string name="ai_instructions_hint">Zum Beispiel: nur kurze, fokussierte Stichpunkte</string>
     <string name="save">Speichern</string>
     <string name="clear">Leeren</string>
+    <string name="regenerate">Neu erzeugen</string>
 </resources>

@@ -323,4 +323,5 @@
     <string name="ai_instructions_hint">De exemplu: dă-mi doar liste scurte, la obiect</string>
     <string name="save">Salvează</string>
     <string name="clear">Șterge</string>
+    <string name="regenerate">Regenerează</string>
 </resources>
