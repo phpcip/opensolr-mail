@@ -280,4 +280,6 @@
     <string name="tool_archive">Arhivează</string>
     <string name="tool_to_inbox">În Inbox</string>
     <string name="tool_not_junk">Nu e spam</string>
+    <string name="show_quoted">Arată textul citat</string>
+    <string name="hide_quoted">Ascunde textul citat</string>
 </resources>

@@ -196,8 +196,15 @@ class MailSync(private val context: Context) {
     }
 
     /** Older messages of [view] than the oldest held locally: 100 per account per call. Returns how many arrived. */
+    /**
+     * The next page of older mail for [view], per account. Pages go by position in the mailbox, saved per
+     * box, with an overlap that covers messages deleted meanwhile: an old message held here for another
+     * reason (a search hit) never makes the paging jump over what lies between. Returns how many messages
+     * came, 0 once every box is read to its end, -1 when Fastmail could not be asked (try again later).
+     */
     suspend fun loadOlder(view: View): Int {
         var total = 0
+        var failed = false
         val accounts = when (view) {
             is View.Box -> listOfNotNull(store.get(view.acc))
             else -> store.all()
@@ -210,22 +217,31 @@ class MailSync(private val context: Context) {
                 View.Flagged -> emptyList()
             }
             val filter = if (view == View.Flagged) JSONObject().put("hasKeyword", "\$flagged") else if (boxes.size == 1) JSONObject().put("inMailbox", boxes[0]) else return@forEach
-            val oldest = if (view == View.Flagged) null else db.oldestIn(a.key, boxes)
-            oldest?.let { filter.put("before", iso(it)) }
+            val posKey = "older:" + (if (view == View.Flagged) "flagged" else boxes[0])
+            val pos = db.state(a.key, posKey)?.toIntOrNull() ?: 0
+            if (pos < 0) return@forEach
+            val start = (pos - OLDER_OVERLAP).coerceAtLeast(0)
             // Query and headers in one round trip, chained by a result reference.
-            val msgs = runCatching {
+            val msgs = try {
                 val b = Jmap.Batch()
                 val q = b.add("Email/query", JSONObject().put("accountId", jmap.accountId).put("filter", filter)
-                    .put("sort", JSONArray().put(JSONObject().put("property", "receivedAt").put("isAscending", false))).put("limit", 100))
+                    .put("sort", JSONArray().put(JSONObject().put("property", "receivedAt").put("isAscending", false)))
+                    .put("position", start).put("limit", OLDER_PAGE + OLDER_OVERLAP))
                 val g = b.add("Email/get", JSONObject().put("accountId", jmap.accountId).put("properties", Jmap.HEADER_PROPS)
                     .put("#ids", JSONObject().put("resultOf", q).put("name", "Email/query").put("path", "/ids")))
                 val list = jmap.send(b).get(g).getJSONArray("list")
                 (0 until list.length()).map { parseHeader(a.key, list.getJSONObject(it)) }
-            }.getOrDefault(emptyList())
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                failed = true
+                return@forEach
+            }
             db.upsertMessages(msgs)
+            db.setState(a.key, posKey, if (msgs.isEmpty()) "-1" else (start + msgs.size).toString())
             total += msgs.size
         }
-        return total
+        return if (total == 0 && failed) -1 else total
     }
 
     /** Every message of a conversation, fetched when some are not held locally yet. */
@@ -262,6 +278,8 @@ class MailSync(private val context: Context) {
     data class Body(val text: String, val html: String, val attachments: List<Attachment>)
 
     companion object {
+        private const val OLDER_PAGE = 100
+        private const val OLDER_OVERLAP = 20
         const val STATE_EMAIL = "email"
         const val STATE_BACKFILL = "backfill"
         const val OP_UPSERT = "u"

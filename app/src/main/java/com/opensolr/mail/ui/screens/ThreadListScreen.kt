@@ -89,6 +89,7 @@ fun ThreadListScreen(vm: AppViewModel, view: View) {
     var loaded by remember(view) { mutableStateOf(false) }
     var exhausted by remember(view) { mutableStateOf(false) }
     var loadingOlder by remember(view) { mutableStateOf(false) }
+    var olderTick by remember(view) { mutableIntStateOf(0) }
     var selected by remember(view) { mutableStateOf<Set<ThreadRow>>(emptySet()) }
     val scrollKey = when (view) {
         is View.Unified -> "u_" + view.role.jmap
@@ -168,15 +169,22 @@ fun ThreadListScreen(vm: AppViewModel, view: View) {
         val total = listState.layoutInfo.totalItemsCount
         listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index?.let { it >= minOf(total / 4, total - 3) } == true
     } }
-    LaunchedEffect(atEnd, rows.size) {
+    LaunchedEffect(atEnd, rows.size, olderTick) {
         // More is loaded only when the reader scrolled to the end, never on its own: with folded groups the list is short and would otherwise pull the whole history.
         if (!atEnd || !loaded || loadingOlder || !listState.canScrollBackward) return@LaunchedEffect
         if (rows.size >= limit) {
             limit += PAGE
         } else if (!exhausted) {
             loadingOlder = true
-            if (vm.loadOlder(view) == 0) exhausted = true
+            val n = vm.loadOlder(view)
             loadingOlder = false
+            when {
+                n == 0 -> exhausted = true
+                // A page of older messages from conversations already listed adds no row: ask for the next one.
+                n > 0 -> olderTick++
+                // Fastmail could not be asked: try again shortly, never give up for good.
+                else -> { kotlinx.coroutines.delay(5_000L); olderTick++ }
+            }
         }
     }
 

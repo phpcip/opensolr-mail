@@ -118,6 +118,7 @@ dependencies {
     implementation(libs.okhttp)
     implementation(libs.androidx.exifinterface)
     implementation(libs.androidx.webkit)
+    implementation(libs.jsoup)
     implementation(platform(libs.firebase.bom))
     implementation(libs.firebase.messaging)
     implementation(libs.androidx.fragment)

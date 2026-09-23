@@ -280,4 +280,6 @@
     <string name="tool_archive">Archivar</string>
     <string name="tool_to_inbox">A Recibidos</string>
     <string name="tool_not_junk">No es spam</string>
+    <string name="show_quoted">Mostrar texto citado</string>
+    <string name="hide_quoted">Ocultar texto citado</string>
 </resources>

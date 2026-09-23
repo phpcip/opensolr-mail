@@ -280,4 +280,6 @@
     <string name="tool_archive">Archivieren</string>
     <string name="tool_to_inbox">Zum Posteingang</string>
     <string name="tool_not_junk">Kein Spam</string>
+    <string name="show_quoted">Zitierten Text anzeigen</string>
+    <string name="hide_quoted">Zitierten Text ausblenden</string>
 </resources>

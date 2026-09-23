@@ -34,4 +34,65 @@ object Html {
             .replace(Regex("\\n{3,}"), "\n\n")
             .trim()
     }
+
+    private val QUOTE_SELECTOR = listOf(
+        "div.gmail_quote", "div.gmail_quote_container", "blockquote.gmail_quote", "blockquote[type=cite]",
+        "div#divRplyFwdMsg", "div#appendonsend", "div.moz-cite-prefix", "div#qt", "div.yahoo_quoted", "div.OutlookMessageHeader",
+    ).joinToString(", ")
+    private val WROTE = Regex("(?i)^(On .{4,200}wrote:|-{2,}\\s*Original Message\\s*-{2,}|-{2,}\\s*Forwarded message\\s*-{2,})$")
+    private val QUOTE_LINE = Regex("(?im)^\\s*(On .{4,200}wrote:|-{2,}\\s*Original Message\\s*-{2,}|-{2,}\\s*Forwarded message\\s*-{2,}|From:\\s.+)\\s*$")
+
+    /**
+     * The message as written, with the quoted history below it folded under [label]: a click on the
+     * label opens it. Found by the marks mail programs put on a quote (Gmail, Apple Mail, Outlook,
+     * Fastmail, Thunderbird, Yahoo) or by an "On ... wrote:" / "Original Message" line. A message that is
+     * nothing but a quote (a forward) is shown whole.
+     */
+    fun foldQuotes(html: String, label: String, hide: String): String = runCatching {
+        val doc = org.jsoup.Jsoup.parseBodyFragment(html)
+        val body = doc.body()
+        val marked = body.select(QUOTE_SELECTOR).firstOrNull()
+        // A written "On ... wrote:" or "Original Message" line, or Outlook's short header block (From: with Sent: or Date:).
+        val byLine = body.getAllElements().firstOrNull { e ->
+            if (e === body) return@firstOrNull false
+            val own = e.ownText().trim()
+            val all = e.text().trim()
+            (own.isNotEmpty() && WROTE.containsMatchIn(own)) ||
+                (all.length < 600 && all.startsWith("From:") && (all.contains("Sent:") || all.contains("Date:")))
+        }
+        val start = listOfNotNull(marked, byLine).minByOrNull { body.getAllElements().indexOf(it) } ?: return@runCatching html
+        // Before the quote there must be something of the message itself, or there is nothing to fold.
+        val before = StringBuilder()
+        run {
+            for (n in body.getAllElements()) {
+                if (n === start) break
+                if (n !== body && n.parents().none { it === start }) before.append(n.ownText())
+            }
+        }
+        if (before.toString().isBlank()) return@runCatching html
+        val details = org.jsoup.nodes.Element("details").addClass("osq")
+        details.appendElement("summary").appendElement("span").addClass("s").text(label).parent()!!.appendElement("span").addClass("h").text(hide)
+        start.before(details)
+        val move = ArrayList<org.jsoup.nodes.Node>()
+        var n: org.jsoup.nodes.Node? = start
+        while (n != null) { move += n; n = n.nextSibling() }
+        var parent = details.parent()
+        while (parent != null && parent !== body) {
+            var s2 = parent.nextSibling()
+            while (s2 != null) { move += s2; s2 = s2.nextSibling() }
+            parent = parent.parent()
+        }
+        move.forEach { details.appendChild(it) }
+        body.html()
+    }.getOrDefault(html)
+
+    /** Plain text shown as HTML, the quoted history below the first quote line folded under [label]. */
+    fun fromTextFolded(text: String, label: String, hide: String): String {
+        val lines = text.lines()
+        val at = lines.indexOfFirst { l -> QUOTE_LINE.matches(l) || l.trimStart().startsWith(">") }
+        if (at <= 0 || lines.take(at).all { it.isBlank() }) return fromText(text)
+        val head = lines.take(at).joinToString("\n").trimEnd()
+        val tail = lines.drop(at).joinToString("\n")
+        return fromText(head) + "<details class=\"osq\"><summary><span class=\"s\">" + escape(label) + "</span><span class=\"h\">" + escape(hide) + "</span></summary>" + fromText(tail) + "</details>"
+    }
 }

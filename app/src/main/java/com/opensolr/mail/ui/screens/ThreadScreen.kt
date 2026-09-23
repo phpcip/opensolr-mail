@@ -210,7 +210,14 @@ fun ThreadScreen(vm: AppViewModel, acc: String, threadId: String) {
                         if (full == null) {
                             Text(stringResource(R.string.loading), style = MaterialTheme.typography.bodySmall, color = p.muted, modifier = Modifier.padding(16.dp))
                         } else {
-                            val html = full.bodyHtml.orEmpty().ifBlank { com.opensolr.mail.jmap.Html.fromText(full.bodyText ?: m.preview) }
+                            // The message itself shows; the quoted history under it is folded, one tap opens it.
+                            val quoted = stringResource(R.string.show_quoted)
+                            val hideQuoted = stringResource(R.string.hide_quoted)
+                            val html = remember(full.bodyHtml, full.bodyText, quoted) {
+                                val raw = full.bodyHtml.orEmpty()
+                                if (raw.isBlank()) com.opensolr.mail.jmap.Html.fromTextFolded(full.bodyText ?: m.preview, quoted, hideQuoted)
+                                else com.opensolr.mail.jmap.Html.foldQuotes(raw, quoted, hideQuoted)
+                            }
                             val hasRemote = Regex("(?i)<img[^>]+src=[\"']?https?:").containsMatchIn(html)
                             val allow = vm.prefs.remoteImages || images[m.id] == true
                             if (hasRemote && !allow) {

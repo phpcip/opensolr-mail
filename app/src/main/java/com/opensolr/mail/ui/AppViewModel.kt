@@ -351,7 +351,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            0
+            -1
         }
     }
 

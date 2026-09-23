@@ -289,4 +289,6 @@
     <string name="tool_archive">Archive</string>
     <string name="tool_to_inbox">To Inbox</string>
     <string name="tool_not_junk">Not junk</string>
+    <string name="show_quoted">Show quoted text</string>
+    <string name="hide_quoted">Hide quoted text</string>
 </resources>

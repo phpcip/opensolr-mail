@@ -280,4 +280,6 @@
     <string name="tool_archive">アーカイブ</string>
     <string name="tool_to_inbox">受信箱へ</string>
     <string name="tool_not_junk">迷惑でない</string>
+    <string name="show_quoted">引用を表示</string>
+    <string name="hide_quoted">引用を隠す</string>
 </resources>
