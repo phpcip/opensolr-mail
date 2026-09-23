@@ -177,7 +177,7 @@ class OpensolrApi(private val prefs: AppPrefs) {
     suspend fun aiAnswer(name: String, instruction: String, onChunk: (String) -> Unit) = withContext(Dispatchers.IO) {
         val form = FormBody.Builder()
             .add("email", email).add("api_key", key).add("index_name", name)
-            .add("instruction", instruction).add("temperature", "0.1").add("stream", "yes")
+            .add("language", "English").add("instruction", instruction).add("temperature", "0.1").add("stream", "yes")
             .build()
         val req = Request.Builder().url(AI + "ai_summary").post(form).build()
         Http.stream.newCall(req).execute().use { r ->

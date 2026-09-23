@@ -199,7 +199,7 @@ class MailIndexer(private val context: Context) {
         val readBefore = HashSet<String>()
         runCatching {
             val r0 = solr.select(listOf(
-                "q" to "*:*", "fq" to "{!terms f=id separator=| v=\$ids}", "ids" to ids.joinToString("|") { docId(acc, it) },
+                "q" to "*:*", "fq" to "{!terms f=id v=\$ids}", "ids" to ids.joinToString(",") { docId(acc, it) },
                 "fl" to "email_id_s,attachment_text_t,att_todo_b", "rows" to ids.size.toString(),
             ))
             val arr = r0.optJSONObject("response")?.optJSONArray("docs") ?: JSONArray()

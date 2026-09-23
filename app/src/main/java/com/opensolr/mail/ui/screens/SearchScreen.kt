@@ -294,7 +294,7 @@ fun SearchScreen(vm: AppViewModel, sheet: String?) {
                     answering = true
                     aiJob = scope.launch {
                         try {
-                            vm.search.answer(query, r) { chunk -> answer = (answer ?: "") + chunk }
+                            vm.search.answer(query, filters) { chunk -> answer = (answer ?: "") + chunk }
                         } catch (e: CancellationException) {
                             throw e
                         } catch (e: Exception) {

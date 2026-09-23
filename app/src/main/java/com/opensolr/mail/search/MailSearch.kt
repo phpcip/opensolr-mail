@@ -187,7 +187,7 @@ class MailSearch(private val context: Context) {
             val to = d.optJSONArray("to_tm")?.let { a -> (0 until a.length()).joinToString(", ") { a.getString(it) } }.orEmpty()
             aiDocs += AiPrompt.Doc(
                 id = id, score = if (d.has("score")) d.optDouble("score") else null, title = d.optString("subject_t"),
-                description = "From: ${d.optString("from_t")} | To: $to | Date: ${d.optString("received_dt")}", text = "",
+                description = "From: ${d.optString("from_t")} | To: $to | Date: ${localDate(d.optString("received_dt"))}", text = "",
             )
             if (h != null) hlMap[id] = mapOf(
                 "title" to (h.optJSONArray("subject_t")?.let { a -> (0 until a.length()).map { a.getString(it) } } ?: emptyList()),
@@ -235,28 +235,62 @@ class MailSearch(private val context: Context) {
     }
 
     /** Streams the AI answer to [question] over the top results of the search that was just run. */
-    suspend fun answer(question: String, result: Result, onChunk: (String) -> Unit) {
+    suspend fun answer(question: String, filters: Filters, onChunk: (String) -> Unit) {
         val connection = MailIndex(context).ensure()
+        // The answer reads the most relevant messages, not the first ones of a list grouped by date.
+        val result = search(question, filters, GroupBy.NONE, rows = AiPrompt.TOP_N)
         val top = result.docs.take(AiPrompt.TOP_N)
         if (top.isEmpty()) return
         val bodies = HashMap<String, String>()
         val r = SolrClient(connection).select(
             listOf(
                 "q" to "*:*",
-                "fq" to "{!terms f=id separator=| v=\$ids}",
-                "ids" to top.joinToString("|") { it.id },
+                "fq" to "{!terms f=id v=\$ids}",
+                "ids" to top.joinToString(",") { it.id },
                 "fl" to "id,body_t,attachment_text_t",
                 "rows" to top.size.toString(),
             )
         )
         val docs = r.optJSONObject("response")?.optJSONArray("docs") ?: JSONArray()
         for (i in 0 until docs.length()) docs.getJSONObject(i).let {
-            bodies[it.optString("id")] = (it.optString("body_t") + "\n\n" + it.optString("attachment_text_t")).trim()
+            val att = flatten(it.optString("attachment_text_t"))
+            bodies[it.optString("id")] = (flatten(freshPart(it.optString("body_t"))) + if (att.isNotEmpty()) "\nAttachment text: $att" else "").trim()
         }
         val ctx = AiPrompt.context(top.map { it.copy(text = bodies[it.id].orEmpty()) }, result.highlights)
         if (ctx.isEmpty()) return
         api.aiAnswer(connection.indexName, AiPrompt.instruction(ctx, question), onChunk)
     }
+
+    /** The message's own words: quoted history and forwarded originals below it are cut off. */
+    private fun freshPart(body: String): String {
+        val lines = body.replace("\r", "").lines()
+        val out = ArrayList<String>()
+        for (line in lines) {
+            val t = line.trim()
+            if (t.startsWith("-----Original Message") || Regex("^On .{4,160} wrote:$").matches(t) || Regex("^(From|De la|Von|De): .+").matches(t) && out.size > 3) break
+            if (t.startsWith(">")) continue
+            out += line
+        }
+        return out.joinToString("\n")
+    }
+
+    /**
+     * Mail bodies arrive as table cells split over lines ("Total de plată:" on one line, "106,35 lei"
+     * on the next); the model only binds a value to its label when they sit on one line. Single line
+     * breaks become spaces, blank lines stay as paragraph breaks.
+     */
+    private fun flatten(text: String): String = text.replace("\r", "")
+        .lines().joinToString("\n") { it.trim() }
+        .replace(Regex("\n{2,}"), "\u0000")
+        .replace("\n", " ")
+        .replace('\u0000', '\n')
+        .replace(Regex("[ \t\u00A0]{2,}"), " ")
+        .replace(Regex("\n\\s*\n+"), "\n")
+        .trim()
+
+    private fun localDate(iso: String): String = runCatching {
+        java.text.SimpleDateFormat("MM/dd/yyyy HH:mm", Locale.US).format(java.util.Date(java.time.Instant.parse(iso).toEpochMilli()))
+    }.getOrDefault(iso)
 
     /** A query is embedded once per app run: typing back to an earlier text costs no AI request. */
     private suspend fun vectorOf(name: String, q: String): FloatArray {
