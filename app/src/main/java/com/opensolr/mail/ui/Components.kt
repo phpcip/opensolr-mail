@@ -1,5 +1,6 @@
 package com.opensolr.mail.ui
 
+import androidx.compose.ui.graphics.luminance
 import androidx.annotation.DrawableRes
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -328,16 +329,43 @@ fun ScreenHeader(title: String, onBack: (() -> Unit)?) {
     }
 }
 
-/** The edges of the cards under a conversation of several messages, so a thread reads as a stack. */
+/**
+ * The cards under a conversation of several messages, so a thread reads as a stack: up to three sheets,
+ * each narrower than the one above, raised by a light top edge and a dark bottom edge.
+ */
 @Composable
 fun StackEdges(count: Int) {
     if (count < 2) return
     val p = LocalPalette.current
-    androidx.compose.foundation.layout.Column(Modifier.fillMaxWidth()) {
-        Box(Modifier.fillMaxWidth().padding(start = 52.dp, end = 10.dp).height(4.dp).background(p.headFill, androidx.compose.foundation.shape.RoundedCornerShape(bottomStart = 2.dp, bottomEnd = 2.dp)).border(1.dp, p.headRim, androidx.compose.foundation.shape.RoundedCornerShape(bottomStart = 2.dp, bottomEnd = 2.dp)))
-        if (count > 2) Box(Modifier.fillMaxWidth().padding(start = 60.dp, end = 18.dp).height(4.dp).background(p.headFill, androidx.compose.foundation.shape.RoundedCornerShape(bottomStart = 2.dp, bottomEnd = 2.dp)).border(1.dp, p.headRim, androidx.compose.foundation.shape.RoundedCornerShape(bottomStart = 2.dp, bottomEnd = 2.dp)))
+    val dark = p.paper.luminance() < 0.5f
+    val fills = if (dark) STACK_FILL_DARK else STACK_FILL_LIGHT
+    val rim = if (dark) Color(0xFF5A544C) else Color(0xFFB9AE9E)
+    val light = if (dark) Color(0xFF47423C) else Color(0xFFFFFFFF)
+    val shade = if (dark) Color(0xFF0B0A09) else Color(0xFF9C907F)
+    val tiers = minOf(count - 1, 3)
+    androidx.compose.foundation.Canvas(Modifier.fillMaxWidth().height(STACK_TIER * tiers + 2.dp)) {
+        val h = STACK_TIER.toPx()
+        val px = 1.dp.toPx()
+        val corner = androidx.compose.ui.geometry.CornerRadius(2.dp.toPx())
+        for (i in 0 until tiers) {
+            val inset = STACK_STEP.toPx() * (i + 1)
+            val left = 44.dp.toPx() + inset
+            val right = size.width - 4.dp.toPx() - inset
+            if (right <= left) break
+            val top = i * h
+            val sheet = androidx.compose.ui.geometry.Size(right - left, h)
+            drawRoundRect(fills[i], androidx.compose.ui.geometry.Offset(left, top), sheet, corner)
+            drawRoundRect(rim, androidx.compose.ui.geometry.Offset(left, top), sheet, corner, style = androidx.compose.ui.graphics.drawscope.Stroke(px))
+            drawLine(light, androidx.compose.ui.geometry.Offset(left + px, top + px), androidx.compose.ui.geometry.Offset(right - px, top + px), px)
+            drawLine(shade, androidx.compose.ui.geometry.Offset(left + 2 * px, top + h + px * 0.75f), androidx.compose.ui.geometry.Offset(right - 2 * px, top + h + px * 0.75f), px * 1.5f)
+        }
     }
 }
+
+private val STACK_TIER = 6.dp
+private val STACK_STEP = 8.dp
+private val STACK_FILL_LIGHT = listOf(Color(0xFFEFE8DD), Color(0xFFE6DED1), Color(0xFFDCD3C5))
+private val STACK_FILL_DARK = listOf(Color(0xFF2B2824), Color(0xFF25221F), Color(0xFF1F1D1A))
 
 /** The number of messages of a conversation, on a small bordered tile like the other row badges. */
 @Composable
