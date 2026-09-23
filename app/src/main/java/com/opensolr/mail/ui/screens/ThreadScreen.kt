@@ -108,6 +108,7 @@ fun ThreadScreen(vm: AppViewModel, acc: String, threadId: String) {
         }
     }
     val account = vm.store.get(acc)
+    val zoomed = remember(threadId) { androidx.compose.runtime.mutableStateMapOf<String, Boolean>() }
 
     var loadedOnce by remember(threadId) { mutableStateOf(false) }
     LaunchedEffect(threadId, version) {
@@ -232,8 +233,13 @@ fun ThreadScreen(vm: AppViewModel, acc: String, threadId: String) {
                             // At most a screen tall: inside it the message moves freely in every direction at once, as the
                             // finger goes (zoomed or not); at its top or bottom edge the drag carries on to the conversation.
                             val maxBody = (androidx.compose.ui.platform.LocalConfiguration.current.screenHeightDp - 190).coerceAtLeast(240).dp
+                            // Read normally the message is as tall as it is and scrolls with the conversation; zoomed in, it
+                            // is held to a screen and pans freely inside.
+                            val isZoomed = zoomed[m.id] == true
                             MailWebView(
-                                html, acc, full.attachments, allow, Modifier.fillMaxWidth().heightIn(min = 40.dp, max = maxBody),
+                                html, acc, full.attachments, allow,
+                                if (isZoomed) Modifier.fillMaxWidth().heightIn(min = 40.dp, max = maxBody) else Modifier.fillMaxWidth().heightIn(min = 40.dp),
+                                onZoomed = { z -> zoomed[m.id] = z },
                                 onEdgeDrag = { dy -> threadScroll.dispatchRawDelta(-dy) },
                                 onEdgeFling = { vy -> scope.launch { threadScroll.animateScrollBy(-vy * 0.35f) } },
                             )

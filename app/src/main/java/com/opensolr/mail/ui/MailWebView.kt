@@ -22,7 +22,8 @@ import java.io.File
 /** One message body. Scripts never run; remote images only when allowed; inline images (cid:) come from the message itself. */
 @SuppressLint("SetJavaScriptEnabled")
 @Composable
-fun MailWebView(html: String, acc: String, attachments: List<Attachment>, remoteImages: Boolean, modifier: Modifier = Modifier, onEdgeDrag: (Float) -> Unit = {}, onEdgeFling: (Float) -> Unit = {}) {
+fun MailWebView(html: String, acc: String, attachments: List<Attachment>, remoteImages: Boolean, modifier: Modifier = Modifier, onEdgeDrag: (Float) -> Unit = {}, onEdgeFling: (Float) -> Unit = {}, onZoomed: (Boolean) -> Unit = {}) {
+    val zoomedNow by androidx.compose.runtime.rememberUpdatedState(onZoomed)
     val edgeDrag by androidx.compose.runtime.rememberUpdatedState(onEdgeDrag)
     val edgeFling by androidx.compose.runtime.rememberUpdatedState(onEdgeFling)
     val dark = androidx.compose.foundation.isSystemInDarkTheme()
@@ -45,13 +46,17 @@ fun MailWebView(html: String, acc: String, attachments: List<Attachment>, remote
                 settings.builtInZoomControls = true
                 settings.displayZoomControls = false
                 isVerticalScrollBarEnabled = false
-                // A finger on the message belongs to the message: it pans in every direction at once; only past the
-                // message's top or bottom does the drag go on to the conversation.
+                // Read normally, the conversation scrolls the message along with everything else, smooth and with its
+                // fling. Zoomed in, a finger on the message belongs to the message: it pans in every direction at once,
+                // and only past its top or bottom does the drag go on to the conversation. Two fingers always zoom.
+                onZoom = { z -> zoomedNow(z) }
                 @SuppressLint("ClickableViewAccessibility")
                 var lastY = 0f
                 var edge = false
                 var tracker: android.view.VelocityTracker? = null
                 setOnTouchListener { v, e ->
+                    if (e.actionMasked == android.view.MotionEvent.ACTION_POINTER_DOWN) v.parent?.requestDisallowInterceptTouchEvent(true)
+                    if (!(v as FitWebView).zoomed) return@setOnTouchListener false
                     v.parent?.requestDisallowInterceptTouchEvent(true)
                     when (e.actionMasked) {
                         android.view.MotionEvent.ACTION_DOWN -> {
@@ -111,6 +116,7 @@ private class MailClient(private val context: Context, private val acc: String, 
 
     /** After a zoom the WebView takes the height of its zoomed content, so the whole message can be reached. */
     override fun onScaleChanged(view: WebView, oldScale: Float, newScale: Float) {
+        (view as? FitWebView)?.scaleChanged(newScale)
         view.post { view.requestLayout() }
     }
 
@@ -142,12 +148,29 @@ private class MailClient(private val context: Context, private val acc: String, 
 /** The message WebView, able to tell how wide its content is, to open every message fitted to the screen. */
 private class FitWebView(context: Context) : WebView(context) {
     private var fitted = false
+    /** The scale the message opened at (fitted to the screen); zoomed means clearly larger than that. */
+    private var baseScale = 0f
+    var zoomed = false
+        private set
+    var onZoom: ((Boolean) -> Unit)? = null
 
     /** Called for each new message: once it is laid out, zoom out so its full width shows. */
     fun fitWidthSoon() {
         fitted = false
+        baseScale = 0f
+        setZoomed(false)
         postDelayed({ fitWidth() }, 60)
         postDelayed({ fitWidth() }, 400)
+        @Suppress("DEPRECATION")
+        postDelayed({ if (baseScale == 0f) baseScale = scale }, 800)
+    }
+
+    fun scaleChanged(newScale: Float) {
+        if (baseScale > 0f) setZoomed(newScale > baseScale * 1.08f)
+    }
+
+    private fun setZoomed(z: Boolean) {
+        if (z != zoomed) { zoomed = z; onZoom?.invoke(z) }
     }
 
     private fun fitWidth() {
