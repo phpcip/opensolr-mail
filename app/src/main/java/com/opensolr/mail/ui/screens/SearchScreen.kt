@@ -198,7 +198,9 @@ fun SearchScreen(vm: AppViewModel, sheet: String?) {
     // so neither scrolling nor the fast scroller ever reaches a bottom that is not the real one.
     val atEnd by remember { derivedStateOf {
         val total = listState.layoutInfo.totalItemsCount
-        listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index?.let { it >= minOf(total / 4, total - 4) } == true
+        // 20 rows ahead of the end, or the bottom itself (the fast scroller held there): the next page comes.
+        val last = listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: -1
+        total > 0 && (last >= total - 20 || (!listState.canScrollForward && listState.canScrollBackward))
     } }
     LaunchedEffect(atEnd, shownHits.size, shownGroups.size) {
         val res = result ?: return@LaunchedEffect

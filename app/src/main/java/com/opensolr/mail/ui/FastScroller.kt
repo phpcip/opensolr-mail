@@ -56,9 +56,6 @@ private val Corner = RoundedCornerShape(2.dp)
 private val THUMB = 72.dp
 private val LABEL_LIFT = 64.dp
 private val TRACK = 36.dp
-/** The area that takes the finger around the thumb: wider and taller than the thumb, so it is easy to catch. */
-private val GRAB_W = 56.dp
-private val GRAB_PAD = 28.dp
 private val LABEL_ROOM = 260.dp
 private const val SNAP_ITEMS = 4
 
@@ -118,7 +115,7 @@ fun BoxScope.FastScroller(state: LazyListState, index: ScrollIndex, minItems: In
     val n = index.labels.size
     val alpha by animateFloatAsState(
         targetValue = if (dragging || state.isScrollInProgress) 1f else 0f,
-        animationSpec = tween(durationMillis = if (dragging) 0 else 450, delayMillis = if (dragging || state.isScrollInProgress) 0 else 1500),
+        animationSpec = tween(durationMillis = if (dragging) 0 else 450),
         label = "fastScrollerAlpha",
     )
     if (n < minItems) return
@@ -201,23 +198,29 @@ fun BoxScope.FastScroller(state: LazyListState, index: ScrollIndex, minItems: In
             job = scope.launch { state.scrollToItem(target, into.roundToInt()) }
         }
 
-        // Only the thumb takes the finger, and only while it shows: the rest of the right edge stays the rows',
-        // so a swipe that starts at the edge of the screen reaches the row under it.
+        // As in Opensolr Photos: while it shows, the whole right strip takes the finger; hidden, it takes nothing, so a
+        // swipe from the edge reaches the row. At the very top only the thumb takes it, leaving pull-to-refresh alone.
+        // One gesture area whose shape changes, never a new one, so a drag in progress is never cut off.
         val thumbTop = travelPx * fraction
-        // At the top of the list a pull down is also pull-to-refresh: there only the thumb itself takes the finger.
-        val atTop = !state.canScrollBackward
-        val grabW = if (atTop) TRACK else GRAB_W
-        val grabPad = if (atTop) 0.dp else GRAB_PAD
-        val top by androidx.compose.runtime.rememberUpdatedState(thumbTop)
+        val strip = dragging || state.canScrollBackward
+        val boxTop = if (strip) 0f else thumbTop
+        val topNow by androidx.compose.runtime.rememberUpdatedState(boxTop)
         if (alpha > 0.05f || dragging) Box(
-            Modifier.align(Alignment.TopEnd).offset { IntOffset(0, (thumbTop - grabPad.toPx()).roundToInt()) }.width(grabW).height(THUMB + grabPad * 2).pointerInput(travelPx, grabPad) {
-                detectVerticalDragGestures(
-                    onDragStart = { o -> dragging = true; aimed = -1; Haptics.tick(view, false); aimAt(top - grabPad.toPx() + o.y) },
-                    onDragEnd = { dragging = false; aimed = -1 },
-                    onDragCancel = { dragging = false; aimed = -1 },
-                    onVerticalDrag = { change, _ -> change.consume(); aimAt(top - grabPad.toPx() + change.position.y) },
-                )
-            },
+            Modifier.align(Alignment.TopEnd).offset { IntOffset(0, boxTop.roundToInt()) }.width(TRACK)
+                .then(if (strip) Modifier.fillMaxHeight() else Modifier.height(THUMB))
+                .pointerInput(travelPx) {
+                    try {
+                        detectVerticalDragGestures(
+                            onDragStart = { o -> dragging = true; aimed = -1; Haptics.tick(view, false); aimAt(topNow + o.y) },
+                            onDragEnd = { dragging = false; aimed = -1 },
+                            onDragCancel = { dragging = false; aimed = -1 },
+                            onVerticalDrag = { change, _ -> change.consume(); aimAt(topNow + change.position.y) },
+                        )
+                    } finally {
+                        dragging = false
+                        aimed = -1
+                    }
+                },
         )
         Thumb(thumbTop, alpha, dragging)
         if (dragging && aimed >= 0) {
@@ -247,7 +250,7 @@ fun BoxScope.FastScroller(state: ScrollState, marks: ScrollMarks, minScreens: Fl
     var aimedPx by remember { mutableIntStateOf(-1) }
     val alpha by animateFloatAsState(
         targetValue = if (dragging || state.isScrollInProgress) 1f else 0f,
-        animationSpec = tween(durationMillis = if (dragging) 0 else 450, delayMillis = if (dragging || state.isScrollInProgress) 0 else 1500),
+        animationSpec = tween(durationMillis = if (dragging) 0 else 450),
         label = "columnScrollerAlpha",
     )
     val density = LocalDensity.current
@@ -279,16 +282,20 @@ fun BoxScope.FastScroller(state: ScrollState, marks: ScrollMarks, minScreens: Fl
 
         val px = if (dragging && aimedPx >= 0) aimedPx else state.value
         val thumbY = travelPx * px / state.maxValue.coerceAtLeast(1)
-        // Only the thumb takes the finger, and only while it shows.
-        val top by androidx.compose.runtime.rememberUpdatedState(thumbY)
+        // While it shows, the whole right strip takes the finger; one gesture area, so a drag is never cut off.
         if (alpha > 0.05f || dragging) Box(
-            Modifier.align(Alignment.TopEnd).offset { IntOffset(0, (thumbY - GRAB_PAD.toPx()).roundToInt()) }.width(GRAB_W).height(THUMB + GRAB_PAD * 2).pointerInput(travelPx) {
-                detectVerticalDragGestures(
-                    onDragStart = { o -> dragging = true; aimedPx = -1; Haptics.tick(view, false); aimAt(top - GRAB_PAD.toPx() + o.y) },
-                    onDragEnd = { dragging = false; aimedPx = -1 },
-                    onDragCancel = { dragging = false; aimedPx = -1 },
-                    onVerticalDrag = { change, _ -> change.consume(); aimAt(top - GRAB_PAD.toPx() + change.position.y) },
-                )
+            Modifier.align(Alignment.CenterEnd).fillMaxHeight().width(TRACK).pointerInput(travelPx) {
+                try {
+                    detectVerticalDragGestures(
+                        onDragStart = { o -> dragging = true; aimedPx = -1; Haptics.tick(view, false); aimAt(o.y) },
+                        onDragEnd = { dragging = false; aimedPx = -1 },
+                        onDragCancel = { dragging = false; aimedPx = -1 },
+                        onVerticalDrag = { change, _ -> change.consume(); aimAt(change.position.y) },
+                    )
+                } finally {
+                    dragging = false
+                    aimedPx = -1
+                }
             },
         )
         Thumb(thumbY, alpha, dragging)

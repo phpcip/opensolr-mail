@@ -170,29 +170,30 @@ fun ThreadListScreen(vm: AppViewModel, view: View) {
         pinnedSeen = now
         if (before != null && (now - before).isNotEmpty()) runCatching { listState.animateScrollToItem(0) }
     }
-    // The next page comes once the reader is a quarter of the way down what is loaded, well before the end,
-    // so neither scrolling nor the fast scroller ever reaches a bottom that is not the real one.
-    val atEnd by remember { derivedStateOf {
-        val total = listState.layoutInfo.totalItemsCount
-        // Only once the reader has moved off the top: an untouched short list (folded groups) never pulls the history.
-        listState.canScrollBackward &&
-            listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index?.let { it >= minOf(total / 4, total - 3) } == true
-    } }
-    LaunchedEffect(atEnd, rows.size, olderTick) {
-        // More is loaded only when the reader scrolled to the end, never on its own: with folded groups the list is short and would otherwise pull the whole history.
-        if (!atEnd || !loaded || loadingOlder) return@LaunchedEffect
-        if (rows.size >= limit) {
-            limit += PAGE
-        } else if (!exhausted) {
-            loadingOlder = true
-            val n = vm.loadOlder(view)
-            loadingOlder = false
-            when {
-                n == 0 -> exhausted = true
-                // A page of older messages from conversations already listed adds no row: ask for the next one.
-                n > 0 -> olderTick++
-                // Fastmail could not be asked: try again shortly, never give up for good.
-                else -> { kotlinx.coroutines.delay(5_000L); olderTick++ }
+    // The next page comes while the reader is still well above the end (40 rows ahead), and again every time the
+    // bottom is reached, by scrolling or by the fast scroller held at the bottom, until the mailbox is read to its end.
+    // Only once the reader has moved off the top: an untouched short list (folded groups) never pulls the history.
+    LaunchedEffect(view) {
+        androidx.compose.runtime.snapshotFlow {
+            val total = listState.layoutInfo.totalItemsCount
+            val last = listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: -1
+            val near = listState.canScrollBackward && (last >= total - 40 || !listState.canScrollForward)
+            Triple(near && loaded, rows.size, olderTick)
+        }.collect { (near, _, _) ->
+            if (!near) return@collect
+            if (rows.size >= limit) {
+                limit += PAGE
+            } else if (!exhausted) {
+                loadingOlder = true
+                val n = vm.loadOlder(view)
+                loadingOlder = false
+                when {
+                    n == 0 -> exhausted = true
+                    // A page of older messages from conversations already listed adds no row: ask for the next one.
+                    n > 0 -> olderTick++
+                    // Fastmail could not be asked: try again shortly, never give up for good.
+                    else -> { kotlinx.coroutines.delay(5_000L); olderTick++ }
+                }
             }
         }
     }
