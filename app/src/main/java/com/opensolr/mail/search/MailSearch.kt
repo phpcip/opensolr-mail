@@ -116,12 +116,29 @@ class MailSearch(private val context: Context) {
             matched = "*:*"
         } else {
             // The same parameters as search.opensolr.com, on the mail fields.
-            p += "uq" to q
+            // +word / -word / +"phrase" / -"phrase": with vectors they leave the text and become filters, so both
+            // legs obey them; with nothing left to embed, words only, as typed.
+            val ops = SearchOperators.parse(q)
+            val embedText = if (ops.hasOps) ops.base else q
             p += "qf" to QF
             p += "mm" to MM
             p += "df" to "subject_t"
             val lexical = "{!edismax qf=\"$QF\" mm=\"$MM\" v=\$uq}"
-            val vector = if (prefs.aiSearch && prefs.vectorAllowed) runCatching { vectorOf(connection.indexName, q) }.getOrNull() else null
+            val vector = if (prefs.aiSearch && prefs.vectorAllowed && embedText.trim().length >= 2) runCatching { vectorOf(connection.indexName, embedText) }.getOrNull() else null
+            if (vector != null && ops.hasOps) {
+                p += "uq" to ops.base
+                val fields = QF.split(' ').filter { it.isNotBlank() }.joinToString(" ") { it.substringBefore('^') }
+                ops.required.forEachIndexed { n, term ->
+                    p += "reqQ$n" to term
+                    p += "fq" to "{!edismax qf=\"$fields\" mm=\"100%\" v=\$reqQ$n}"
+                }
+                ops.excluded.forEachIndexed { n, term ->
+                    p += "negQ$n" to term
+                    p += "fq" to "-{!edismax qf=\"$fields\" mm=\"100%\" v=\$negQ$n}"
+                }
+            } else {
+                p += "uq" to q
+            }
             matched = if (vector != null) {
                 smart = true
                 p += "vectorQuery" to "{!knn f=${MailIndexer.VECTOR} topK=$TOP_K}" + vector.joinToString(",", "[", "]")
@@ -201,7 +218,8 @@ class MailSearch(private val context: Context) {
             p += "hl.maxAnalyzedChars" to "1000"
             p += "hl.requireFieldMatch" to "false"
             p += "f.subject_t.hl.fragsize" to "0"
-            p += "spellcheck" to "true"
+            // No "did you mean" over deliberate operators: the suggestion would drop them.
+            if (!SearchOperators.parse(q).hasOps) p += "spellcheck" to "true"
             p += "spellcheck.q" to q
             p += "spellcheck.onlyMorePopular" to "false"
             p += "spellcheck.extendedResults" to "false"

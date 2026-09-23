@@ -304,4 +304,27 @@
     <string name="text_size">Text size</string>
     <string name="text_size_value">%1$d%% of the standard size</string>
     <string name="text_size_sample">This is how your messages read and how you write them.</string>
+    <string name="cd_search_help">Search operators</string>
+    <string name="ops_title">Search operators</string>
+    <string name="ops_sub">Refine your search with phrases, required and excluded words.</string>
+    <string name="ops_example">Example:</string>
+    <string name="ops_phrase_too">Works on a phrase too:</string>
+    <string name="ops_close">Close</string>
+    <string name="ops_phrase_h">Phrase match</string>
+    <string name="ops_phrase_b">Wrap words in double quotes to match them in that exact order, next to each other.</string>
+    <string name="ops_phrase_ex">finds only messages where those two words appear together, in that order.</string>
+    <string name="ops_phrase_ai">On its own, a phrase applies to the words side of the search. Turn AI off for it to filter results. With + or - in front, a phrase always filters.</string>
+    <string name="ops_req_h">Required word</string>
+    <string name="ops_req_b">Put + in front of a word to force it into every result. The other words still help the ranking, but are not mandatory.</string>
+    <string name="ops_req_ex">every result must contain \"invoice\"; the other words only lift the messages that have them.</string>
+    <string name="ops_req_phrase">every result must contain those two words together, in that order.</string>
+    <string name="ops_exc_h">Excluded word</string>
+    <string name="ops_exc_b">Put - in front of a word to drop every message that contains it.</string>
+    <string name="ops_exc_ex">hides every newsletter from the results.</string>
+    <string name="ops_exc_phrase">drops every message containing that exact phrase.</string>
+    <string name="ops_comb_h">Combine them</string>
+    <string name="ops_comb_b">All three work together in one search.</string>
+    <string name="ops_comb_ex">must contain \"invoice\" and the exact phrase \"purchase order\", and nothing from a newsletter.</string>
+    <string name="ops_why_h">Why this matters with AI on</string>
+    <string name="ops_why_b">AI search also brings messages close in meaning that are not what you want: a search for hosting invoice may also bring quotes and offers. +invoice keeps only the messages that say it.</string>
 </resources>

@@ -148,6 +148,7 @@ fun SearchScreen(vm: AppViewModel, sheet: String?) {
     var error by remember { mutableStateOf<String?>(null) }
     var showFilters by remember { mutableStateOf(sheet == "filters") }
     var showGroup by remember { mutableStateOf(sheet == "group") }
+    var showOperators by remember { mutableStateOf(false) }
     val zonesOpen = vm.keySet("filter_zones")
     vm.keySet("search_folds")
     val focus = remember { FocusRequester() }
@@ -317,6 +318,10 @@ fun SearchScreen(vm: AppViewModel, sheet: String?) {
                 )
             }
             if (query.isNotEmpty()) IconBtn(R.drawable.ic_close, { query = "" })
+            Icon(
+                painterResource(R.drawable.ic_help), contentDescription = stringResource(R.string.cd_search_help), tint = p.muted,
+                modifier = Modifier.size(40.dp).clickable { Haptics.tick(view, false); showOperators = true }.padding(9.dp),
+            )
         }
         Hairline()
         Row(
@@ -524,12 +529,90 @@ fun SearchScreen(vm: AppViewModel, sheet: String?) {
         )
     }
 
+    if (showOperators) SearchOperatorsDialog(onDismiss = { showOperators = false })
+
     if (showFilters) {
         FilterSheet(
             facets = r?.facets.orEmpty(), current = filters, total = r?.total ?: 0, accounts = accounts.map { it.username },
             open = zonesOpen, onToggle = { vm.toggleKey("filter_zones", it) }, onAll = { vm.setKeySet("filter_zones", it) }, onChange = { filters = it }, onDismiss = { showFilters = false },
         )
     }
+}
+
+/** The same Search Operators help as on search.opensolr.com and in Opensolr Photos; the syntax itself is untranslated. */
+@Composable
+private fun SearchOperatorsDialog(onDismiss: () -> Unit) {
+    val p = LocalPalette.current
+    val code = androidx.compose.ui.text.SpanStyle(fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace, color = p.accent, fontWeight = FontWeight.SemiBold)
+
+    @Composable
+    fun Heading(label: String, syntax: String?) {
+        Text(
+            androidx.compose.ui.text.buildAnnotatedString {
+                append(label)
+                if (syntax != null) { append("  "); pushStyle(code); append(syntax); pop() }
+            },
+            style = MaterialTheme.typography.labelLarge, color = p.ink,
+        )
+    }
+
+    @Composable
+    fun Line(lead: String?, syntax: String, rest: String) {
+        Text(
+            androidx.compose.ui.text.buildAnnotatedString {
+                if (lead != null) { append(lead); append(" ") }
+                pushStyle(code); append(syntax); pop()
+                append("  ")
+                append(rest)
+            },
+            style = MaterialTheme.typography.bodyMedium, color = p.muted,
+        )
+    }
+
+    androidx.compose.material3.AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Column {
+                Text(stringResource(R.string.ops_title))
+                Text(stringResource(R.string.ops_sub), style = MaterialTheme.typography.bodyMedium, color = p.muted)
+            }
+        },
+        text = {
+            val example = stringResource(R.string.ops_example)
+            val phraseToo = stringResource(R.string.ops_phrase_too)
+            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Heading(stringResource(R.string.ops_phrase_h), "\"word1 word2\"")
+                Text(stringResource(R.string.ops_phrase_b), style = MaterialTheme.typography.bodyMedium, color = p.ink)
+                Line(example, "\"purchase order\"", stringResource(R.string.ops_phrase_ex))
+                Text(stringResource(R.string.ops_phrase_ai), style = MaterialTheme.typography.bodyMedium, color = p.muted)
+
+                Spacer(Modifier.height(8.dp))
+                Heading(stringResource(R.string.ops_req_h), "+word")
+                Text(stringResource(R.string.ops_req_b), style = MaterialTheme.typography.bodyMedium, color = p.ink)
+                Line(example, "+invoice hosting march", stringResource(R.string.ops_req_ex))
+                Line(phraseToo, "+\"purchase order\"", stringResource(R.string.ops_req_phrase))
+
+                Spacer(Modifier.height(8.dp))
+                Heading(stringResource(R.string.ops_exc_h), "-word")
+                Text(stringResource(R.string.ops_exc_b), style = MaterialTheme.typography.bodyMedium, color = p.ink)
+                Line(example, "invoice -newsletter", stringResource(R.string.ops_exc_ex))
+                Line(phraseToo, "-\"order confirmation\"", stringResource(R.string.ops_exc_phrase))
+
+                Spacer(Modifier.height(8.dp))
+                Heading(stringResource(R.string.ops_comb_h), null)
+                Text(stringResource(R.string.ops_comb_b), style = MaterialTheme.typography.bodyMedium, color = p.ink)
+                Line(example, "+invoice +\"purchase order\" -newsletter", stringResource(R.string.ops_comb_ex))
+
+                Spacer(Modifier.height(8.dp))
+                Heading(stringResource(R.string.ops_why_h), null)
+                Text(stringResource(R.string.ops_why_b), style = MaterialTheme.typography.bodyMedium, color = p.ink)
+            }
+        },
+        confirmButton = { androidx.compose.material3.TextButton(onClick = onDismiss) { Text(stringResource(R.string.ops_close), color = p.accent) } },
+        containerColor = p.paper,
+        titleContentColor = p.ink,
+        textContentColor = p.ink,
+    )
 }
 
 private const val BEST_KEY = "BEST:best"

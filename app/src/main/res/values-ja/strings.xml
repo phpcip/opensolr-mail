@@ -295,4 +295,27 @@
     <string name="text_size">文字サイズ</string>
     <string name="text_size_value">標準の %1$d%%</string>
     <string name="text_size_sample">メッセージはこの大きさで表示され、入力されます。</string>
+    <string name="cd_search_help">検索演算子</string>
+    <string name="ops_title">検索演算子</string>
+    <string name="ops_sub">フレーズ、必須語、除外語で検索を絞り込みます。</string>
+    <string name="ops_example">例:</string>
+    <string name="ops_phrase_too">フレーズにも使えます:</string>
+    <string name="ops_close">閉じる</string>
+    <string name="ops_phrase_h">完全一致フレーズ</string>
+    <string name="ops_phrase_b">語を二重引用符で囲むと、その順番で隣り合うものだけに一致します。</string>
+    <string name="ops_phrase_ex">二つの語がこの順で並ぶメッセージだけを見つけます。</string>
+    <string name="ops_phrase_ai">単独のフレーズは語句検索側にだけ効きます。絞り込むには AI をオフにします。前に + か - を付けたフレーズは常に絞り込みます。</string>
+    <string name="ops_req_h">必須語</string>
+    <string name="ops_req_b">語の前に + を付けると、すべての結果に必須になります。他の語は順位に効きますが必須ではありません。</string>
+    <string name="ops_req_ex">すべての結果に \"invoice\" が含まれます。他の語はそれを含むメッセージを上げるだけです。</string>
+    <string name="ops_req_phrase">すべての結果に二つの語がこの順で並んで含まれます。</string>
+    <string name="ops_exc_h">除外語</string>
+    <string name="ops_exc_b">語の前に - を付けると、その語を含むメッセージを除外します。</string>
+    <string name="ops_exc_ex">ニュースレターをすべて隠します。</string>
+    <string name="ops_exc_phrase">このフレーズを含むメッセージを除外します。</string>
+    <string name="ops_comb_h">組み合わせ</string>
+    <string name="ops_comb_b">三つとも一つの検索で一緒に使えます。</string>
+    <string name="ops_comb_ex">\"invoice\" とフレーズ \"purchase order\" を含み、ニュースレターは除外します。</string>
+    <string name="ops_why_h">AI オンで役立つ理由</string>
+    <string name="ops_why_b">AI 検索は意味の近い、求めていないメッセージも出します。hosting invoice で見積もりも出ることがあります。+invoice でそれを含むものだけが残ります。</string>
 </resources>

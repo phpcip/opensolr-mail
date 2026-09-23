@@ -295,4 +295,27 @@
     <string name="text_size">Textgröße</string>
     <string name="text_size_value">%1$d%% der Standardgröße</string>
     <string name="text_size_sample">So lesen sich Ihre Nachrichten und so schreiben Sie sie.</string>
+    <string name="cd_search_help">Suchoperatoren</string>
+    <string name="ops_title">Suchoperatoren</string>
+    <string name="ops_sub">Verfeinere die Suche mit Phrasen, Pflicht- und Ausschlusswörtern.</string>
+    <string name="ops_example">Beispiel:</string>
+    <string name="ops_phrase_too">Geht auch mit einer Phrase:</string>
+    <string name="ops_close">Schließen</string>
+    <string name="ops_phrase_h">Exakte Phrase</string>
+    <string name="ops_phrase_b">Setze Wörter in Anführungszeichen, um sie genau in dieser Reihenfolge nebeneinander zu finden.</string>
+    <string name="ops_phrase_ex">findet nur Nachrichten, in denen beide Wörter zusammen in dieser Reihenfolge stehen.</string>
+    <string name="ops_phrase_ai">Allein wirkt eine Phrase nur auf die Wortsuche. Schalte AI aus, damit sie filtert. Mit + oder - davor filtert eine Phrase immer.</string>
+    <string name="ops_req_h">Pflichtwort</string>
+    <string name="ops_req_b">Ein + vor einem Wort erzwingt es in jedem Ergebnis. Die anderen Wörter helfen bei der Reihenfolge, sind aber nicht Pflicht.</string>
+    <string name="ops_req_ex">jedes Ergebnis muss \"invoice\" enthalten; die anderen Wörter heben nur Nachrichten, die sie haben.</string>
+    <string name="ops_req_phrase">jedes Ergebnis muss beide Wörter zusammen in dieser Reihenfolge enthalten.</string>
+    <string name="ops_exc_h">Ausgeschlossenes Wort</string>
+    <string name="ops_exc_b">Ein - vor einem Wort entfernt jede Nachricht, die es enthält.</string>
+    <string name="ops_exc_ex">blendet alle Newsletter aus.</string>
+    <string name="ops_exc_phrase">entfernt jede Nachricht mit genau dieser Phrase.</string>
+    <string name="ops_comb_h">Kombinieren</string>
+    <string name="ops_comb_b">Alle drei funktionieren zusammen in einer Suche.</string>
+    <string name="ops_comb_ex">muss \"invoice\" und die Phrase \"purchase order\" enthalten, nichts aus Newslettern.</string>
+    <string name="ops_why_h">Warum das mit AI zählt</string>
+    <string name="ops_why_b">Die AI-Suche bringt auch Nachrichten mit ähnlicher Bedeutung, die du nicht willst: hosting invoice bringt vielleicht auch Angebote. +invoice behält nur die, die es sagen.</string>
 </resources>

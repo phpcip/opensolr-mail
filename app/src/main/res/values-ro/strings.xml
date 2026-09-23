@@ -295,4 +295,27 @@
     <string name="text_size">Mărimea textului</string>
     <string name="text_size_value">%1$d%% din mărimea standard</string>
     <string name="text_size_sample">Așa se citesc mesajele tale și așa le scrii.</string>
+    <string name="cd_search_help">Operatori de căutare</string>
+    <string name="ops_title">Operatori de căutare</string>
+    <string name="ops_sub">Rafinează căutarea cu fraze, cuvinte obligatorii și cuvinte excluse.</string>
+    <string name="ops_example">Exemplu:</string>
+    <string name="ops_phrase_too">Merge și pe o frază:</string>
+    <string name="ops_close">Închide</string>
+    <string name="ops_phrase_h">Frază exactă</string>
+    <string name="ops_phrase_b">Pune cuvintele între ghilimele ca să le găsești exact în ordinea asta, unul lângă altul.</string>
+    <string name="ops_phrase_ex">găsește doar mesajele în care cele două cuvinte apar împreună, în ordinea asta.</string>
+    <string name="ops_phrase_ai">Singură, o frază lucrează doar pe partea de cuvinte a căutării. Oprește AI ca să filtreze rezultatele. Cu + sau - în față, o frază filtrează mereu.</string>
+    <string name="ops_req_h">Cuvânt obligatoriu</string>
+    <string name="ops_req_b">Pune + în fața unui cuvânt ca să apară în fiecare rezultat. Celelalte cuvinte ajută la ordonare, dar nu sunt obligatorii.</string>
+    <string name="ops_req_ex">fiecare rezultat trebuie să conțină \"invoice\"; celelalte cuvinte doar ridică mesajele care le au.</string>
+    <string name="ops_req_phrase">fiecare rezultat trebuie să conțină cele două cuvinte împreună, în ordinea asta.</string>
+    <string name="ops_exc_h">Cuvânt exclus</string>
+    <string name="ops_exc_b">Pune - în fața unui cuvânt ca să scoți orice mesaj care îl conține.</string>
+    <string name="ops_exc_ex">ascunde toate newsletterele din rezultate.</string>
+    <string name="ops_exc_phrase">scoate orice mesaj care conține fraza exactă.</string>
+    <string name="ops_comb_h">Combină-le</string>
+    <string name="ops_comb_b">Toți trei merg împreună în aceeași căutare.</string>
+    <string name="ops_comb_ex">trebuie să conțină \"invoice\" și fraza exactă \"purchase order\", fără nimic din newslettere.</string>
+    <string name="ops_why_h">De ce contează cu AI pornit</string>
+    <string name="ops_why_b">Căutarea AI aduce și mesaje apropiate ca sens care nu sunt ce cauți: hosting invoice poate aduce și oferte. +invoice le păstrează doar pe cele care chiar o spun.</string>
 </resources>

@@ -295,4 +295,27 @@
     <string name="text_size">Tamaño del texto</string>
     <string name="text_size_value">%1$d%% del tamaño estándar</string>
     <string name="text_size_sample">Así se leen tus mensajes y así los escribes.</string>
+    <string name="cd_search_help">Operadores de búsqueda</string>
+    <string name="ops_title">Operadores de búsqueda</string>
+    <string name="ops_sub">Afina la búsqueda con frases, palabras obligatorias y palabras excluidas.</string>
+    <string name="ops_example">Ejemplo:</string>
+    <string name="ops_phrase_too">También con una frase:</string>
+    <string name="ops_close">Cerrar</string>
+    <string name="ops_phrase_h">Frase exacta</string>
+    <string name="ops_phrase_b">Pon las palabras entre comillas para encontrarlas en ese orden exacto, juntas.</string>
+    <string name="ops_phrase_ex">encuentra solo los mensajes donde esas dos palabras aparecen juntas, en ese orden.</string>
+    <string name="ops_phrase_ai">Sola, una frase actúa en la parte de palabras de la búsqueda. Apaga AI para que filtre. Con + o - delante, una frase siempre filtra.</string>
+    <string name="ops_req_h">Palabra obligatoria</string>
+    <string name="ops_req_b">Pon + delante de una palabra para exigirla en cada resultado. Las demás ayudan al orden, pero no son obligatorias.</string>
+    <string name="ops_req_ex">cada resultado debe contener \"invoice\"; las demás palabras solo suben los mensajes que las tienen.</string>
+    <string name="ops_req_phrase">cada resultado debe contener esas dos palabras juntas, en ese orden.</string>
+    <string name="ops_exc_h">Palabra excluida</string>
+    <string name="ops_exc_b">Pon - delante de una palabra para quitar todo mensaje que la contenga.</string>
+    <string name="ops_exc_ex">oculta todos los boletines.</string>
+    <string name="ops_exc_phrase">quita todo mensaje con esa frase exacta.</string>
+    <string name="ops_comb_h">Combínalos</string>
+    <string name="ops_comb_b">Los tres funcionan juntos en una misma búsqueda.</string>
+    <string name="ops_comb_ex">debe contener \"invoice\" y la frase \"purchase order\", nada de boletines.</string>
+    <string name="ops_why_h">Por qué importa con AI</string>
+    <string name="ops_why_b">La búsqueda AI también trae mensajes parecidos en sentido que no buscas: hosting invoice puede traer presupuestos. +invoice deja solo los que lo dicen.</string>
 </resources>

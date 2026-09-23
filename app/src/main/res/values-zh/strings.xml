@@ -295,4 +295,27 @@
     <string name="text_size">文字大小</string>
     <string name="text_size_value">标准大小的 %1$d%%</string>
     <string name="text_size_sample">邮件的阅读和书写都以此大小显示。</string>
+    <string name="cd_search_help">搜索运算符</string>
+    <string name="ops_title">搜索运算符</string>
+    <string name="ops_sub">用短语、必含词和排除词细化搜索。</string>
+    <string name="ops_example">示例：</string>
+    <string name="ops_phrase_too">短语也可以：</string>
+    <string name="ops_close">关闭</string>
+    <string name="ops_phrase_h">精确短语</string>
+    <string name="ops_phrase_b">用双引号把词括起来，只匹配按此顺序相邻出现的词。</string>
+    <string name="ops_phrase_ex">只找到这两个词按此顺序连在一起的邮件。</string>
+    <string name="ops_phrase_ai">单独的短语只作用于字词搜索部分。关闭 AI 才会筛选结果。前面加 + 或 - 的短语总是筛选。</string>
+    <string name="ops_req_h">必含词</string>
+    <string name="ops_req_b">在词前加 + 使每个结果都必须包含它。其他词只影响排序，不是必需的。</string>
+    <string name="ops_req_ex">每个结果都必须包含 \"invoice\"；其他词只提升包含它们的邮件。</string>
+    <string name="ops_req_phrase">每个结果都必须按此顺序包含这两个词。</string>
+    <string name="ops_exc_h">排除词</string>
+    <string name="ops_exc_b">在词前加 - 去掉所有包含它的邮件。</string>
+    <string name="ops_exc_ex">隐藏所有新闻通讯。</string>
+    <string name="ops_exc_phrase">去掉包含该精确短语的所有邮件。</string>
+    <string name="ops_comb_h">组合使用</string>
+    <string name="ops_comb_b">三种运算符可在一次搜索中一起使用。</string>
+    <string name="ops_comb_ex">必须包含 \"invoice\" 和短语 \"purchase order\"，不含新闻通讯。</string>
+    <string name="ops_why_h">开启 AI 时为何有用</string>
+    <string name="ops_why_b">AI 搜索也会带来意思相近但不是你要的邮件：hosting invoice 可能带来报价。+invoice 只保留真正提到它的邮件。</string>
 </resources>
