@@ -381,11 +381,16 @@ class MailSearch(private val context: Context) {
         fun heldOf(m: JSONObject) = localKey[m.optString("account_s")]?.let { held[it + ":" + m.optString("email_id_s")] }
         val out = ArrayList<AiPrompt.Doc>()
         val used = HashSet<String>()
-        var left = AI_WORDS
+        // The budget is in characters, what the model's tokens follow: mail text (numbers, addresses, links,
+        // diacritics) runs close to 2.5 characters a token, and the answer needs its own 8k tokens of the window.
+        var left = AI_CHARS
         fun add(doc: AiPrompt.Doc) {
             if (left <= 0 || !used.add(doc.id)) return
-            val text = cutWords(doc.text, minOf(AI_DOC_WORDS, left))
-            left -= words(text)
+            var text = cutWords(doc.text, AI_DOC_WORDS)
+            val room = left - doc.title.length - doc.description.length - DOC_OVERHEAD
+            if (room <= 0) { left = 0; return }
+            if (text.length > room) text = text.substring(0, text.lastIndexOf(' ', room).takeIf { it > 0 } ?: room)
+            left -= text.length + doc.title.length + doc.description.length + DOC_OVERHEAD
             out += doc.copy(text = text, score = null)
         }
         for (d in chosen) {
@@ -441,8 +446,6 @@ class MailSearch(private val context: Context) {
         earlier.forEach { e -> e.lines().forEach { l -> val n = norm(l); if (n.length >= MIN_REPEAT_CHARS) seen += n } }
         return text.lines().filterNot { l -> norm(l).let { it.length >= MIN_REPEAT_CHARS && it in seen } }.joinToString("\n")
     }
-
-    private fun words(text: String): Int = WORD.findAll(text).count()
 
     private fun cutWords(text: String, max: Int): String {
         if (max <= 0) return ""
@@ -517,9 +520,10 @@ class MailSearch(private val context: Context) {
         private const val TOP_K = 790
         private const val GROUP_LIMIT = 5
         private const val GROUP_ROWS = 20
-        /** Words one message may give the AI answer, and all of them together: what fits the model with room to answer. */
+        /** Words one message may give the AI answer, and characters for all of them together: what fits the model with room to answer. */
         private const val AI_DOC_WORDS = 10_000
-        private const val AI_WORDS = 20_000
+        private const val AI_CHARS = 64_000
+        private const val DOC_OVERHEAD = 120
         /** A repeated line this long is a quote; shorter ones ("Thanks,", "Hi John") can be written again. */
         private const val MIN_REPEAT_CHARS = 16
         private val FORWARD_LINE = Regex("(?i)-{2,}\\s*Forwarded message|^Begin forwarded message")
