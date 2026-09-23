@@ -115,7 +115,7 @@ class IndexWorker(context: Context, params: WorkerParameters) : CoroutineWorker(
         if (!AppPrefs(ctx).signedIn || AppPrefs(ctx).indexStopped) return Result.success()
         // The notification appears only once there is real work, and changes at most every 10 seconds:
         // a run with nothing to do never flashes it, and a busy one does not flicker.
-        val watcher = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.Default).launch {
+        val watcher = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.Default).launch(com.opensolr.mail.ui.Guard) {
             var shown = false
             var last = 0L
             var busySince = 0L
@@ -132,7 +132,7 @@ class IndexWorker(context: Context, params: WorkerParameters) : CoroutineWorker(
             }
         }
         // Check again even when the status stops changing, so a long quiet stretch still shows.
-        val ticker = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.Default).launch {
+        val ticker = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.Default).launch(com.opensolr.mail.ui.Guard) {
             kotlinx.coroutines.delay(16_000L)
             val st = MailIndexer.status.value
             if (st.phase != MailIndexer.Phase.IDLE) goForeground(st)

@@ -139,7 +139,7 @@ fun NoteEditScreen(vm: AppViewModel, acc: String, noteId: String?) {
         if (!dirty || (title.isBlank() && text.isBlank())) { vm.back(); return }
         if (saving) return
         saving = true
-        scope.launch {
+        scope.launch(com.opensolr.mail.ui.Guard) {
             try {
                 notes.save(noteId, title, text, content?.uuid, content?.created, pinned)
                 vm.back()
@@ -159,7 +159,7 @@ fun NoteEditScreen(vm: AppViewModel, acc: String, noteId: String?) {
         TopBar(if (noteId == null) stringResource(R.string.new_note) else stringResource(R.string.notes), onBack = { saveAndLeave() }) {
             IconBtn(R.drawable.ic_pin, { pinned = !pinned }, tint = if (pinned) p.accent else null)
             if (noteId != null) IconBtn(R.drawable.ic_delete, {
-                scope.launch {
+                scope.launch(com.opensolr.mail.ui.Guard) {
                     runCatching { notes.delete(noteId) }.onFailure { vm.message = it.message }.onSuccess { vm.back() }
                 }
             })

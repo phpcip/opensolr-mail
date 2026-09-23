@@ -114,8 +114,10 @@ fun ThreadListScreen(vm: AppViewModel, view: View) {
     val hidden = vm.hiddenThreads.keys.toSet()
     val pinnedLabel = stringResource(R.string.flagged)
     val groups = remember(rows, pinned, grouping, accounts, hidden, pinnedLabel) {
-        val shown = if (hidden.isEmpty()) rows else rows.filterNot { (it.acc + ":" + it.threadId) in hidden }
-        val top = if (hidden.isEmpty()) pinned else pinned.filterNot { (it.acc + ":" + it.threadId) in hidden }
+        val top = (if (hidden.isEmpty()) pinned else pinned.filterNot { (it.acc + ":" + it.threadId) in hidden }).distinctBy { it.acc + ":" + it.threadId }
+        // Each conversation shows once: never in the pinned group and in the list below it at the same time.
+        val onTop = top.mapTo(HashSet()) { it.acc + ":" + it.threadId }
+        val shown = rows.filterNot { (it.acc + ":" + it.threadId).let { k -> k in hidden || k in onTop } }.distinctBy { it.acc + ":" + it.threadId }
         (if (top.isEmpty()) emptyList() else listOf(RowGroup("pinned", pinnedLabel, top))) +
             (if (grouping == ListGroup.NONE) listOf(RowGroup("all", "", shown)) else groupRows(shown, grouping) { k -> accounts.firstOrNull { it.key == k }?.username ?: k })
     }
@@ -154,11 +156,21 @@ fun ThreadListScreen(vm: AppViewModel, view: View) {
 
     LaunchedEffect(view, version, limit) {
         // Flagged conversations are pinned above everything else in every view but Flagged itself.
-        if (view == View.Flagged) {
-            rows = vm.threads(view, limit)
-        } else {
-            pinned = vm.threads(view, 500, flagged = true)
-            rows = vm.threads(view, limit, flagged = false)
+        // Both lists are read first and shown together: a conversation just flagged is never in both at
+        // once, which would give the list the same row twice.
+        try {
+            if (view == View.Flagged) {
+                rows = vm.threads(view, limit)
+            } else {
+                val top = vm.threads(view, 500, flagged = true)
+                val rest = vm.threads(view, limit, flagged = false)
+                pinned = top
+                rows = rest
+            }
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            android.util.Log.w("ThreadList", "list read failed", e)
         }
         loaded = true
     }
@@ -493,7 +505,7 @@ internal fun SwipeRow(key: Any, onDelete: () -> Unit, onFlag: () -> Unit, enable
         kotlin.math.abs(x) >= widthPx * 0.20f -> 1
         else -> 0
     }
-    fun settle() { raw = 0f; stage = 0; scope.launch { shown.animateTo(0f, androidx.compose.animation.core.tween(180)) } }
+    fun settle() { raw = 0f; stage = 0; scope.launch(com.opensolr.mail.ui.Guard) { shown.animateTo(0f, androidx.compose.animation.core.tween(180)) } }
     Box(
         Modifier.fillMaxWidth().onSizeChanged { widthPx = it.width.toFloat() }.then(
             if (!enabled) Modifier else Modifier.pointerInput(Unit) {
@@ -514,7 +526,7 @@ internal fun SwipeRow(key: Any, onDelete: () -> Unit, onFlag: () -> Unit, enable
                             if (next == 2) Haptics.heavy(view) else if (next > stage) Haptics.tick(view, false) else Haptics.tick(view, false)
                             stage = next
                         }
-                        scope.launch { shown.snapTo(x) }
+                        scope.launch(com.opensolr.mail.ui.Guard) { shown.snapTo(x) }
                     },
                 )
             }

@@ -163,7 +163,7 @@ fun SearchScreen(vm: AppViewModel, sheet: String?) {
 
     fun run() {
         vm.searchFilters = filters
-        scope.launch {
+        scope.launch(com.opensolr.mail.ui.Guard) {
             loading = true
             error = null
             try {
@@ -211,7 +211,8 @@ fun SearchScreen(vm: AppViewModel, sheet: String?) {
         ((r?.hits.orEmpty()) + extraHits).distinctBy { it.acc + ":" + it.threadId.ifEmpty { it.emailId } }
             .distinctBy { it.messageId.ifEmpty { it.acc + ":" + it.emailId } }
     }
-    val shownGroups = (r?.groups.orEmpty()) + extraGroups
+    // A group comes once even if a later page repeats it: two items with one key would close the app.
+    val shownGroups = ((r?.groups.orEmpty()) + extraGroups).distinctBy { it.value }
     // Best matches / Also similar, as in Opensolr Photos: the cut is made once, on the first page, where the
     // score falls the most below the share of the best one; every later page is Also similar.
     val bestKeys = remember(r, groupBy, submitted) {
@@ -269,12 +270,13 @@ fun SearchScreen(vm: AppViewModel, sheet: String?) {
     // Flag and read state as this phone holds it, which leads the index: one query per account for the results shown.
     val dbVersion by vm.db.version.collectAsState()
     var held by remember { mutableStateOf<Map<String, Pair<Boolean, Boolean>>>(emptyMap()) }
-    LaunchedEffect(shownHits, shownGroups, dbVersion) {
-        val hits = shownHits + shownGroups.flatMap { it.hits }
-        held = withContext(Dispatchers.IO) {
-            hits.filter { it.threadId.isNotEmpty() }.groupBy { it.acc }.flatMap { (acc, hs) ->
-                vm.db.threadStates(acc, hs.map { it.threadId }).map { (t, st) -> "$acc:$t" to st }
-            }.toMap()
+    LaunchedEffect(shownHits, shownGroups, dbVersion) { com.opensolr.mail.ui.guarded {
+            val hits = shownHits + shownGroups.flatMap { it.hits }
+            held = withContext(Dispatchers.IO) {
+                hits.filter { it.threadId.isNotEmpty() }.groupBy { it.acc }.flatMap { (acc, hs) ->
+                    vm.db.threadStates(acc, hs.map { it.threadId }).map { (t, st) -> "$acc:$t" to st }
+                }.toMap()
+            }
         }
     }
     fun flaggedOf(h: MailSearch.Hit) = flagNow[keyOf(h)] ?: held[keyOf(h)]?.first ?: h.flagged

@@ -97,7 +97,7 @@ fun ComposeScreen(vm: AppViewModel, init: ComposeInit) {
     val dirty = to != init.to || cc != init.cc || bcc.isNotBlank() || subject != init.subject || body.trim() != (signature + init.body).trim() || files.isNotEmpty()
 
     val pick = rememberLauncherForActivityResult(ActivityResultContracts.GetMultipleContents()) { uris ->
-        scope.launch {
+        scope.launch(com.opensolr.mail.ui.Guard) {
             uris.forEach { uri -> copyIn(context, uri)?.let { files += it } ?: vm.toast(R.string.attach_failed) }
         }
     }

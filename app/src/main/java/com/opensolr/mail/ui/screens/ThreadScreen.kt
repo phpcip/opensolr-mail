@@ -94,7 +94,7 @@ fun ThreadScreen(vm: AppViewModel, acc: String, threadId: String) {
         saving = null
         if (uri == null) return@rememberLauncherForActivityResult
         val a0 = vm.store.get(acc) ?: return@rememberLauncherForActivityResult
-        scope.launch {
+        scope.launch(com.opensolr.mail.ui.Guard) {
             try {
                 val tmp = File(context.cacheDir, "attachments/save.tmp").apply { parentFile?.mkdirs() }
                 Jmap(context, a0).download(a.blobId, a.name, a.type, tmp)
@@ -112,30 +112,32 @@ fun ThreadScreen(vm: AppViewModel, acc: String, threadId: String) {
     val zoomed = remember(threadId) { androidx.compose.runtime.mutableStateMapOf<String, Boolean>() }
 
     var loadedOnce by remember(threadId) { mutableStateOf(false) }
-    LaunchedEffect(threadId, version) {
-        // Newest message on top, like the list the conversation was opened from.
-        val list = vm.openThread(acc, threadId).sortedByDescending { it.received }
-        // The messages that were new when the conversation opened stay marked as new while it is open.
-        if (arrivedNew == null) arrivedNew = list.filter { !it.seen }.map { it.id }.toSet()
-        messages = list
-        loadedOnce = true
-        if (list.isNotEmpty() && expanded.isEmpty()) {
-            val remembered = vm.threadOpen[acc + ":" + threadId]
-            if (remembered != null) remembered.forEach { expanded[it] = true }
-            else {
-                list.forEach { m -> if (!m.seen) expanded[m.id] = true }
-                expanded[list.first().id] = true
+    LaunchedEffect(threadId, version) { com.opensolr.mail.ui.guarded {
+            // Newest message on top, like the list the conversation was opened from.
+            val list = vm.openThread(acc, threadId).sortedByDescending { it.received }
+            // The messages that were new when the conversation opened stay marked as new while it is open.
+            if (arrivedNew == null) arrivedNew = list.filter { !it.seen }.map { it.id }.toSet()
+            messages = list
+            loadedOnce = true
+            if (list.isNotEmpty() && expanded.isEmpty()) {
+                val remembered = vm.threadOpen[acc + ":" + threadId]
+                if (remembered != null) remembered.forEach { expanded[it] = true }
+                else {
+                    list.forEach { m -> if (!m.seen) expanded[m.id] = true }
+                    expanded[list.first().id] = true
+                }
             }
+            val unread = list.filter { !it.seen }.map { it.id }
+            if (unread.isNotEmpty()) vm.markThreadRead(acc, unread)
         }
-        val unread = list.filter { !it.seen }.map { it.id }
-        if (unread.isNotEmpty()) vm.markThreadRead(acc, unread)
     }
     LaunchedEffect(expanded.toMap()) {
         if (messages.isNotEmpty()) vm.threadOpen[acc + ":" + threadId] = expanded.filterValues { it }.keys.toSet()
     }
-    LaunchedEffect(messages, expanded.toMap()) {
-        val missing = messages.filter { expanded[it.id] == true && bodies[it.id] == null }
-        if (missing.isNotEmpty()) vm.bodies(missing).forEach { bodies[it.id] = it }
+    LaunchedEffect(messages, expanded.toMap()) { com.opensolr.mail.ui.guarded {
+            val missing = messages.filter { expanded[it.id] == true && bodies[it.id] == null }
+            if (missing.isNotEmpty()) vm.bodies(missing).forEach { bodies[it.id] = it }
+        }
     }
 
     val latest = messages.firstOrNull()
@@ -143,7 +145,7 @@ fun ThreadScreen(vm: AppViewModel, acc: String, threadId: String) {
 
     fun reply(kind: Replies.Kind, target: Message? = null) {
         val m = target ?: latest ?: return
-        scope.launch {
+        scope.launch(com.opensolr.mail.ui.Guard) {
             val full = bodies[m.id] ?: vm.body(m)
             val d = withContext(Dispatchers.IO) { Replies.build(kind, full, vm.db.identities(acc)) }
             val att = kind == Replies.Kind.FORWARD
@@ -257,14 +259,14 @@ fun ThreadScreen(vm: AppViewModel, acc: String, threadId: String) {
                                 if (isZoomed) Modifier.fillMaxWidth().heightIn(min = 40.dp, max = maxBody) else Modifier.fillMaxWidth().heightIn(min = 40.dp),
                                 onZoomed = { z -> zoomed[m.id] = z },
                                 onEdgeDrag = { dy -> threadScroll.dispatchRawDelta(-dy) },
-                                onEdgeFling = { vy -> scope.launch { threadScroll.animateScrollBy(-vy * 0.35f) } },
+                                onEdgeFling = { vy -> scope.launch(com.opensolr.mail.ui.Guard) { threadScroll.animateScrollBy(-vy * 0.35f) } },
                             )
                             val files = full.attachments.filter { !it.inline || it.cid == null }
                             if (files.isNotEmpty()) Attachments(files, onSave = { a ->
                                 // Download only: the file goes to Downloads, the system notification opens it later.
                                 val a0 = vm.store.get(acc) ?: return@Attachments
                                 vm.toast(R.string.att_downloading, com.opensolr.mail.ui.AttachmentDownloads.fileName(a))
-                                scope.launch {
+                                scope.launch(com.opensolr.mail.ui.Guard) {
                                     when (val r = com.opensolr.mail.ui.AttachmentDownloads.download(context, a0, a)) {
                                         is com.opensolr.mail.ui.AttachmentDownloads.Result.Done -> vm.toast(R.string.att_saved_downloads, com.opensolr.mail.ui.AttachmentDownloads.fileName(a))
                                         is com.opensolr.mail.ui.AttachmentDownloads.Result.Failed -> vm.message = r.reason
@@ -274,7 +276,7 @@ fun ThreadScreen(vm: AppViewModel, acc: String, threadId: String) {
                                 // Open: the whole file is downloaded into Downloads first, then that file is opened.
                                 val a0 = vm.store.get(acc) ?: return@Attachments
                                 vm.toast(R.string.att_downloading, com.opensolr.mail.ui.AttachmentDownloads.fileName(a))
-                                scope.launch {
+                                scope.launch(com.opensolr.mail.ui.Guard) {
                                     when (val r = com.opensolr.mail.ui.AttachmentDownloads.download(context, a0, a)) {
                                         is com.opensolr.mail.ui.AttachmentDownloads.Result.Done -> {
                                             if (com.opensolr.mail.ui.AttachmentDownloads.open(context, r.uri, r.type)) vm.message = null

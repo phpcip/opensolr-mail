@@ -196,7 +196,7 @@ fun BoxScope.FastScroller(state: LazyListState, index: ScrollIndex, minItems: In
             lastInto = into
             aimed = target
             job?.cancel()
-            job = scope.launch { state.scrollToItem(target, into.roundToInt()) }
+            job = scope.launch(com.opensolr.mail.ui.Guard) { state.scrollToItem(target, into.roundToInt()) }
         }
 
         // As in Opensolr Photos: while it shows, the whole right strip takes the finger; hidden, it takes nothing, so a
@@ -278,7 +278,7 @@ fun BoxScope.FastScroller(state: ScrollState, marks: ScrollMarks, minScreens: Fl
                 if (crossed > 0) Haptics.tick(view, crossed > 1)
             }
             aimedPx = wanted
-            scope.launch { state.scrollTo(wanted) }
+            scope.launch(com.opensolr.mail.ui.Guard) { state.scrollTo(wanted) }
         }
 
         val px = if (dragging && aimedPx >= 0) aimedPx else state.value

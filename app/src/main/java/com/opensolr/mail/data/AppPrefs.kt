@@ -132,7 +132,7 @@ class AppPrefs(context: Context) {
     /** How the mail lists are grouped; by day unless changed. */
     /** The order of the folders under All accounts, as keys: the roles and "flagged". */
     var unifiedOrder: List<String>
-        get() = sp.getString("unified_order", null)?.split(",")?.filter { it.isNotBlank() } ?: emptyList()
+        get() = sp.getString("unified_order", null)?.split(",")?.filter { it.isNotBlank() }?.distinct() ?: emptyList()
         set(v) = sp.edit().putString("unified_order", v.joinToString(",")).apply()
 
     /** Size of message text, reading and writing, in percent of the standard size. */

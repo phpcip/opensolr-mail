@@ -84,10 +84,11 @@ fun MailboxesScreen(vm: AppViewModel) {
         open = if (key in open) open - key else open + key
         vm.prefs.openSections = open
     }
-    LaunchedEffect(version, accounts) {
-        val loaded = withContext(Dispatchers.IO) { vm.db.mailboxes() to vm.db.unreadByRole() }
-        boxes = loaded.first
-        unread = loaded.second
+    LaunchedEffect(version, accounts) { com.opensolr.mail.ui.guarded {
+            val loaded = withContext(Dispatchers.IO) { vm.db.mailboxes() to vm.db.unreadByRole() }
+            boxes = loaded.first
+            unread = loaded.second
+        }
     }
     Column(Modifier.fillMaxSize()) {
         TopBar(stringResource(R.string.mailboxes)) {

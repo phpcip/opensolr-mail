@@ -21,7 +21,7 @@ class NotificationActions : BroadcastReceiver() {
         val id = intent.getStringExtra(EXTRA_MSG) ?: return
         val reply = RemoteInput.getResultsFromIntent(intent)?.getCharSequence(Notifier.KEY_REPLY)?.toString()
         val pending = goAsync()
-        scope.launch {
+        scope.launch(com.opensolr.mail.ui.Guard) {
             try {
                 val actions = MailActions(context)
                 when (intent.action) {

@@ -101,7 +101,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         if (name.isBlank()) return
         if (minAgeMs > 0 && (limits?.refreshedAt ?: 0) > System.currentTimeMillis() - minAgeMs) return
         limitsLoading = true
-        viewModelScope.launch {
+        viewModelScope.launch(Guard) {
             try {
                 val l = com.opensolr.mail.net.OpensolrApi(prefs).accountSummary(name, limits)
                 prefs.limits = l
@@ -175,7 +175,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     var searchQuery = ""
 
     fun indexNow() {
-        viewModelScope.launch(Dispatchers.IO) { Work.indexNow(ctx) }
+        viewModelScope.launch(Dispatchers.IO + Guard) { Work.indexNow(ctx) }
     }
 
     fun stopIndex() {
@@ -185,7 +185,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     /** Repair: asks once more for the vectors that are missing, then indexes. */
     fun repairVectors() {
-        viewModelScope.launch(Dispatchers.IO) {
+        viewModelScope.launch(Dispatchers.IO + Guard) {
             try {
                 val n = com.opensolr.mail.index.MailIndexer(ctx).queueMissingVectors()
                 Work.indexNow(ctx)
@@ -201,7 +201,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     /** Reindex (keep the data), Reindex clean (empty first, then index) or Reset (empty and stay stopped). */
     fun startOver(wipe: Boolean, restart: Boolean) {
         Work.stopIndex(ctx)
-        viewModelScope.launch(Dispatchers.IO) {
+        viewModelScope.launch(Dispatchers.IO + Guard) {
             try {
                 com.opensolr.mail.index.MailIndexer(ctx).startOver(wipe, restart)
                 if (restart) Work.indexNow(ctx)
@@ -245,7 +245,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     fun startFastmailSignIn(context: Context) = FastmailAuth.start(context, prefs)
 
     fun onAuthCallback(uri: Uri) {
-        viewModelScope.launch {
+        viewModelScope.launch(Guard) {
             try {
                 when {
                     OpensolrAuth.isCallback(uri) -> {
@@ -273,12 +273,12 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     /** Opensolr signed in: register the phone, start the index. */
     private fun onReady() {
         Work.schedule(ctx)
-        viewModelScope.launch { runCatching { MailPush.ensure(ctx) } }
+        viewModelScope.launch(Guard) { runCatching { MailPush.ensure(ctx) } }
         Work.index(ctx)
     }
 
     fun signOutOpensolr() {
-        viewModelScope.launch {
+        viewModelScope.launch(Guard) {
             runCatching { com.opensolr.mail.net.OpensolrApi(prefs).pushUnregister(null) }
             // The relay addresses are gone: every account subscribes again at the next sign-in instead of trusting a dead one.
             store.all().forEach { a -> store.update(a.key) { it.copy(pushExpires = 0, pushVerified = false) } }
@@ -290,7 +290,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun removeAccount(a: MailAccount) {
-        viewModelScope.launch {
+        viewModelScope.launch(Guard) {
             runCatching { MailPush.remove(ctx, a) }
             if (prefs.signedIn) runCatching {
                 val c = MailIndex(ctx).ensure()
@@ -318,7 +318,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     fun refresh() {
         if (refreshJob?.isActive == true) return
-        refreshJob = viewModelScope.launch {
+        refreshJob = viewModelScope.launch(Guard) {
             busy = true
             try {
                 val arrived = ArrayList<Message>()
@@ -394,11 +394,11 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun viewModelScopeLaunch(block: suspend () -> Unit) {
-        viewModelScope.launch { block() }
+        viewModelScope.launch(Guard) { block() }
     }
 
     private fun io(block: () -> Unit) {
-        viewModelScope.launch(Dispatchers.IO) { block() }
+        viewModelScope.launch(Dispatchers.IO + Guard) { block() }
     }
 
     fun markThreadRead(acc: String, ids: kotlin.collections.List<String>) {
@@ -416,7 +416,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     /** Whole conversations reported as spam: they leave the lists by moving to Junk, where they show. */
     fun reportJunkRows(rows: kotlin.collections.List<ThreadRow>) {
         if (rows.isEmpty()) return
-        viewModelScope.launch {
+        viewModelScope.launch(Guard) {
             rows.groupBy { it.acc }.forEach { (acc, rs) ->
                 val ids = rs.flatMap { threadIds(it) }
                 withContext(Dispatchers.IO) { db.hide(acc, rs.map { it.threadId }, forever = false) }
@@ -432,7 +432,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     fun forwardSelected(rows: kotlin.collections.List<ThreadRow>) {
         if (rows.isEmpty()) return
         toast(R.string.preparing_forward)
-        viewModelScope.launch {
+        viewModelScope.launch(Guard) {
             val files = ArrayList<com.opensolr.mail.jmap.MailActions.OutFile>()
             val subjects = ArrayList<String>()
             withContext(Dispatchers.IO) {
@@ -484,7 +484,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         aiQuestion = question
         aiText = ""
         aiRunning = true
-        aiJob = viewModelScope.launch {
+        aiJob = viewModelScope.launch(Guard) {
             val me = coroutineContext[Job]
             try {
                 search.answer(question, top, highlights) { chunk -> if (aiJob === me) aiText = (aiText ?: "") + chunk }
@@ -524,7 +524,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     val hiddenThreads = androidx.compose.runtime.mutableStateMapOf<String, Boolean>()
 
     private fun offerUndo(text: String, onUndo: () -> Unit, commit: suspend () -> Unit) {
-        undo?.let { previous -> viewModelScope.launch { previous.commit() } }
+        undo?.let { previous -> viewModelScope.launch(Guard) { previous.commit() } }
         undo = Undo(System.nanoTime(), text, onUndo, commit)
     }
 
@@ -538,7 +538,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     fun commitUndo(id: Long) {
         val u = undo?.takeIf { it.id == id } ?: return
         undo = null
-        viewModelScope.launch { u.commit() }
+        viewModelScope.launch(Guard) { u.commit() }
     }
 
     /** A confirmed swipe delete: hidden at once, sent only when the undo bar is gone. */
@@ -557,7 +557,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     /** A swipe flag or unflag, applied at once and undone by putting the flags back as they were. */
     fun toggleFlagWithUndo(row: ThreadRow, onUndone: () -> Unit = {}) {
-        viewModelScope.launch {
+        viewModelScope.launch(Guard) {
             val ids = threadIds(row)
             if (row.flagged) {
                 val before = withContext(Dispatchers.IO) { db.messages(row.acc, ids).filter { it.flagged }.map { it.id } }
@@ -642,7 +642,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     fun checkForUpdate() {
         if (com.opensolr.mail.net.SelfUpdate.fromPlay(ctx)) return
         if (System.currentTimeMillis() - prefs.lastUpdateCheck < UPDATE_CHECK_INTERVAL_MS) return
-        viewModelScope.launch {
+        viewModelScope.launch(Guard) {
             val u = UpdateCheck.check().getOrNull() ?: return@launch
             prefs.lastUpdateCheck = System.currentTimeMillis()
             update = u
@@ -653,7 +653,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         if (updateChecking) return
         updateChecking = true
         updateResult = null
-        viewModelScope.launch {
+        viewModelScope.launch(Guard) {
             val outcome = UpdateCheck.check()
             prefs.lastUpdateCheck = System.currentTimeMillis()
             val u = outcome.getOrNull()
@@ -676,7 +676,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         }
         updateProgress = 0
         updateInstallError = null
-        viewModelScope.launch {
+        viewModelScope.launch(Guard) {
             val outcome = com.opensolr.mail.net.SelfUpdate.downloadAndInstall(context.applicationContext, newer.apkUrl) { pct -> updateProgress = pct }
             updateProgress = null
             updateInstallError = when (outcome) {
@@ -692,13 +692,13 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     init {
         MailIndexer(app).restore()
-        if (prefs.signedIn && !prefs.hasDeviceKey) viewModelScope.launch {
+        if (prefs.signedIn && !prefs.hasDeviceKey) viewModelScope.launch(Guard) {
             try { com.opensolr.mail.net.OpensolrApi(prefs).upgradeToDeviceKey() } catch (e: CancellationException) { throw e } catch (e: Exception) { signInRequired(e) }
         }
         if (store.all().isNotEmpty()) {
             Work.schedule(app)
             refresh()
-            viewModelScope.launch { delay(1500); runCatching { MailPush.ensure(ctx) } }
+            viewModelScope.launch(Guard) { delay(1500); runCatching { MailPush.ensure(ctx) } }
         }
     }
 

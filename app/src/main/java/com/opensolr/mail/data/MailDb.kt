@@ -288,12 +288,12 @@ class MailDb private constructor(context: Context) : SQLiteOpenHelper(context.ap
     }
 
     fun message(acc: String, id: String): Message? =
-        readableDatabase.rawQuery("SELECT $MSG_COLS FROM message WHERE acc = ? AND id = ?", arrayOf(acc, id)).use { c ->
+        readableDatabase.rawQuery("SELECT $MSG_COLS FROM message WHERE acc = ? AND id = ?", arrayOf(acc, id)).roomy().use { c ->
             if (c.moveToFirst()) readMessage(c) else null
         }?.let { withBoxes(listOf(it)).first() }
 
     fun thread(acc: String, threadId: String): List<Message> =
-        withBoxes(readableDatabase.rawQuery("SELECT $MSG_COLS FROM message WHERE acc = ? AND thread = ? ORDER BY received ASC", arrayOf(acc, threadId)).use { c ->
+        withBoxes(readableDatabase.rawQuery("SELECT $MSG_COLS FROM message WHERE acc = ? AND thread = ? ORDER BY received ASC", arrayOf(acc, threadId)).roomy().use { c ->
             generateSequence { if (c.moveToNext()) readMessage(c) else null }.toList()
         })
 
@@ -302,7 +302,7 @@ class MailDb private constructor(context: Context) : SQLiteOpenHelper(context.ap
         val out = ArrayList<Message>(ids.size)
         ids.chunked(400).forEach { chunk ->
             val marks = chunk.joinToString(",") { "?" }
-            readableDatabase.rawQuery("SELECT $MSG_COLS FROM message WHERE acc = ? AND id IN ($marks)", arrayOf(acc) + chunk).use { c ->
+            readableDatabase.rawQuery("SELECT $MSG_COLS FROM message WHERE acc = ? AND id IN ($marks)", arrayOf(acc) + chunk).roomy().use { c ->
                 while (c.moveToNext()) out += readMessage(c)
             }
         }
@@ -621,6 +621,17 @@ class MailDb private constructor(context: Context) : SQLiteOpenHelper(context.ap
     }
 
     companion object {
+        /**
+         * A message row carries its whole body, which can pass the 2 MB a cursor window holds by default and would
+         * throw on reading: rows with bodies are read through a window large enough for them.
+         */
+        private fun android.database.Cursor.roomy(): android.database.Cursor {
+            if (android.os.Build.VERSION.SDK_INT >= 28 && this is android.database.AbstractWindowedCursor) {
+                runCatching { window = android.database.CursorWindow(null, BODY_WINDOW) }
+            }
+            return this
+        }
+        private const val BODY_WINDOW = 24L * 1024 * 1024
         private const val MSG_COLS = "acc, id, thread, seen, flagged, draft, answered, received, subject, from_json, to_json, cc_json, " +
             "bcc_json, reply_to_json, preview, has_att, size, message_id, in_reply_to, refs, body_text, body_html, atts_json"
 
