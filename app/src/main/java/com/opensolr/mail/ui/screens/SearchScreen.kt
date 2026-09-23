@@ -296,7 +296,15 @@ fun SearchScreen(vm: AppViewModel, sheet: String?) {
             if (hasAnswerCard) item(key = "ai") {
                 // The answer shown belongs to the question typed now; another question offers a new one.
                 val mine = vm.aiQuestion == query
-                AnswerCard(if (mine) vm.aiText else null, mine && vm.aiRunning) { vm.askAi(query, filters) }
+                AnswerCard(if (mine) vm.aiText else null, mine && vm.aiRunning) {
+                    // The first rows of the list on screen, in their order, go to the answer: nothing else.
+                    val res = r ?: return@AnswerCard
+                    val rows = if (groupBy != MailSearch.GroupBy.NONE) shownGroups.flatMap { it.hits } else shownHits
+                    val byId = res.docs.associateBy { it.id }
+                    val top = rows.distinctBy { it.acc + ":" + it.threadId.ifEmpty { it.emailId } }
+                        .mapNotNull { byId[it.docId] }.take(com.opensolr.mail.search.AiPrompt.TOP_N)
+                    vm.askAi(query, top, res.highlights)
+                }
             }
             error?.let { e -> item(key = "err") { Text(e, style = MaterialTheme.typography.bodyMedium, color = p.accent, modifier = Modifier.padding(16.dp)) } }
             if (r != null && !loading && shownHits.isEmpty()) item(key = "empty") {

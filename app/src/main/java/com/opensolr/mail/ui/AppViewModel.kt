@@ -450,7 +450,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         private set
     private var aiJob: Job? = null
 
-    fun askAi(question: String, filters: com.opensolr.mail.search.MailSearch.Filters) {
+    fun askAi(question: String, top: kotlin.collections.List<com.opensolr.mail.search.AiPrompt.Doc>, highlights: Map<String, Map<String, kotlin.collections.List<String>>>) {
         aiJob?.cancel()
         aiQuestion = question
         aiText = ""
@@ -458,7 +458,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         aiJob = viewModelScope.launch {
             val me = coroutineContext[Job]
             try {
-                search.answer(question, filters) { chunk -> if (aiJob === me) aiText = (aiText ?: "") + chunk }
+                search.answer(question, top, highlights) { chunk -> if (aiJob === me) aiText = (aiText ?: "") + chunk }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {

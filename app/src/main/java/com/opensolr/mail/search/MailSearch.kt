@@ -40,6 +40,8 @@ class MailSearch(private val context: Context) {
         val flagged: Boolean,
         val hasAttachment: Boolean,
         val score: Double,
+        /** The document in the index this row came from. */
+        val docId: String = "",
     )
 
     data class DateRange(val from: Long, val to: Long)
@@ -235,7 +237,7 @@ class MailSearch(private val context: Context) {
                 subject = d.optString("subject_t"), from = d.optString("from_name_s").ifBlank { d.optString("from_t") },
                 fromEmail = d.optString("from_s"), received = MailSync.parseDate(d.optString("received_dt")), snippet = snippet,
                 seen = d.optBoolean("seen_b", true), flagged = d.optBoolean("flagged_b"), hasAttachment = d.optBoolean("has_attachment_b"),
-                score = d.optDouble("score", 0.0),
+                score = d.optDouble("score", 0.0), docId = id,
             )
         }
 
@@ -288,12 +290,13 @@ class MailSearch(private val context: Context) {
     }
 
     /** Streams the AI answer to [question] over the top results of the search that was just run. */
-    suspend fun answer(question: String, filters: Filters, onChunk: (String) -> Unit) {
-        val connection = MailIndex(context).ensure()
-        // The answer reads the most relevant messages, not the first ones of a list grouped by date.
-        val result = search(question, filters, GroupBy.NONE, rows = AiPrompt.TOP_N, byRelevance = true)
-        val top = result.docs.take(AiPrompt.TOP_N)
+    /**
+     * The AI answer from exactly the results the reader sees: [top] are the first rows of the list on
+     * screen, in that order. No other search is made.
+     */
+    suspend fun answer(question: String, top: List<AiPrompt.Doc>, highlights: Map<String, Map<String, List<String>>>, onChunk: (String) -> Unit) {
         if (top.isEmpty()) return
+        val connection = MailIndex(context).ensure()
         val bodies = HashMap<String, String>()
         val r = SolrClient(connection).select(
             listOf(
@@ -309,7 +312,7 @@ class MailSearch(private val context: Context) {
             val att = flatten(it.optString("attachment_text_t"))
             bodies[it.optString("id")] = (flatten(freshPart(it.optString("body_t"))) + if (att.isNotEmpty()) "\nAttachment text: $att" else "").trim()
         }
-        val ctx = AiPrompt.context(top.map { it.copy(text = bodies[it.id].orEmpty()) }, result.highlights)
+        val ctx = AiPrompt.context(top.map { it.copy(text = bodies[it.id].orEmpty()) }, highlights)
         if (ctx.isEmpty()) return
         api.aiAnswer(connection.indexName, AiPrompt.instruction(ctx, question), onChunk)
     }
