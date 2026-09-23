@@ -164,7 +164,7 @@
     <string name="idx_phase_mail">Indexando correo nuevo</string>
     <string name="idx_phase_history">Leyendo el historial de correo</string>
     <string name="idx_phase_attachments">Leyendo adjuntos</string>
-    <string name="idx_row_attachments">Adjuntos por leer</string>
+    <string name="idx_row_attachments">Mensajes con adjuntos por leer</string>
     <string name="idx_att_wifi">Los adjuntos se leen como texto solo con Wi-Fi.</string>
     <string name="idx_waiting_wifi">Esperando Wi-Fi</string>
     <string name="notif_mail_left">Quedan %1$s mensajes</string>
@@ -238,4 +238,7 @@
     <string name="notif_searchable">%1$s mensajes buscables</string>
     <string name="show_all_people">Mostrar los %1$d</string>
     <string name="hide_all">Ocultar</string>
+    <string name="idx_row_msgs_left">Mensajes por indexar</string>
+    <string name="notif_left">Quedan: %1$s mensajes, %2$s con adjuntos</string>
+    <string name="idx_progress">%1$d%% hecho</string>
 </resources>

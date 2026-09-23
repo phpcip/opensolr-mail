@@ -164,7 +164,7 @@
     <string name="idx_phase_mail">正在索引新邮件</string>
     <string name="idx_phase_history">正在读取邮件历史</string>
     <string name="idx_phase_attachments">正在读取附件</string>
-    <string name="idx_row_attachments">待读取的附件</string>
+    <string name="idx_row_attachments">附件待读取的邮件</string>
     <string name="idx_att_wifi">附件仅在 Wi-Fi 下转换为文本。</string>
     <string name="idx_waiting_wifi">等待 Wi-Fi</string>
     <string name="notif_mail_left">剩余 %1$s 封邮件</string>
@@ -238,4 +238,7 @@
     <string name="notif_searchable">%1$s 封邮件可搜索</string>
     <string name="show_all_people">显示全部 %1$d 个</string>
     <string name="hide_all">收起</string>
+    <string name="idx_row_msgs_left">待索引邮件</string>
+    <string name="notif_left">剩余：%1$s 封邮件，%2$s 封带附件</string>
+    <string name="idx_progress">已完成 %1$d%%</string>
 </resources>

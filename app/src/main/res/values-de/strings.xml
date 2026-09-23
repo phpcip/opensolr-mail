@@ -164,7 +164,7 @@
     <string name="idx_phase_mail">Neue Mails werden indexiert</string>
     <string name="idx_phase_history">Mailverlauf wird gelesen</string>
     <string name="idx_phase_attachments">Anhänge werden gelesen</string>
-    <string name="idx_row_attachments">Noch zu lesende Anhänge</string>
+    <string name="idx_row_attachments">Nachrichten mit noch zu lesenden Anhängen</string>
     <string name="idx_att_wifi">Anhänge werden nur im WLAN in Text gelesen.</string>
     <string name="idx_waiting_wifi">Warte auf WLAN</string>
     <string name="notif_mail_left">Noch %1$s Nachrichten</string>
@@ -238,4 +238,7 @@
     <string name="notif_searchable">%1$s Nachrichten durchsuchbar</string>
     <string name="show_all_people">Alle %1$d zeigen</string>
     <string name="hide_all">Ausblenden</string>
+    <string name="idx_row_msgs_left">Noch zu indexierende Nachrichten</string>
+    <string name="notif_left">Übrig: %1$s Nachrichten, %2$s mit Anhängen</string>
+    <string name="idx_progress">%1$d%% erledigt</string>
 </resources>

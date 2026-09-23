@@ -109,22 +109,54 @@ class MailIndexer(private val context: Context) {
         var indexed = s.indexed
         var meaning = s.withMeaning
         var attachments = s.attachmentsLeft
+        var withAtt = s.indexedWithAtt
         if (solr != null) runCatching {
             val mine = localFilter() ?: return
-            val r = solr.select(listOf("q" to "*:*", "fq" to mine.first, "acc" to mine.second, "rows" to "0", "facet" to "true", "facet.query" to "{!key=v}vec_b:true", "facet.query" to "{!key=a}att_todo_b:true"))
+            val r = solr.select(listOf("q" to "*:*", "fq" to mine.first, "acc" to mine.second, "rows" to "0", "facet" to "true", "facet.query" to "{!key=v}vec_b:true", "facet.query" to "{!key=a}att_todo_b:true", "facet.query" to "{!key=h}has_attachment_b:true"))
             indexed = r.getJSONObject("response").getLong("numFound")
             val fq = r.optJSONObject("facet_counts")?.optJSONObject("facet_queries")
             meaning = fq?.optLong("v") ?: meaning
             attachments = fq?.optLong("a") ?: attachments
+            withAtt = fq?.optLong("h") ?: withAtt
         }
+        val totals = mailboxTotals()
         val done = store.all().isNotEmpty() && store.all().all { db.state(it.key, MailSync.STATE_BACKFILL) == "done" }
-        _status.value = _status.value.copy(indexed = indexed, withMeaning = meaning, attachmentsLeft = attachments, pending = db.indexPending(), historyDone = done)
+        _status.value = _status.value.copy(
+            indexed = indexed, withMeaning = meaning, attachmentsLeft = attachments, indexedWithAtt = withAtt,
+            mailTotal = totals?.first ?: _status.value.mailTotal, mailWithAtt = totals?.second ?: _status.value.mailWithAtt,
+            pending = db.indexPending(), historyDone = done,
+        )
     }
+
+    /**
+     * How many messages the accounts on this phone hold at Fastmail, and how many of them have
+     * attachments, Notes left out as the indexer leaves them out. Null when Fastmail could not be asked.
+     */
+    private suspend fun mailboxTotals(): Pair<Long, Long>? = runCatching {
+        var all = 0L
+        var att = 0L
+        for (account in store.all()) {
+            val jmap = Jmap(context, account)
+            val notes = notesBox(db.mailboxes(account.key))
+            val base = notes?.let { JSONObject().put("inMailboxOtherThan", JSONArray().put(it.id)) }
+            fun query(filter: JSONObject?) = JSONObject().put("accountId", jmap.accountId).put("calculateTotal", true).put("limit", 1)
+                .apply { if (filter != null) put("filter", filter) }
+            val withAttFilter = JSONObject().put("hasAttachment", true)
+            val b = Jmap.Batch()
+            val a = b.add("Email/query", query(base))
+            val h = b.add("Email/query", query(if (base == null) withAttFilter else JSONObject().put("operator", "AND").put("conditions", JSONArray().put(base).put(withAttFilter))))
+            val r = jmap.send(b)
+            all += r.get(a).getLong("total")
+            att += r.get(h).getLong("total")
+        }
+        all to att
+    }.getOrNull()
 
     private fun persist() {
         val s = _status.value
         context.getSharedPreferences("index_status", Context.MODE_PRIVATE).edit()
             .putLong("indexed", s.indexed).putLong("meaning", s.withMeaning).putInt("pending", s.pending).putLong("attachments", s.attachmentsLeft)
+            .putLong("with_att", s.indexedWithAtt).putLong("mail_total", s.mailTotal).putLong("mail_with_att", s.mailWithAtt)
             .putBoolean("done", s.historyDone).putBoolean("no_room", s.noRoom).putString("error", s.error).putLong("at", s.at).apply()
     }
 
@@ -134,6 +166,7 @@ class MailIndexer(private val context: Context) {
         val sp = context.getSharedPreferences("index_status", Context.MODE_PRIVATE)
         _status.value = Status(
             indexed = sp.getLong("indexed", -1), withMeaning = sp.getLong("meaning", -1), pending = sp.getInt("pending", 0), attachmentsLeft = sp.getLong("attachments", -1),
+            indexedWithAtt = sp.getLong("with_att", -1), mailTotal = sp.getLong("mail_total", -1), mailWithAtt = sp.getLong("mail_with_att", -1),
             historyDone = sp.getBoolean("done", false), noRoom = sp.getBoolean("no_room", false), error = sp.getString("error", null), at = sp.getLong("at", 0),
         )
     }
@@ -449,7 +482,21 @@ class MailIndexer(private val context: Context) {
             val files = chunk.map { (_, a) -> download(a) }
             val sendable = chunk.indices.filter { files[it] != null }
             if (sendable.isNotEmpty()) {
-                val read = api.docToText(index, sendable.map { i -> chunk[i].second.name.ifBlank { "document" } to files[i]!!.readBytes() })
+                fun payload(i: Int) = chunk[i].second.name.ifBlank { "document" } to files[i]!!.readBytes()
+                // One document the server cannot read must not stop the others, nor hold the whole indexing
+                // back: when the batch fails each one is tried alone, and one that fails alone is skipped.
+                // A server error is tried once more after a pause, then each document alone; one that still
+                // fails is skipped. No network still stops the run, which tries again.
+                val read: List<String?> = try {
+                    api.docToText(index, sendable.map { payload(it) })
+                } catch (e: com.opensolr.mail.net.ServiceException) {
+                    kotlinx.coroutines.delay(3_000L)
+                    try {
+                        api.docToText(index, sendable.map { payload(it) })
+                    } catch (e2: com.opensolr.mail.net.ServiceException) {
+                        sendable.map { i -> try { api.docToText(index, listOf(payload(i))).firstOrNull() } catch (x: com.opensolr.mail.net.ServiceException) { null } }
+                    }
+                }
                 sendable.forEachIndexed { j, i -> val (id, a) = chunk[i]; read.getOrNull(j)?.let { texts[id]?.append(a.name)?.append(":\n")?.append(it)?.append("\n\n") } }
             }
             files.forEach { it?.delete() }
@@ -469,15 +516,34 @@ class MailIndexer(private val context: Context) {
         val indexed: Long = -1,
         val withMeaning: Long = -1,
         val pending: Int = 0,
-        /** Messages whose attachments are still to be read into text. */
+        /** Indexed messages whose attachments are still to be read into text. */
         val attachmentsLeft: Long = -1,
+        /** Indexed messages that have attachments. */
+        val indexedWithAtt: Long = -1,
+        /** Messages at Fastmail, and those of them with attachments: what the whole job is measured against. */
+        val mailTotal: Long = -1,
+        val mailWithAtt: Long = -1,
         /** What the running indexer is busy with right now. */
         val phase: Phase = Phase.IDLE,
         val historyDone: Boolean = false,
         val noRoom: Boolean = false,
         val error: String? = null,
         val at: Long = 0,
-    )
+    ) {
+        /** Messages at Fastmail not yet in the index. */
+        val messagesLeft: Long get() = if (mailTotal < 0 || indexed < 0) -1 else (mailTotal - indexed).coerceAtLeast(0)
+
+        /** Messages whose attachments are still to be read: those in the index plus those with attachments not indexed yet. */
+        val attLeft: Long get() = if (attachmentsLeft < 0) -1 else attachmentsLeft + if (mailWithAtt < 0 || indexedWithAtt < 0) 0 else (mailWithAtt - indexedWithAtt).coerceAtLeast(0)
+
+        /** Done and total work over both, for one honest progress bar; null until the totals are known. */
+        val progress: Pair<Long, Long>? get() {
+            if (messagesLeft < 0 || attLeft < 0 || mailWithAtt < 0) return null
+            val total = mailTotal + mailWithAtt
+            val left = messagesLeft + attLeft.coerceAtMost(mailWithAtt)
+            return if (total <= 0) null else (total - left).coerceAtLeast(0) to total
+        }
+    }
 
     companion object {
         const val VECTOR = "embeddings_vec"

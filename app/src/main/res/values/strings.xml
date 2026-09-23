@@ -173,7 +173,7 @@
     <string name="idx_phase_mail">Indexing new mail</string>
     <string name="idx_phase_history">Reading your mail history</string>
     <string name="idx_phase_attachments">Reading attachments</string>
-    <string name="idx_row_attachments">Attachments left to read</string>
+    <string name="idx_row_attachments">Messages with attachments left to read</string>
     <string name="idx_att_wifi">Attachments are read into text on Wi-Fi only.</string>
     <string name="idx_waiting_wifi">Waiting for Wi-Fi</string>
     <string name="notif_mail_left">%1$s messages left</string>
@@ -247,4 +247,7 @@
     <string name="notif_searchable">%1$s messages searchable</string>
     <string name="show_all_people">Show all %1$d</string>
     <string name="hide_all">Hide</string>
+    <string name="idx_row_msgs_left">Messages left to index</string>
+    <string name="notif_left">Left: %1$s messages, %2$s with attachments</string>
+    <string name="idx_progress">%1$d%% done</string>
 </resources>

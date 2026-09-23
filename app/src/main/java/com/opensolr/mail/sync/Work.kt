@@ -53,7 +53,7 @@ object Work {
         WorkManager.getInstance(context).enqueueUniqueWork(
             "index", if (continuation) ExistingWorkPolicy.APPEND_OR_REPLACE else ExistingWorkPolicy.KEEP,
             OneTimeWorkRequestBuilder<IndexWorker>().setConstraints(online)
-                .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 60, TimeUnit.SECONDS).build(),
+                .setBackoffCriteria(BackoffPolicy.LINEAR, 60, TimeUnit.SECONDS).build(),
         )
     }
 
@@ -61,10 +61,12 @@ object Work {
     fun indexNow(context: Context) {
         val infos = runCatching { WorkManager.getInstance(context).getWorkInfosForUniqueWork("index").get() }.getOrDefault(emptyList())
         if (infos.any { it.state == androidx.work.WorkInfo.State.RUNNING }) return
+        // Expedited: the system starts it at once instead of when it sees fit.
         WorkManager.getInstance(context).enqueueUniqueWork(
             "index", ExistingWorkPolicy.REPLACE,
             OneTimeWorkRequestBuilder<IndexWorker>().setConstraints(online)
-                .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 60, TimeUnit.SECONDS).build(),
+                .setExpedited(OutOfQuotaPolicy.RUN_AS_NON_EXPEDITED_WORK_REQUEST)
+                .setBackoffCriteria(BackoffPolicy.LINEAR, 60, TimeUnit.SECONDS).build(),
         )
     }
 
@@ -157,19 +159,20 @@ class IndexWorker(context: Context, params: WorkerParameters) : CoroutineWorker(
         Notifier.ensureChannels(applicationContext)
         val words = AppLanguage.wrap(applicationContext)
         fun n(v: Long) = String.format(java.util.Locale.US, "%,d", v)
-        val (title, text) = when (s.phase) {
-            // The queue refills page by page while the history is read, so its size says nothing; what
-            // only goes up is how many messages are searchable.
-            MailIndexer.Phase.MAIL, MailIndexer.Phase.HISTORY -> words.getString(if (s.historyDone) R.string.idx_phase_mail else R.string.idx_phase_history) to
-                (if (s.indexed >= 0) words.getString(R.string.notif_searchable, n(s.indexed)) else null)
-            MailIndexer.Phase.ATTACHMENTS -> words.getString(R.string.idx_phase_attachments) to
-                (if (s.attachmentsLeft >= 0) words.getString(R.string.notif_att_left, n(s.attachmentsLeft)) else null)
-            MailIndexer.Phase.IDLE -> words.getString(R.string.indexing) to null
-        }
+        val title = words.getString(when (s.phase) {
+            MailIndexer.Phase.MAIL -> R.string.idx_phase_mail
+            MailIndexer.Phase.HISTORY -> R.string.idx_phase_history
+            MailIndexer.Phase.ATTACHMENTS -> R.string.idx_phase_attachments
+            MailIndexer.Phase.IDLE -> R.string.indexing
+        })
+        // Everything still left at Fastmail, with one bar over messages and attachments together.
+        val text = if (s.messagesLeft >= 0 && s.attLeft >= 0) words.getString(R.string.notif_left, n(s.messagesLeft), n(s.attLeft)) else null
+        val progress = s.progress
         val n = NotificationCompat.Builder(applicationContext, Notifier.CHANNEL_APP)
             .setSmallIcon(R.drawable.ic_notify)
             .setContentTitle(title)
             .apply { if (text != null) setContentText(text) }
+            .apply { if (progress != null) setProgress(1000, (progress.first * 1000 / progress.second).toInt(), false) }
             .setOngoing(true)
             .setSilent(true)
             .setOnlyAlertOnce(true)

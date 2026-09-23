@@ -176,23 +176,32 @@ fun SettingsScreen(vm: AppViewModel) {
                     s.running && s.phase == com.opensolr.mail.index.MailIndexer.Phase.HISTORY -> R.string.idx_phase_history
                     s.running && s.phase == com.opensolr.mail.index.MailIndexer.Phase.MAIL -> R.string.idx_phase_mail
                     s.running -> R.string.idx_running
-                    s.pending > 0 || !s.historyDone -> R.string.idx_row_waiting
-                    s.attachmentsLeft > 0 -> R.string.idx_waiting_wifi
+                    s.pending > 0 || !s.historyDone || s.messagesLeft > 0 -> R.string.idx_row_waiting
+                    s.attLeft > 0 -> R.string.idx_waiting_wifi
                     else -> R.string.idx_row_done
                 }
                 InfoRow(stringResource(R.string.idx_row_state), stringResource(state))
                 InfoRow(stringResource(R.string.idx_row_indexed), if (s.indexed < 0) "\u2014" else n(s.indexed))
                 InfoRow(stringResource(R.string.idx_row_meaning), if (s.withMeaning < 0) "\u2014" else n(s.withMeaning))
-                InfoRow(stringResource(R.string.idx_row_pending), n(s.pending.toLong()))
-                InfoRow(stringResource(R.string.idx_row_attachments), if (s.attachmentsLeft < 0) "\u2014" else n(s.attachmentsLeft))
+                // What is left is measured against everything at Fastmail, not against what was queued so far.
+                InfoRow(stringResource(R.string.idx_row_msgs_left), if (s.messagesLeft < 0) "\u2014" else n(s.messagesLeft))
+                InfoRow(stringResource(R.string.idx_row_attachments), if (s.attLeft < 0) "\u2014" else n(s.attLeft))
+                s.progress?.let { (done, total) ->
+                    Spacer(Modifier.height(10.dp))
+                    Text(stringResource(R.string.idx_progress, (done * 100 / total).toInt()), style = MaterialTheme.typography.bodyMedium, color = p.muted)
+                    Spacer(Modifier.height(6.dp))
+                    LinearProgressIndicator(
+                        progress = { (done.toDouble() / total).toFloat().coerceIn(0f, 1f) },
+                        modifier = Modifier.fillMaxWidth().height(6.dp),
+                        color = p.accent, trackColor = p.hairline,
+                        strokeCap = androidx.compose.ui.graphics.StrokeCap.Butt, gapSize = 0.dp, drawStopIndicator = {},
+                    )
+                    Spacer(Modifier.height(6.dp))
+                }
                 InfoRow(stringResource(R.string.idx_row_history), stringResource(if (s.historyDone) R.string.idx_row_done else R.string.idx_row_reading))
                 InfoRow(stringResource(R.string.idx_row_last), if (s.at > 0) fmtDate(s.at) else "\u2014")
                 InfoRow(stringResource(R.string.idx_row_name), vm.prefs.indexName.ifBlank { "\u2014" })
-                if (s.running) {
-                    Spacer(Modifier.height(8.dp))
-                    LinearProgressIndicator(modifier = Modifier.fillMaxWidth().height(2.dp), color = p.accent, trackColor = p.hairline)
-                }
-                if (s.attachmentsLeft > 0) { Spacer(Modifier.height(8.dp)); Notice(stringResource(R.string.idx_att_wifi)) }
+                if (s.attLeft > 0) { Spacer(Modifier.height(8.dp)); Notice(stringResource(R.string.idx_att_wifi)) }
                 if (!vm.prefs.vectorAllowed) { Spacer(Modifier.height(8.dp)); Notice(stringResource(R.string.index_words_only)) }
                 if (vm.prefs.embedPausedUntil > System.currentTimeMillis()) { Spacer(Modifier.height(8.dp)); Notice(stringResource(R.string.index_quota)) }
                 Spacer(Modifier.height(12.dp))

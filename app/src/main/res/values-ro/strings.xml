@@ -164,7 +164,7 @@
     <string name="idx_phase_mail">Indexez mailul nou</string>
     <string name="idx_phase_history">Citesc istoricul mailului</string>
     <string name="idx_phase_attachments">Citesc atașamentele</string>
-    <string name="idx_row_attachments">Atașamente de citit</string>
+    <string name="idx_row_attachments">Mesaje cu atașamente rămase de citit</string>
     <string name="idx_att_wifi">Atașamentele se citesc în text doar pe Wi-Fi.</string>
     <string name="idx_waiting_wifi">Aștept Wi-Fi</string>
     <string name="notif_mail_left">%1$s mesaje rămase</string>
@@ -238,4 +238,7 @@
     <string name="notif_searchable">%1$s mesaje căutabile</string>
     <string name="show_all_people">Arată toți %1$d</string>
     <string name="hide_all">Ascunde</string>
+    <string name="idx_row_msgs_left">Mesaje rămase de indexat</string>
+    <string name="notif_left">Rămase: %1$s mesaje, %2$s cu atașamente</string>
+    <string name="idx_progress">%1$d%% gata</string>
 </resources>

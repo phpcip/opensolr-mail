@@ -164,7 +164,7 @@
     <string name="idx_phase_mail">Indexation des nouveaux e-mails</string>
     <string name="idx_phase_history">Lecture de l\'historique</string>
     <string name="idx_phase_attachments">Lecture des pièces jointes</string>
-    <string name="idx_row_attachments">Pièces jointes à lire</string>
+    <string name="idx_row_attachments">Messages dont les pièces jointes restent à lire</string>
     <string name="idx_att_wifi">Les pièces jointes sont lues en texte uniquement en Wi-Fi.</string>
     <string name="idx_waiting_wifi">En attente du Wi-Fi</string>
     <string name="notif_mail_left">%1$s messages restants</string>
@@ -238,4 +238,7 @@
     <string name="notif_searchable">%1$s messages consultables</string>
     <string name="show_all_people">Afficher les %1$d</string>
     <string name="hide_all">Masquer</string>
+    <string name="idx_row_msgs_left">Messages restant à indexer</string>
+    <string name="notif_left">Restant : %1$s messages, %2$s avec pièces jointes</string>
+    <string name="idx_progress">%1$d%% terminé</string>
 </resources>

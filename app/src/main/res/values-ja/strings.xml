@@ -164,7 +164,7 @@
     <string name="idx_phase_mail">新着メールをインデックス中</string>
     <string name="idx_phase_history">メール履歴を読み込み中</string>
     <string name="idx_phase_attachments">添付ファイルを読み込み中</string>
-    <string name="idx_row_attachments">未読の添付ファイル</string>
+    <string name="idx_row_attachments">添付ファイル未読のメール</string>
     <string name="idx_att_wifi">添付ファイルのテキスト化は Wi-Fi 接続時のみ行います。</string>
     <string name="idx_waiting_wifi">Wi-Fi を待機中</string>
     <string name="notif_mail_left">残り %1$s 件</string>
@@ -238,4 +238,7 @@
     <string name="notif_searchable">%1$s 件検索可能</string>
     <string name="show_all_people">%1$d 件すべて表示</string>
     <string name="hide_all">隠す</string>
+    <string name="idx_row_msgs_left">インデックス待ちのメール</string>
+    <string name="notif_left">残り: メール %1$s 件、添付付き %2$s 件</string>
+    <string name="idx_progress">%1$d%% 完了</string>
 </resources>
