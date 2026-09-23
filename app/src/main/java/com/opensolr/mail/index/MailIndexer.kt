@@ -104,7 +104,8 @@ class MailIndexer(private val context: Context) {
         var meaning = s.withMeaning
         var attachments = s.attachmentsLeft
         if (solr != null) runCatching {
-            val r = solr.select(listOf("q" to "*:*", "rows" to "0", "facet" to "true", "facet.query" to "{!key=v}vec_b:true", "facet.query" to "{!key=a}att_todo_b:true"))
+            val mine = localFilter() ?: return
+            val r = solr.select(listOf("q" to "*:*", "fq" to mine.first, "acc" to mine.second, "rows" to "0", "facet" to "true", "facet.query" to "{!key=v}vec_b:true", "facet.query" to "{!key=a}att_todo_b:true"))
             indexed = r.getJSONObject("response").getLong("numFound")
             val fq = r.optJSONObject("facet_counts")?.optJSONObject("facet_queries")
             meaning = fq?.optLong("v") ?: meaning
@@ -129,6 +130,15 @@ class MailIndexer(private val context: Context) {
             indexed = sp.getLong("indexed", -1), withMeaning = sp.getLong("meaning", -1), pending = sp.getInt("pending", 0), attachmentsLeft = sp.getLong("attachments", -1),
             historyDone = sp.getBoolean("done", false), noRoom = sp.getBoolean("no_room", false), error = sp.getString("error", null), at = sp.getLong("at", 0),
         )
+    }
+
+    /**
+     * Only the accounts on this phone: the index is shared by every phone of the Opensolr account,
+     * and work on another phone's account can never be done here (it used to spin forever).
+     */
+    private fun localFilter(): Pair<String, String>? {
+        val keys = store.all().map { indexKey(it) }
+        return if (keys.isEmpty()) null else "{!terms f=account_s v=\$acc}" to keys.joinToString(",")
     }
 
     /** The account on this phone behind an index key, or null for an account only another phone has. */
@@ -167,7 +177,9 @@ class MailIndexer(private val context: Context) {
                 if (_status.value.phase != Phase.MAIL) _status.value = _status.value.copy(phase = Phase.MAIL, pending = db.indexPending())
                 indexFull(jmap, solr, name, account, ups, boxes, notes)
                 val s = _status.value
-                _status.value = s.copy(pending = db.indexPending(), indexed = if (s.indexed >= 0) s.indexed + ups.size else s.indexed)
+                _status.value = s.copy(pending = db.indexPending())
+                // A rewrite does not add a document, so the searchable count is read from the index, once a minute.
+                if (System.currentTimeMillis() - countedAt > 60_000L) { countedAt = System.currentTimeMillis(); refreshCounts(solr) }
                 continue
             }
             if (_status.value.phase != Phase.HISTORY) _status.value = _status.value.copy(phase = Phase.HISTORY)
@@ -291,7 +303,8 @@ class MailIndexer(private val context: Context) {
     /** Documents written without a vector are written again once vectors can be made. True when none are left. */
     private suspend fun vectorBackfill(solr: SolrClient, name: String, deadline: Long): Boolean {
         if (!prefs.vectorAllowed || prefs.embedPausedUntil > System.currentTimeMillis() || embedDownUntil > System.currentTimeMillis()) return true
-        val res = solr.select(listOf("q" to "*:*", "fq" to "vec_b:false", "fl" to "account_s,email_id_s", "rows" to "200", "sort" to "received_dt desc"))
+        val mine = localFilter() ?: return true
+        val res = solr.select(listOf("q" to "*:*", "fq" to "vec_b:false", "fq" to mine.first, "acc" to mine.second, "fl" to "account_s,email_id_s", "rows" to "200", "sort" to "received_dt desc"))
         val docs = res.optJSONObject("response")?.optJSONArray("docs") ?: return true
         if (docs.length() == 0) return true
         (0 until docs.length()).map { docs.getJSONObject(it) }.groupBy { it.optString("account_s") }.forEach { (acc, list) ->
@@ -367,7 +380,8 @@ class MailIndexer(private val context: Context) {
      */
     private suspend fun attachmentPass(solr: SolrClient, name: String, deadline: Long): Boolean {
         while (System.currentTimeMillis() < deadline) {
-            val res = solr.select(listOf("q" to "*:*", "fq" to "att_todo_b:true", "rows" to "5", "sort" to "received_dt desc", "fl" to "account_s,email_id_s"))
+            val mine = localFilter() ?: return true
+            val res = solr.select(listOf("q" to "*:*", "fq" to "att_todo_b:true", "fq" to mine.first, "acc" to mine.second, "rows" to "5", "sort" to "received_dt desc", "fl" to "account_s,email_id_s"))
             val docs = res.optJSONObject("response")?.optJSONArray("docs") ?: return true
             val left = res.optJSONObject("response")?.optLong("numFound") ?: 0L
             _status.value = _status.value.copy(phase = Phase.ATTACHMENTS, attachmentsLeft = left)
@@ -468,6 +482,7 @@ class MailIndexer(private val context: Context) {
         private const val EMBED_CHARS = 1800
 
         private val runLock = Mutex()
+        @Volatile private var countedAt = 0L
         private const val EMBED_RETRY_MS = 10 * 60_000L
         @Volatile private var embedDownUntil = 0L
         private val _status = MutableStateFlow(Status())

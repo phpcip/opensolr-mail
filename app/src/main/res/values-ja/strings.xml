@@ -235,4 +235,5 @@
     <string name="ask_before_swipe_delete">スワイプで削除する前に確認</string>
     <string name="undo_after_swipe_flag">スワイプでフラグを付けた後に元に戻すバーを表示</string>
     <string name="thread_gone">このスレッドはメールボックスにありません。</string>
+    <string name="notif_searchable">%1$s 件検索可能</string>
 </resources>

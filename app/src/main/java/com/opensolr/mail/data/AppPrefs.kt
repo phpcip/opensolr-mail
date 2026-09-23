@@ -17,13 +17,16 @@ class AppPrefs(context: Context) {
         get() = sp.getString(K_KEY, null)?.let { SecureStore.decrypt(it) } ?: ""
 
     @SuppressLint("ApplySharedPref")
-    fun saveSession(email: String, apiKey: String) {
-        sp.edit().putString(K_EMAIL, email).putString(K_KEY, SecureStore.encrypt(apiKey)).commit()
+    fun saveSession(email: String, apiKey: String, deviceKey: Boolean) {
+        sp.edit().putString(K_EMAIL, email).putString(K_KEY, SecureStore.encrypt(apiKey)).putBoolean(K_DEVICE_KEY, deviceKey).commit()
     }
+
+    /** True when the key held is this phone's own, revocable from Account > Devices; false for the account key of older sign-ins. */
+    val hasDeviceKey: Boolean get() = sp.getBoolean(K_DEVICE_KEY, false)
 
     @SuppressLint("ApplySharedPref")
     fun clearSession() {
-        sp.edit().remove(K_EMAIL).remove(K_KEY).remove(K_INDEX).remove(K_CONN).remove(K_VECTOR).remove(K_LIMITS).commit()
+        sp.edit().remove(K_EMAIL).remove(K_KEY).remove(K_INDEX).remove(K_CONN).remove(K_VECTOR).remove(K_LIMITS).remove(K_DEVICE_KEY).commit()
     }
 
     /** Random id this install minted for itself; the server knows the phone by it. */
@@ -154,6 +157,7 @@ class AppPrefs(context: Context) {
         private const val K_CONN = "index_conn"
         private const val K_VECTOR = "vector_allowed"
         private const val K_LIMITS = "account_limits"
+        private const val K_DEVICE_KEY = "device_key"
         private const val K_EMBED_PAUSE = "embed_paused_until"
         private const val K_UPDATE = "last_update_check"
         private const val K_NOTIFY = "notify_new_mail"

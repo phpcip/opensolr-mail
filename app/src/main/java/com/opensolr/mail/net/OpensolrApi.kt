@@ -40,6 +40,22 @@ class OpensolrApi(private val prefs: AppPrefs) {
             .apply { if (pushToken != null) put("push_token", pushToken) },
     )
 
+    /** Trades the account key of an older sign-in for this phone's own key, revocable from Account > Devices. */
+    suspend fun upgradeToDeviceKey() = withContext(Dispatchers.IO) {
+        if (!prefs.signedIn || prefs.hasDeviceKey) return@withContext
+        val body = JSONObject().put("email", email).put("api_key", key).put("client_id", "opensolr-mail")
+            .put("device_id", prefs.deviceId).put("device_label", com.opensolr.mail.auth.Pkce.deviceLabel())
+            .put("app_version", com.opensolr.mail.BuildConfig.VERSION_NAME)
+        val req = Request.Builder().url("$SITE/app/api/device_key").post(body.toString().toRequestBody(JSON)).build()
+        Http.client.newCall(req).execute().use { r ->
+            val text = r.body?.string().orEmpty()
+            if (r.code == 401 || text.contains("ERROR_AUTHENTICATION_FAILED")) throw SignInRequiredException()
+            val msg = runCatching { JSONObject(text).optJSONObject("msg") }.getOrNull()
+            val newKey = msg?.optString("api_key")
+            if (msg?.optString("key_kind") == "device" && !newKey.isNullOrBlank() && Regex("^[0-9a-f]{32}$").matches(newKey)) prefs.saveSession(email, newKey, deviceKey = true)
+        }
+    }
+
     /** A fresh relay address for one mail account on this phone. */
     suspend fun pushRegister(accountKey: String): String =
         appCall("push_register", JSONObject().put("device_id", prefs.deviceId).put("account_key", accountKey))

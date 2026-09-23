@@ -54,6 +54,9 @@ object OpensolrAuth {
             .put("code_verifier", verifier)
             .put("client_id", CLIENT_ID)
             .put("redirect_uri", REDIRECT_URI)
+            .put("device_id", prefs.deviceId)
+            .put("device_label", Pkce.deviceLabel())
+            .put("app_version", com.opensolr.mail.BuildConfig.VERSION_NAME)
             .toString()
             .toRequestBody("application/json; charset=utf-8".toMediaType())
         val req = Request.Builder().url("$SITE/app/mail/token").post(body).build()
@@ -63,7 +66,7 @@ object OpensolrAuth {
             val email = json.optString("email")
             val key = json.optString("api_key")
             if (!json.optBoolean("status") || email.isBlank() || key.isBlank()) throw ServiceException("Opensolr refused the sign-in")
-            prefs.saveSession(email, key)
+            prefs.saveSession(email, key, deviceKey = json.optString("key_kind") == "device")
         }
     }
 }

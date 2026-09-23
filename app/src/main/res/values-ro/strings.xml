@@ -235,4 +235,5 @@
     <string name="ask_before_swipe_delete">Întreabă înainte de ștergerea cu swipe</string>
     <string name="undo_after_swipe_flag">Bară de Undo după flag cu swipe</string>
     <string name="thread_gone">Conversația nu mai e în căsuța ta.</string>
+    <string name="notif_searchable">%1$s mesaje căutabile</string>
 </resources>

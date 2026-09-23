@@ -25,8 +25,6 @@ import com.opensolr.mail.jmap.MailSync
 import com.opensolr.mail.push.MailPush
 import com.opensolr.mail.ui.AppLanguage
 import java.util.concurrent.TimeUnit
-import kotlinx.coroutines.flow.distinctUntilChanged
-import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 
 /** Everything that runs in the background goes through WorkManager, so it survives the app being closed and waits for a network. */
@@ -105,22 +103,39 @@ class IndexWorker(context: Context, params: WorkerParameters) : CoroutineWorker(
     override suspend fun doWork(): Result {
         val ctx = applicationContext
         if (!AppPrefs(ctx).signedIn) return Result.success()
-        runCatching { setForeground(foreground(MailIndexer.status.value)) }
-        // The notification says what is being done and how much is left, refreshed as the work moves.
+        // The notification appears only once there is real work, and changes at most every 10 seconds:
+        // a run with nothing to do never flashes it, and a busy one does not flicker.
         val watcher = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.Default).launch {
-            MailIndexer.status
-                .map { Triple(it.phase, it.pending / 10, it.attachmentsLeft / 5) }
-                .distinctUntilChanged()
-                .collect { runCatching { setForeground(foreground(MailIndexer.status.value)) } }
+            var shown = false
+            var last = 0L
+            var busySince = 0L
+            MailIndexer.status.collect { st ->
+                if (st.phase == MailIndexer.Phase.IDLE) return@collect
+                val now = System.currentTimeMillis()
+                if (busySince == 0L) busySince = now
+                // A few new messages are done in seconds and never show; only a long job gets the notification.
+                if (!shown && now - busySince < 15_000L) return@collect
+                if (shown && now - last < 10_000L) return@collect
+                shown = true
+                last = now
+                runCatching { setForeground(foreground(st)) }
+            }
+        }
+        // Check again even when the status stops changing, so a long quiet stretch still shows.
+        val ticker = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.Default).launch {
+            kotlinx.coroutines.delay(16_000L)
+            val st = MailIndexer.status.value
+            if (st.phase != MailIndexer.Phase.IDLE) runCatching { setForeground(foreground(st)) }
         }
         return try {
-            when (MailIndexer(ctx).run(deadline = System.currentTimeMillis() + 8 * 60_000L)) {
+            when (MailIndexer(ctx).run(deadline = System.currentTimeMillis() + 30 * 60_000L)) {
                 MailIndexer.Outcome.DONE -> Result.success()
                 MailIndexer.Outcome.MORE -> { Work.index(ctx, continuation = true); Result.success() }
                 MailIndexer.Outcome.RETRY -> Result.retry()
             }
         } finally {
             watcher.cancel()
+            ticker.cancel()
         }
     }
 
@@ -131,8 +146,10 @@ class IndexWorker(context: Context, params: WorkerParameters) : CoroutineWorker(
         val words = AppLanguage.wrap(applicationContext)
         fun n(v: Long) = String.format(java.util.Locale.US, "%,d", v)
         val (title, text) = when (s.phase) {
-            MailIndexer.Phase.MAIL -> words.getString(R.string.idx_phase_mail) to words.getString(R.string.notif_mail_left, n(s.pending.toLong()))
-            MailIndexer.Phase.HISTORY -> words.getString(R.string.idx_phase_history) to null
+            // The queue refills page by page while the history is read, so its size says nothing; what
+            // only goes up is how many messages are searchable.
+            MailIndexer.Phase.MAIL, MailIndexer.Phase.HISTORY -> words.getString(if (s.historyDone) R.string.idx_phase_mail else R.string.idx_phase_history) to
+                (if (s.indexed >= 0) words.getString(R.string.notif_searchable, n(s.indexed)) else null)
             MailIndexer.Phase.ATTACHMENTS -> words.getString(R.string.idx_phase_attachments) to
                 (if (s.attachmentsLeft >= 0) words.getString(R.string.notif_att_left, n(s.attachmentsLeft)) else null)
             MailIndexer.Phase.IDLE -> words.getString(R.string.indexing) to null
