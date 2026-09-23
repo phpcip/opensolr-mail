@@ -168,6 +168,8 @@ fun SearchScreen(vm: AppViewModel, sheet: String?) {
     }
 
     LaunchedEffect(Unit) { if (sheet == null && snap == null) focus.requestFocus() }
+    // Another question stops the answer to the previous one at once.
+    LaunchedEffect(query) { if (vm.aiQuestion != null && vm.aiQuestion != query) vm.stopAi() }
     LaunchedEffect(query, filters) {
         vm.searchQuery = query
         vm.searchFilters = filters
@@ -187,7 +189,12 @@ fun SearchScreen(vm: AppViewModel, sheet: String?) {
     // Later pages can bring more matches from a conversation already listed: it stays one line.
     val shownHits = remember(r, extraHits) { ((r?.hits.orEmpty()) + extraHits).distinctBy { it.acc + ":" + it.threadId.ifEmpty { it.emailId } } }
     val shownGroups = (r?.groups.orEmpty()) + extraGroups
-    val atEnd by remember { derivedStateOf { listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index?.let { it >= listState.layoutInfo.totalItemsCount - 4 } == true } }
+    // The next page comes once the reader is a quarter of the way down what is loaded, well before the end,
+    // so neither scrolling nor the fast scroller ever reaches a bottom that is not the real one.
+    val atEnd by remember { derivedStateOf {
+        val total = listState.layoutInfo.totalItemsCount
+        listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index?.let { it >= minOf(total / 4, total - 4) } == true
+    } }
     LaunchedEffect(atEnd, shownHits.size, shownGroups.size) {
         val res = result ?: return@LaunchedEffect
         if (!atEnd || loadingMore || loading) return@LaunchedEffect
@@ -284,7 +291,7 @@ fun SearchScreen(vm: AppViewModel, sheet: String?) {
                 row()
             }
         }
-        com.opensolr.mail.ui.RefreshBox(refreshing = loading, onRefresh = { run() }, modifier = Modifier.weight(1f)) {
+        com.opensolr.mail.ui.RefreshBox(refreshing = loading, onRefresh = { vm.stopAi(); run() }, modifier = Modifier.weight(1f)) {
         LazyColumn(Modifier.fillMaxSize(), state = listState) {
             if (hasAnswerCard) item(key = "ai") {
                 // The answer shown belongs to the question typed now; another question offers a new one.

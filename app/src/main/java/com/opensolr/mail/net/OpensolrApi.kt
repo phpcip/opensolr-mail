@@ -146,14 +146,15 @@ class OpensolrApi(private val prefs: AppPrefs) {
 
     // ---------- AI ----------
 
-    suspend fun batchEmbed(name: String, texts: List<String>): List<FloatArray> = withContext(Dispatchers.IO) {
+    /** One vector per text, or null for a text the embedder gave none for. */
+    suspend fun batchEmbed(name: String, texts: List<String>): List<FloatArray?> = withContext(Dispatchers.IO) {
         val body = JSONObject().put("email", email).put("api_key", key).put("index_name", name).put("payloads", JSONArray(texts))
         val text = execute(Request.Builder().url(AI + "batch_embed").post(body.toString().toRequestBody(JSON)).build())
         val json = obj(text)
         if (json.optString("msg") == "VECTOR_NOT_ALLOWED") throw VectorNotAllowedException()
         val vectors = json.optJSONArray("embeddings") ?: throw ServiceException(json.optString("error").ifBlank { message(text) })
         if (vectors.length() != texts.size) throw ServiceException("Embedding count mismatch")
-        (0 until vectors.length()).map { floats(vectors.getJSONArray(it)) }
+        (0 until vectors.length()).map { i -> vectors.optJSONArray(i)?.takeIf { it.length() > 0 }?.let { floats(it) } }
     }
 
     suspend fun embedQuery(name: String, query: String): FloatArray = withContext(Dispatchers.IO) {
@@ -219,7 +220,10 @@ class OpensolrApi(private val prefs: AppPrefs) {
             .add("language", "English").add("instruction", instruction).add("temperature", "0.1").add("stream", "yes")
             .build()
         val req = Request.Builder().url(AI + "ai_summary").post(form).build()
-        Http.stream.newCall(req).execute().use { r ->
+        val call = Http.stream.newCall(req)
+        // Stopping the answer closes the connection at once, so the server stops streaming it too.
+        val stop = coroutineContext[kotlinx.coroutines.Job]?.invokeOnCompletion { if (it != null) call.cancel() }
+        try { call.execute().use { r ->
             classify(r.code, "", r.header("Retry-After"))
             if (!r.isSuccessful) throw ServiceException("HTTP ${r.code}")
             val reader = r.body?.charStream() ?: return@use
@@ -229,9 +233,10 @@ class OpensolrApi(private val prefs: AppPrefs) {
                 if (n < 0) break
                 val chunk = String(buf, 0, n)
                 if (chunk.contains("VECTOR_NOT_ALLOWED")) throw VectorNotAllowedException()
+                kotlinx.coroutines.currentCoroutineContext().let { c -> c[kotlinx.coroutines.Job]?.let { if (!it.isActive) throw kotlinx.coroutines.CancellationException() } }
                 onChunk(chunk)
             }
-        }
+        } } finally { stop?.dispose() }
     }
 
     // ---------- plumbing ----------

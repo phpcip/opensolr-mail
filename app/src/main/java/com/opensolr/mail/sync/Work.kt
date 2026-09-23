@@ -50,6 +50,7 @@ object Work {
     }
 
     fun index(context: Context, continuation: Boolean = false) {
+        if (AppPrefs(context).indexStopped) return
         WorkManager.getInstance(context).enqueueUniqueWork(
             "index", if (continuation) ExistingWorkPolicy.APPEND_OR_REPLACE else ExistingWorkPolicy.KEEP,
             OneTimeWorkRequestBuilder<IndexWorker>().setConstraints(online)
@@ -59,6 +60,7 @@ object Work {
 
     /** Starts the indexer now: a run waiting out a retry delay is replaced, a running one is left alone. Call off the main thread. */
     fun indexNow(context: Context) {
+        AppPrefs(context).indexStopped = false
         val infos = runCatching { WorkManager.getInstance(context).getWorkInfosForUniqueWork("index").get() }.getOrDefault(emptyList())
         if (infos.any { it.state == androidx.work.WorkInfo.State.RUNNING }) return
         // Expedited: the system starts it at once instead of when it sees fit.
@@ -76,6 +78,12 @@ object Work {
             "periodic", ExistingPeriodicWorkPolicy.KEEP,
             PeriodicWorkRequestBuilder<SyncWorker>(15, TimeUnit.MINUTES).setConstraints(online).build(),
         )
+    }
+
+    /** Stops indexing now and keeps it stopped. */
+    fun stopIndex(context: Context) {
+        AppPrefs(context).indexStopped = true
+        WorkManager.getInstance(context).cancelUniqueWork("index")
     }
 
     fun cancelAll(context: Context) {
@@ -104,7 +112,7 @@ class IndexWorker(context: Context, params: WorkerParameters) : CoroutineWorker(
 
     override suspend fun doWork(): Result {
         val ctx = applicationContext
-        if (!AppPrefs(ctx).signedIn) return Result.success()
+        if (!AppPrefs(ctx).signedIn || AppPrefs(ctx).indexStopped) return Result.success()
         // The notification appears only once there is real work, and changes at most every 10 seconds:
         // a run with nothing to do never flashes it, and a busy one does not flicker.
         val watcher = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.Default).launch {

@@ -43,6 +43,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.draw.drawBehind
 import androidx.core.content.FileProvider
 import com.opensolr.mail.R
 import com.opensolr.mail.data.Mailbox
@@ -187,7 +188,7 @@ fun ThreadScreen(vm: AppViewModel, acc: String, threadId: String) {
             messages.forEach { m ->
                 val open = expanded[m.id] == true
                 val sender = m.from.firstOrNull()?.label.orEmpty()
-                Box(Modifier.scrollMark(threadMarks, m.id, sender + "\n" + fmtDate(m.received))) {
+                Box(Modifier.scrollMark(threadMarks, m.id, sender + "\n" + fmtDate(m.received)).padding(top = 8.dp)) {
                     MessageHeader(m, open, onCopy = { copy(it) }) { expanded[m.id] = !open }
                 }
                 androidx.compose.animation.AnimatedVisibility(
@@ -196,7 +197,7 @@ fun ThreadScreen(vm: AppViewModel, acc: String, threadId: String) {
                     exit = androidx.compose.animation.shrinkVertically(androidx.compose.animation.core.tween(200)) + androidx.compose.animation.fadeOut(androidx.compose.animation.core.tween(160)),
                 ) {
                     Column {
-                        Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp), horizontalArrangement = Arrangement.End) {
+                        Row(Modifier.fillMaxWidth().background(p.headFill).drawBehind { drawRect(p.accent, size = androidx.compose.ui.geometry.Size(4.dp.toPx(), size.height)) }.padding(horizontal = 8.dp), horizontalArrangement = Arrangement.End) {
                             IconBtn(R.drawable.ic_reply, { reply(Replies.Kind.REPLY, m) })
                             IconBtn(R.drawable.ic_reply_all, { reply(Replies.Kind.REPLY_ALL, m) })
                             IconBtn(R.drawable.ic_forward, { reply(Replies.Kind.FORWARD, m) })
@@ -227,12 +228,24 @@ fun ThreadScreen(vm: AppViewModel, acc: String, threadId: String) {
                                         val dir = File(context.cacheDir, "attachments").apply { mkdirs() }
                                         val safe = a.name.ifBlank { "file" }.replace(Regex("[^A-Za-z0-9._ -]"), "_").take(100)
                                         val f = File(dir, safe)
+                                        vm.toast(R.string.att_opening, a.name.ifBlank { "file" })
                                         Jmap(context, a0).download(a.blobId, a.name, a.type, f)
+                                        val type = withContext(Dispatchers.IO) { AttachmentFiles.typeOf(f, a.name, a.type) }
                                         val uri = FileProvider.getUriForFile(context, context.packageName + ".files", f)
-                                        context.startActivity(
-                                            Intent(Intent.ACTION_VIEW).setDataAndType(uri, a.type.ifBlank { "*/*" })
-                                                .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
-                                        )
+                                        val view = Intent(Intent.ACTION_VIEW).setDataAndType(uri, type)
+                                            .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
+                                        try {
+                                            context.startActivity(view)
+                                            vm.message = null
+                                        } catch (e: android.content.ActivityNotFoundException) {
+                                            // Nothing on the phone opens this kind of file: it goes to Downloads instead.
+                                            if (withContext(Dispatchers.IO) { AttachmentFiles.toDownloads(context, f, a.name.ifBlank { safe }, type) }) {
+                                                vm.toast(R.string.att_no_app_saved, a.name.ifBlank { safe })
+                                            } else {
+                                                saving = a
+                                                saveAs.launch(a.name.ifBlank { "attachment" })
+                                            }
+                                        }
                                     } catch (e: Exception) {
                                         vm.message = e.message
                                     }
@@ -278,7 +291,14 @@ fun ThreadScreen(vm: AppViewModel, acc: String, threadId: String) {
 @Composable
 private fun MessageHeader(m: Message, open: Boolean, onCopy: (String) -> Unit, onClick: () -> Unit) {
     val p = LocalPalette.current
-    Column(Modifier.fillMaxWidth().clickable(onClick = onClick).padding(horizontal = 16.dp, vertical = 10.dp)) {
+    // Each message opens on its own tinted band with an edge, the accent one when it is open, so where one
+    // message ends and the next begins reads at a glance in both themes.
+    val rim = if (open) p.accent else p.headRim
+    Column(
+        Modifier.fillMaxWidth().background(p.headFill)
+            .drawBehind { drawRect(rim, size = androidx.compose.ui.geometry.Size(4.dp.toPx(), size.height)) }
+            .clickable(onClick = onClick).padding(start = 18.dp, end = 16.dp, top = 12.dp, bottom = 12.dp)
+    ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(
                 m.sender?.label ?: stringResource(R.string.no_sender), style = MaterialTheme.typography.titleSmall, color = p.ink,
@@ -330,7 +350,7 @@ private fun CopyPill(text: String, strong: Boolean, onCopy: () -> Unit) {
     Text(
         text, style = MaterialTheme.typography.bodySmall, color = if (strong) p.ink else p.muted,
         maxLines = 1, overflow = TextOverflow.Ellipsis,
-        modifier = Modifier.background(p.buttonFill, RoundedCornerShape(2.dp)).hapticClickable(onClick = onCopy).padding(horizontal = 6.dp, vertical = 3.dp),
+        modifier = Modifier.background(p.pillFill, RoundedCornerShape(2.dp)).border(1.dp, p.headRim, RoundedCornerShape(2.dp)).hapticClickable(onClick = onCopy).padding(horizontal = 6.dp, vertical = 3.dp),
     )
 }
 
@@ -341,7 +361,7 @@ private fun Attachments(files: List<com.opensolr.mail.data.Attachment>, onSave: 
     FlowRow(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         files.forEach { a ->
             Row(
-                Modifier.background(p.buttonFill, RoundedCornerShape(2.dp)).border(1.dp, p.hairline, RoundedCornerShape(2.dp))
+                Modifier.background(p.pillFill, RoundedCornerShape(2.dp)).border(1.dp, p.headRim, RoundedCornerShape(2.dp))
                     .hapticClickable { onOpen(a) }.padding(horizontal = 10.dp, vertical = 8.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
@@ -378,6 +398,48 @@ fun MovePicker(boxes: List<Mailbox>, onPick: (Mailbox) -> Unit, onDismiss: () ->
             Box(Modifier.fillMaxWidth().hapticClickable(onClick = onDismiss).padding(16.dp)) {
                 Text(stringResource(R.string.cancel), style = MaterialTheme.typography.labelLarge, color = p.accent)
             }
+        }
+    }
+}
+
+/** What an attachment really is, and a copy of it in Downloads when no app opens it. */
+private object AttachmentFiles {
+    /** The type from the file's own first bytes, then its extension, then what the message declared. */
+    fun typeOf(f: File, name: String, declared: String): String {
+        val head = ByteArray(8)
+        val n = runCatching { f.inputStream().use { it.read(head) } }.getOrDefault(0)
+        fun starts(vararg b: Int) = n >= b.size && b.indices.all { head[it] == b[it].toByte() }
+        val sniffed = when {
+            starts(0x25, 0x50, 0x44, 0x46) -> "application/pdf"
+            starts(0xFF, 0xD8, 0xFF) -> "image/jpeg"
+            starts(0x89, 0x50, 0x4E, 0x47) -> "image/png"
+            starts(0x47, 0x49, 0x46, 0x38) -> "image/gif"
+            else -> null
+        }
+        if (sniffed != null) return sniffed
+        val ext = name.substringAfterLast('.', "").lowercase()
+        val byName = if (ext.isEmpty()) null else android.webkit.MimeTypeMap.getSingleton().getMimeTypeFromExtension(ext)
+        val clean = declared.substringBefore(';').trim().lowercase()
+        return byName ?: clean.takeIf { it.isNotEmpty() && it != "application/octet-stream" } ?: "application/octet-stream"
+    }
+
+    /** Copies the file into the public Downloads folder; false where that needs the system file picker (before Android 10). */
+    fun toDownloads(context: android.content.Context, f: File, name: String, type: String): Boolean {
+        if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.Q) return false
+        val values = android.content.ContentValues().apply {
+            put(android.provider.MediaStore.Downloads.DISPLAY_NAME, name)
+            put(android.provider.MediaStore.Downloads.MIME_TYPE, type)
+            put(android.provider.MediaStore.Downloads.IS_PENDING, 1)
+        }
+        val resolver = context.contentResolver
+        val uri = resolver.insert(android.provider.MediaStore.Downloads.EXTERNAL_CONTENT_URI, values) ?: return false
+        return try {
+            resolver.openOutputStream(uri)?.use { out -> f.inputStream().use { it.copyTo(out) } } ?: throw java.io.IOException("No output")
+            resolver.update(uri, android.content.ContentValues().apply { put(android.provider.MediaStore.Downloads.IS_PENDING, 0) }, null, null)
+            true
+        } catch (e: Exception) {
+            resolver.delete(uri, null, null)
+            false
         }
     }
 }

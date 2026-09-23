@@ -10,6 +10,9 @@ import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import kotlinx.coroutines.launch
+import androidx.compose.ui.node.invalidateDraw
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
@@ -48,6 +51,10 @@ data class Palette(
     val flagTile: Color,
     val flagRim: Color,
     val flagMark: Color,
+    /** The band that heads each message of a conversation, its edge, and the address pills on it. */
+    val headFill: Color,
+    val headRim: Color,
+    val pillFill: Color,
 )
 
 private val LightPalette = Palette(
@@ -68,6 +75,9 @@ private val LightPalette = Palette(
     flagTile = Color(0xFFFDECB3),
     flagRim = Color(0xFFE3B23C),
     flagMark = Color(0xFF8A6100),
+    headFill = Color(0xFFF1ECE4),
+    headRim = Color(0xFFCFC7BB),
+    pillFill = Color(0xFFFFFFFF),
 )
 
 private val DarkPalette = Palette(
@@ -81,13 +91,16 @@ private val DarkPalette = Palette(
     onAccent = Color(0xFFFFFFFF),
     accentFill = Color(0xFFB4551F),
     onAccentFill = Color(0xFFFFFFFF),
-    buttonFill = Color(0xFF111111),
+    buttonFill = Color(0xFF26231F),
     toolFill = Color(0xFF1A1917),
     dockFill = Color(0xFF26231F),
     flagFill = Color(0xFF262012),
     flagTile = Color(0xFF4A3C12),
     flagRim = Color(0xFF8A6A1A),
     flagMark = Color(0xFFF5C518),
+    headFill = Color(0xFF211F1C),
+    headRim = Color(0xFF4A453F),
+    pillFill = Color(0xFF34302B),
 )
 
 val LocalPalette = staticCompositionLocalOf { LightPalette }
@@ -167,12 +180,64 @@ private fun scheme(p: Palette, dark: Boolean): ColorScheme {
 fun OpensolrTheme(content: @Composable () -> Unit) {
     val dark = isSystemInDarkTheme()
     val palette = if (dark) DarkPalette else LightPalette
+    // The activity is not recreated when the theme flips, so the status and navigation bar icons follow it here.
+    val view = androidx.compose.ui.platform.LocalView.current
+    if (!view.isInEditMode) androidx.compose.runtime.SideEffect {
+        val window = (view.context as? android.app.Activity)?.window ?: return@SideEffect
+        androidx.core.view.WindowCompat.getInsetsController(window, view).apply {
+            isAppearanceLightStatusBars = !dark
+            isAppearanceLightNavigationBars = !dark
+        }
+    }
     CompositionLocalProvider(LocalPalette provides palette) {
         MaterialTheme(
             colorScheme = scheme(palette, dark),
             typography = AppTypography,
             shapes = AppShapes,
-            content = content,
-        )
+        ) {
+            // Every tap target in the app shows the press plainly: a clear accent wash while the finger is on it.
+            val press = remember(palette) { PressIndication(palette.accent.copy(alpha = if (dark) 0.28f else 0.18f)) }
+            CompositionLocalProvider(androidx.compose.foundation.LocalIndication provides press, content = content)
+        }
+    }
+}
+
+/** The press feedback of every clickable: a wash over the whole target, held at least long enough to be seen. */
+private class PressIndication(private val color: Color) : androidx.compose.foundation.IndicationNodeFactory {
+    override fun create(interactionSource: androidx.compose.foundation.interaction.InteractionSource): androidx.compose.ui.node.DelegatableNode =
+        PressNode(interactionSource, color)
+
+    override fun equals(other: Any?) = other is PressIndication && other.color == color
+    override fun hashCode() = color.hashCode()
+}
+
+private class PressNode(
+    private val source: androidx.compose.foundation.interaction.InteractionSource,
+    private val color: Color,
+) : androidx.compose.ui.Modifier.Node(), androidx.compose.ui.node.DrawModifierNode {
+    private var pressed = false
+    private var since = 0L
+
+    override fun onAttach() {
+        coroutineScope.launch {
+            source.interactions.collect { i ->
+                when (i) {
+                    is androidx.compose.foundation.interaction.PressInteraction.Press -> {
+                        pressed = true; since = System.currentTimeMillis(); invalidateDraw()
+                    }
+                    is androidx.compose.foundation.interaction.PressInteraction.Release,
+                    is androidx.compose.foundation.interaction.PressInteraction.Cancel -> {
+                        val left = 140L - (System.currentTimeMillis() - since)
+                        if (left > 0) kotlinx.coroutines.delay(left)
+                        pressed = false; invalidateDraw()
+                    }
+                }
+            }
+        }
+    }
+
+    override fun androidx.compose.ui.graphics.drawscope.ContentDrawScope.draw() {
+        drawContent()
+        if (pressed) drawRect(color)
     }
 }

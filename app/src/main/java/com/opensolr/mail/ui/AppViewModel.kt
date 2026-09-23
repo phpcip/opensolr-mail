@@ -178,6 +178,42 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch(Dispatchers.IO) { Work.indexNow(ctx) }
     }
 
+    fun stopIndex() {
+        Work.stopIndex(ctx)
+        toast(R.string.idx_stopped_toast)
+    }
+
+    /** Repair: asks once more for the vectors that are missing, then indexes. */
+    fun repairVectors() {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val n = com.opensolr.mail.index.MailIndexer(ctx).queueMissingVectors()
+                Work.indexNow(ctx)
+                withContext(Dispatchers.Main) { toast(R.string.idx_repair_started, java.text.NumberFormat.getIntegerInstance(java.util.Locale.US).format(n)) }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                withContext(Dispatchers.Main) { message = e.message ?: ctx.getString(R.string.err_generic) }
+            }
+        }
+    }
+
+    /** Reindex (keep the data), Reindex clean (empty first, then index) or Reset (empty and stay stopped). */
+    fun startOver(wipe: Boolean, restart: Boolean) {
+        Work.stopIndex(ctx)
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                com.opensolr.mail.index.MailIndexer(ctx).startOver(wipe, restart)
+                if (restart) Work.indexNow(ctx)
+                withContext(Dispatchers.Main) { toast(if (!restart) R.string.idx_reset_done else R.string.idx_reindex_started) }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                withContext(Dispatchers.Main) { message = e.message ?: ctx.getString(R.string.err_generic) }
+            }
+        }
+    }
+
     /** Positions of screens that are not worth a disk write each (one per conversation), kept while the app is open. */
     val positions = HashMap<String, Pair<Int, Int>>()
 
@@ -420,16 +456,26 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         aiText = ""
         aiRunning = true
         aiJob = viewModelScope.launch {
+            val me = coroutineContext[Job]
             try {
-                search.answer(question, filters) { chunk -> aiText = (aiText ?: "") + chunk }
+                search.answer(question, filters) { chunk -> if (aiJob === me) aiText = (aiText ?: "") + chunk }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
                 aiText = e.message ?: ctx.getString(R.string.err_generic)
             } finally {
-                aiRunning = false
+                if (aiJob === me) aiRunning = false
             }
         }
+    }
+
+    /** Stops the answer being written and clears it: a refresh or another question never keeps the old stream going. */
+    fun stopAi() {
+        aiJob?.cancel()
+        aiJob = null
+        aiQuestion = null
+        aiText = null
+        aiRunning = false
     }
 
     /** The last swipe, still undoable: a delete waits here unsent until the bar goes, a flag is undone by flagging back. */

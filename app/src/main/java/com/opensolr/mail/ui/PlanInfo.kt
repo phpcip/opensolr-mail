@@ -103,13 +103,13 @@ fun NeedsOpensolr(vm: AppViewModel) {
     Column {
         Notice(stringResource(R.string.search_needs_account_text), title = stringResource(R.string.search_needs_account_title))
         Spacer(Modifier.height(14.dp))
-        AccentButton(stringResource(R.string.connect_opensolr), { vm.startOpensolrSignIn(context) }, Modifier.fillMaxWidth())
+        ToolRow(listOf(Tool(R.drawable.ic_tool_signin, stringResource(R.string.tool_connect), accent = true) { vm.startOpensolrSignIn(context) }))
     }
 }
 
 /** Plan, usage bars, what each limit stops, and the way to a bigger plan. The same account zone as Opensolr Photos. */
 @Composable
-fun PlanDetails(vm: AppViewModel) {
+fun PlanDetails(vm: AppViewModel, onSignOut: () -> Unit) {
     val context = LocalContext.current
     val l = vm.limits
     Column {
@@ -134,20 +134,18 @@ fun PlanDetails(vm: AppViewModel) {
             InfoRow(stringResource(R.string.acc_updated), fmtDate(l.refreshedAt))
             Spacer(Modifier.height(16.dp))
             Notice(stringResource(R.string.acc_limit_text), title = stringResource(R.string.acc_limit_title))
-            Spacer(Modifier.height(14.dp))
-            AccentButton(stringResource(R.string.acc_upgrade), { PlanInfo.open(context, PlanInfo.PRICING_URL) }, Modifier.fillMaxWidth())
         }
         vm.limitsError?.let {
             Spacer(Modifier.height(12.dp))
             Notice(it, title = stringResource(R.string.acc_could_not_refresh))
         }
-        Spacer(Modifier.height(10.dp))
-        GhostButton(stringResource(if (vm.limitsLoading) R.string.acc_refreshing else R.string.acc_refresh), { vm.refreshLimits() }, Modifier.fillMaxWidth())
-        if (vm.prefs.indexName.isNotBlank()) {
-            Spacer(Modifier.height(10.dp))
-            GhostButton(stringResource(R.string.acc_open_index), { PlanInfo.open(context, PlanInfo.indexPanelUrl(vm.prefs.indexName)) }, Modifier.fillMaxWidth())
-        }
-        Spacer(Modifier.height(10.dp))
-        GhostButton(stringResource(R.string.acc_dashboard), { PlanInfo.open(context, PlanInfo.DASHBOARD_URL) }, Modifier.fillMaxWidth())
+        Spacer(Modifier.height(12.dp))
+        ToolRow(listOfNotNull(
+            Tool(R.drawable.ic_tool_upgrade, stringResource(R.string.tool_upgrade), accent = true) { PlanInfo.open(context, PlanInfo.PRICING_URL) },
+            Tool(R.drawable.ic_idx_reload, stringResource(if (vm.limitsLoading) R.string.acc_refreshing else R.string.acc_refresh), active = vm.limitsLoading) { vm.refreshLimits() },
+            if (vm.prefs.indexName.isNotBlank()) Tool(R.drawable.ic_tool_open, stringResource(R.string.tool_index)) { PlanInfo.open(context, PlanInfo.indexPanelUrl(vm.prefs.indexName)) } else null,
+            Tool(R.drawable.ic_tool_dashboard, stringResource(R.string.tool_dashboard)) { PlanInfo.open(context, PlanInfo.DASHBOARD_URL) },
+            Tool(R.drawable.ic_tool_signout, stringResource(R.string.sign_out), onClick = onSignOut),
+        ))
     }
 }

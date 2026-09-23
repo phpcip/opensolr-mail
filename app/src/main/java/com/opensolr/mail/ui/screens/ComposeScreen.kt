@@ -172,17 +172,19 @@ fun ComposeScreen(vm: AppViewModel, init: ComposeInit) {
         Dialog(onDismissRequest = { leaving = false }) {
             Column(Modifier.fillMaxWidth().background(p.paper).border(1.dp, p.hairline).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Text(stringResource(R.string.leave_title), style = MaterialTheme.typography.titleMedium, color = p.ink)
-                AccentButton(stringResource(R.string.save_draft), {
-                    outgoing()?.let { vm.saveDraft(it) }
-                    leaving = false
-                    vm.back()
-                }, Modifier.fillMaxWidth())
-                GhostButton(stringResource(R.string.discard), {
-                    files.forEach { File(it.path).delete() }
-                    leaving = false
-                    vm.back()
-                }, Modifier.fillMaxWidth())
-                GhostButton(stringResource(R.string.keep_editing), { leaving = false }, Modifier.fillMaxWidth())
+                com.opensolr.mail.ui.ToolRow(listOf(
+                    com.opensolr.mail.ui.Tool(R.drawable.ic_drafts, stringResource(R.string.tool_save), accent = true) {
+                        outgoing()?.let { vm.saveDraft(it) }
+                        leaving = false
+                        vm.back()
+                    },
+                    com.opensolr.mail.ui.Tool(R.drawable.ic_trash, stringResource(R.string.discard)) {
+                        files.forEach { File(it.path).delete() }
+                        leaving = false
+                        vm.back()
+                    },
+                    com.opensolr.mail.ui.Tool(R.drawable.ic_tool_keep, stringResource(R.string.tool_keep)) { leaving = false },
+                ))
             }
         }
     }

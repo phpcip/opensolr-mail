@@ -59,6 +59,11 @@ class AppPrefs(context: Context) {
         set(v) = sp.edit().putString(K_LIMITS, v?.toJson()).apply()
 
     /** Epoch ms until which embedding waits (monthly AI quota spent). */
+    /** Indexing stopped by hand: nothing indexes until Index now or a reindex. */
+    var indexStopped: Boolean
+        get() = sp.getBoolean("index_stopped", false)
+        set(v) = sp.edit().putBoolean("index_stopped", v).apply()
+
     var embedPausedUntil: Long
         get() = sp.getLong(K_EMBED_PAUSE, 0L)
         set(v) = sp.edit().putLong(K_EMBED_PAUSE, v).apply()

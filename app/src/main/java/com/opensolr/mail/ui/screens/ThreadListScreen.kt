@@ -162,7 +162,12 @@ fun ThreadListScreen(vm: AppViewModel, view: View) {
         pinnedSeen = now
         if (before != null && (now - before).isNotEmpty()) runCatching { listState.animateScrollToItem(0) }
     }
-    val atEnd by remember { derivedStateOf { listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index?.let { it >= listState.layoutInfo.totalItemsCount - 3 } == true } }
+    // The next page comes once the reader is a quarter of the way down what is loaded, well before the end,
+    // so neither scrolling nor the fast scroller ever reaches a bottom that is not the real one.
+    val atEnd by remember { derivedStateOf {
+        val total = listState.layoutInfo.totalItemsCount
+        listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index?.let { it >= minOf(total / 4, total - 3) } == true
+    } }
     LaunchedEffect(atEnd, rows.size) {
         // More is loaded only when the reader scrolled to the end, never on its own: with folded groups the list is short and would otherwise pull the whole history.
         if (!atEnd || !loaded || loadingOlder || !listState.canScrollBackward) return@LaunchedEffect
@@ -173,6 +178,12 @@ fun ThreadListScreen(vm: AppViewModel, view: View) {
             if (vm.loadOlder(view) == 0) exhausted = true
             loadingOlder = false
         }
+    }
+
+    // Back clears a selection first; from any other list it returns to All Inboxes; only from All Inboxes it leaves the app.
+    val inbox = com.opensolr.mail.data.View.Unified(com.opensolr.mail.data.Role.INBOX)
+    androidx.activity.compose.BackHandler(enabled = selected.isNotEmpty() || (vm.stack.size <= 1 && view != inbox)) {
+        if (selected.isNotEmpty()) selected = emptySet() else vm.home(Screen.List(inbox))
     }
 
     Column(Modifier.fillMaxSize()) {
@@ -276,6 +287,7 @@ fun ThreadListScreen(vm: AppViewModel, view: View) {
             SelectionBar(
                 onRead = { run(vm, selected, null) { acc, ids -> vm.setSeen(acc, ids, anyUnread) }; selected = emptySet() },
                 readIcon = if (anyUnread) R.drawable.ic_check else R.drawable.ic_unread,
+                readLabel = if (anyUnread) R.string.tool_read else R.string.tool_unread,
                 onFlag = { run(vm, selected, view) { acc, ids -> vm.setFlagged(acc, ids, anyUnflagged) }; selected = emptySet() },
                 onArchive = { run(vm, selected, view) { acc, ids -> vm.archive(acc, ids) }; selected = emptySet() },
                 onDelete = { run(vm, selected, view) { acc, ids -> vm.delete(acc, ids) }; selected = emptySet() },
@@ -303,24 +315,22 @@ private fun run(vm: AppViewModel, rows: Set<ThreadRow>, view: View?, action: (St
 }
 
 @Composable
-private fun SelectionBar(onRead: () -> Unit, readIcon: Int, onFlag: () -> Unit, onArchive: () -> Unit, onDelete: () -> Unit, onForward: () -> Unit, restoreLabel: Int?, onRestore: () -> Unit) {
+private fun SelectionBar(onRead: () -> Unit, readIcon: Int, readLabel: Int, onFlag: () -> Unit, onArchive: () -> Unit, onDelete: () -> Unit, onForward: () -> Unit, restoreLabel: Int?, onRestore: () -> Unit) {
     val p = LocalPalette.current
     Column(Modifier.fillMaxWidth().background(p.dockFill)) {
         Hairline()
-        // In Trash and Junk the first thing offered is the way back to the Inbox.
-        if (restoreLabel != null) {
-            com.opensolr.mail.ui.AccentButton(stringResource(restoreLabel), onRestore, Modifier.fillMaxWidth().padding(start = 12.dp, end = 12.dp, top = 10.dp))
-        }
-        Row(
-            Modifier.fillMaxWidth().padding(bottom = bottomInset()).height(56.dp),
-            horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically,
-        ) {
-            IconBtn(readIcon, onRead)
-            IconBtn(R.drawable.ic_flag, onFlag)
-            IconBtn(R.drawable.ic_forward, onForward)
-            IconBtn(R.drawable.ic_archive, onArchive, strong = true)
-            IconBtn(R.drawable.ic_delete, onDelete, strong = true)
-        }
+        // One row of labelled icons, the Opensolr Photos dock; in Trash and Junk the way back to the Inbox comes first.
+        com.opensolr.mail.ui.ToolRow(
+            listOfNotNull(
+                restoreLabel?.let { com.opensolr.mail.ui.Tool(R.drawable.ic_inbox, stringResource(if (it == R.string.not_junk) R.string.tool_not_junk else R.string.tool_to_inbox), accent = true, onClick = onRestore) },
+                com.opensolr.mail.ui.Tool(readIcon, stringResource(readLabel), onClick = onRead),
+                com.opensolr.mail.ui.Tool(R.drawable.ic_flag, stringResource(R.string.tool_flag), onClick = onFlag),
+                com.opensolr.mail.ui.Tool(R.drawable.ic_forward, stringResource(R.string.tool_forward), onClick = onForward),
+                com.opensolr.mail.ui.Tool(R.drawable.ic_archive, stringResource(R.string.tool_archive), strong = true, onClick = onArchive),
+                com.opensolr.mail.ui.Tool(R.drawable.ic_delete, stringResource(R.string.delete), strong = true, onClick = onDelete),
+            ),
+            Modifier.padding(start = 12.dp, end = 12.dp, top = 10.dp, bottom = bottomInset() + 10.dp),
+        )
     }
 }
 

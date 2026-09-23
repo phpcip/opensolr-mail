@@ -35,8 +35,14 @@ import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.draw.clip
+import androidx.compose.foundation.border
 import com.opensolr.mail.BuildConfig
 import com.opensolr.mail.R
+import com.opensolr.mail.ui.ConfirmDialog
+import com.opensolr.mail.ui.ToolRow
+import com.opensolr.mail.ui.Tool
 import com.opensolr.mail.ui.AccentButton
 import com.opensolr.mail.ui.AppLanguage
 import com.opensolr.mail.ui.AppViewModel
@@ -70,6 +76,7 @@ fun SettingsScreen(vm: AppViewModel) {
     var undoFlag by remember { mutableStateOf(vm.prefs.undoSwipeFlag) }
     var confirmRemove by remember { mutableStateOf<String?>(null) }
     var confirmSignOut by remember { mutableStateOf(false) }
+    var confirmIndex by remember { mutableStateOf<String?>(null) }
     val open = vm.zonesOpen
     fun n(v: Long) = String.format(Locale.US, "%,d", v)
     LaunchedEffect(Unit) { vm.refreshLimits(minAgeMs = 60_000) }
@@ -92,7 +99,7 @@ fun SettingsScreen(vm: AppViewModel) {
             Column {
                 InfoRow(stringResource(R.string.app), BuildConfig.VERSION_NAME)
                 Spacer(Modifier.height(10.dp))
-                GhostButton(stringResource(if (vm.updateChecking) R.string.acc_checking else R.string.check_updates), { vm.checkForUpdateNow() }, Modifier.fillMaxWidth())
+                ToolRow(listOf(Tool(R.drawable.ic_idx_sync, stringResource(if (vm.updateChecking) R.string.acc_checking else R.string.tool_check), active = vm.updateChecking) { vm.checkForUpdateNow() }))
                 vm.updateResult?.let {
                     Spacer(Modifier.height(12.dp))
                     Notice(it, title = stringResource(if (vm.update != null) R.string.acc_update_available else R.string.acc_version))
@@ -105,13 +112,14 @@ fun SettingsScreen(vm: AppViewModel) {
                     }
                     // A copy from Google Play is updated by Play; every other copy updates itself from the GitHub release.
                     if (com.opensolr.mail.net.SelfUpdate.fromPlay(context)) {
-                        AccentButton(stringResource(R.string.acc_update_now, newer.version), { com.opensolr.mail.net.SelfUpdate.openPlay(context) }, Modifier.fillMaxWidth())
+                        ToolRow(listOf(Tool(R.drawable.ic_tool_update, stringResource(R.string.acc_update_now, newer.version), accent = true) { com.opensolr.mail.net.SelfUpdate.openPlay(context) }))
                     } else {
                         val progress = vm.updateProgress
-                        AccentButton(
+                        ToolRow(listOf(Tool(
+                            R.drawable.ic_tool_update,
                             if (progress != null) stringResource(R.string.acc_downloading, progress) else stringResource(R.string.acc_update_now, newer.version),
-                            { vm.installUpdate(context) }, Modifier.fillMaxWidth(), enabled = progress == null,
-                        )
+                            accent = true, enabled = progress == null,
+                        ) { vm.installUpdate(context) }))
                         vm.updateInstallError?.let {
                             Spacer(Modifier.height(8.dp))
                             Text(it, style = MaterialTheme.typography.bodySmall, color = p.muted)
@@ -134,16 +142,18 @@ fun SettingsScreen(vm: AppViewModel) {
                         Notice(stringResource(R.string.sign_in_again_needed))
                     }
                     Toggle(stringResource(R.string.calendar_sync), a.calendarSync) { vm.setCalendarSync(a, it) }
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        GhostButton(stringResource(R.string.sign_in_again), { vm.startFastmailSignIn(context) }, Modifier.weight(1f))
-                        if (confirmRemove == a.key) AccentButton(stringResource(R.string.confirm_remove), { confirmRemove = null; vm.removeAccount(a) }, Modifier.weight(1f))
-                        else GhostButton(stringResource(R.string.remove), { confirmRemove = a.key }, Modifier.weight(1f))
-                    }
+                    ToolRow(listOf(
+                        Tool(R.drawable.ic_tool_signin, stringResource(R.string.tool_sign_in), accent = a.key in vm.needsLogin) { vm.startFastmailSignIn(context) },
+                        Tool(R.drawable.ic_trash, stringResource(R.string.remove)) { confirmRemove = a.key },
+                    ))
                     Spacer(Modifier.height(10.dp))
                     Hairline()
                 }
                 Spacer(Modifier.height(12.dp))
-                GhostButton(stringResource(R.string.add_account), { vm.startFastmailSignIn(context) }, Modifier.fillMaxWidth(), icon = R.drawable.ic_add)
+                ToolRow(listOf(Tool(R.drawable.ic_add, stringResource(R.string.tool_add_account)) { vm.startFastmailSignIn(context) }))
+                accounts.firstOrNull { it.key == confirmRemove }?.let { a ->
+                    ConfirmDialog(stringResource(R.string.remove), a.username, stringResource(R.string.remove), { confirmRemove = null }) { confirmRemove = null; vm.removeAccount(a) }
+                }
             }
         }
 
@@ -154,10 +164,8 @@ fun SettingsScreen(vm: AppViewModel) {
                     com.opensolr.mail.ui.NeedsOpensolr(vm)
                     return@Column
                 }
-                com.opensolr.mail.ui.PlanDetails(vm)
-                Spacer(Modifier.height(10.dp))
-                if (confirmSignOut) AccentButton(stringResource(R.string.confirm_sign_out), { confirmSignOut = false; vm.signOutOpensolr() }, Modifier.fillMaxWidth())
-                else GhostButton(stringResource(R.string.sign_out), { confirmSignOut = true }, Modifier.fillMaxWidth())
+                com.opensolr.mail.ui.PlanDetails(vm) { confirmSignOut = true }
+                if (confirmSignOut) ConfirmDialog(stringResource(R.string.sign_out), vm.prefs.email, stringResource(R.string.sign_out), { confirmSignOut = false }) { confirmSignOut = false; vm.signOutOpensolr() }
             }
         }
 
@@ -176,6 +184,7 @@ fun SettingsScreen(vm: AppViewModel) {
                     s.running && s.phase == com.opensolr.mail.index.MailIndexer.Phase.HISTORY -> R.string.idx_phase_history
                     s.running && s.phase == com.opensolr.mail.index.MailIndexer.Phase.MAIL -> R.string.idx_phase_mail
                     s.running -> R.string.idx_running
+                    vm.prefs.indexStopped -> R.string.idx_state_stopped
                     s.pending > 0 || !s.historyDone || s.messagesLeft > 0 -> R.string.idx_row_waiting
                     s.attLeft > 0 -> R.string.idx_waiting_wifi
                     else -> R.string.idx_row_done
@@ -205,7 +214,35 @@ fun SettingsScreen(vm: AppViewModel) {
                 if (!vm.prefs.vectorAllowed) { Spacer(Modifier.height(8.dp)); Notice(stringResource(R.string.index_words_only)) }
                 if (vm.prefs.embedPausedUntil > System.currentTimeMillis()) { Spacer(Modifier.height(8.dp)); Notice(stringResource(R.string.index_quota)) }
                 Spacer(Modifier.height(12.dp))
-                GhostButton(stringResource(R.string.idx_run_now), { vm.indexNow() }, Modifier.fillMaxWidth())
+                // The index tools as in Opensolr Photos: one row of small icons with a short label under each.
+                // Those that start over or cost AI requests ask first, in a dialog saying what they do.
+                ToolRow(listOf(
+                    Tool(R.drawable.ic_idx_sync, stringResource(R.string.idx_tool_now), active = s.running) { vm.indexNow() },
+                    Tool(R.drawable.ic_idx_stop, stringResource(R.string.idx_tool_stop), active = vm.prefs.indexStopped) { vm.stopIndex() },
+                    Tool(R.drawable.ic_idx_repair, stringResource(R.string.idx_tool_repair)) { confirmIndex = "repair" },
+                    Tool(R.drawable.ic_idx_reload, stringResource(R.string.idx_tool_reindex)) { confirmIndex = "reindex" },
+                    Tool(R.drawable.ic_idx_rebuild, stringResource(R.string.idx_tool_clean)) { confirmIndex = "clean" },
+                    Tool(R.drawable.ic_idx_reset, stringResource(R.string.idx_tool_reset)) { confirmIndex = "reset" },
+                ))
+                Spacer(Modifier.height(8.dp))
+                Text(stringResource(R.string.idx_tools_text), style = MaterialTheme.typography.bodySmall, color = p.muted)
+                confirmIndex?.let { key ->
+                    val (text, action) = when (key) {
+                        "repair" -> R.string.idx_repair_confirm to R.string.idx_tool_repair
+                        "reindex" -> R.string.idx_reindex_confirm to R.string.idx_tool_reindex
+                        "clean" -> R.string.idx_reindex_clean_confirm to R.string.idx_tool_clean
+                        else -> R.string.idx_reset_confirm to R.string.idx_tool_reset
+                    }
+                    ConfirmDialog(stringResource(action), stringResource(text), stringResource(action), { confirmIndex = null }) {
+                        confirmIndex = null
+                        when (key) {
+                            "repair" -> vm.repairVectors()
+                            "reindex" -> vm.startOver(wipe = false, restart = true)
+                            "clean" -> vm.startOver(wipe = true, restart = true)
+                            else -> vm.startOver(wipe = true, restart = false)
+                        }
+                    }
+                }
             }
         }
 
@@ -293,3 +330,4 @@ private fun activityOf(context: Context): Activity? {
     }
     return null
 }
+

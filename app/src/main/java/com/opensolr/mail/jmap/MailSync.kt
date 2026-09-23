@@ -300,7 +300,7 @@ class MailSync(private val context: Context) {
                 draft = kw.optBoolean("\$draft"),
                 answered = kw.optBoolean("\$answered"),
                 received = parseDate(o.optString("receivedAt")),
-                subject = o.optString("subject").takeIf { it != "null" }.orEmpty(),
+                subject = Html.plain(o.optString("subject").takeIf { it != "null" }.orEmpty()),
                 from = Address.listFrom(o.optJSONArray("from")),
                 to = Address.listFrom(o.optJSONArray("to")),
                 cc = Address.listFrom(o.optJSONArray("cc")),
@@ -329,8 +329,8 @@ class MailSync(private val context: Context) {
                 }.filter { want.isEmpty() || it.first == want }
             }
             val text = partsText(o.optJSONArray("textBody"), "").joinToString("\n\n") { (type, v) ->
-                if (type == "text/html") Html.toText(v) else v
-            }
+                Html.plain(if (type == "text/html") Html.toText(v) else v)
+            }.trim()
             val html = partsText(o.optJSONArray("htmlBody"), "").joinToString("\n") { (type, v) ->
                 if (type == "text/html") v else Html.fromText(v)
             }

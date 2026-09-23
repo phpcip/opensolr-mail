@@ -38,6 +38,8 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
+import androidx.compose.foundation.layout.Column
+import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.text.KeyboardOptions
 import com.opensolr.mail.ui.theme.LocalPalette
 import java.text.SimpleDateFormat
@@ -300,8 +302,8 @@ fun StackEdges(count: Int) {
     if (count < 2) return
     val p = LocalPalette.current
     androidx.compose.foundation.layout.Column(Modifier.fillMaxWidth()) {
-        Box(Modifier.fillMaxWidth().padding(start = 52.dp, end = 10.dp).height(3.dp).background(p.chip, androidx.compose.foundation.shape.RoundedCornerShape(bottomStart = 2.dp, bottomEnd = 2.dp)).border(1.dp, p.hairline, androidx.compose.foundation.shape.RoundedCornerShape(bottomStart = 2.dp, bottomEnd = 2.dp)))
-        if (count > 2) Box(Modifier.fillMaxWidth().padding(start = 60.dp, end = 18.dp).height(3.dp).background(p.band, androidx.compose.foundation.shape.RoundedCornerShape(bottomStart = 2.dp, bottomEnd = 2.dp)).border(1.dp, p.hairline, androidx.compose.foundation.shape.RoundedCornerShape(bottomStart = 2.dp, bottomEnd = 2.dp)))
+        Box(Modifier.fillMaxWidth().padding(start = 52.dp, end = 10.dp).height(4.dp).background(p.headFill, androidx.compose.foundation.shape.RoundedCornerShape(bottomStart = 2.dp, bottomEnd = 2.dp)).border(1.dp, p.headRim, androidx.compose.foundation.shape.RoundedCornerShape(bottomStart = 2.dp, bottomEnd = 2.dp)))
+        if (count > 2) Box(Modifier.fillMaxWidth().padding(start = 60.dp, end = 18.dp).height(4.dp).background(p.headFill, androidx.compose.foundation.shape.RoundedCornerShape(bottomStart = 2.dp, bottomEnd = 2.dp)).border(1.dp, p.headRim, androidx.compose.foundation.shape.RoundedCornerShape(bottomStart = 2.dp, bottomEnd = 2.dp)))
     }
 }
 
@@ -310,7 +312,7 @@ fun StackEdges(count: Int) {
 fun CountBadge(count: Int) {
     if (count < 2) return
     val p = LocalPalette.current
-    Box(Modifier.padding(start = 6.dp).background(p.chip, SHAPE).border(1.dp, p.hairline, SHAPE).padding(horizontal = 6.dp, vertical = 1.dp)) {
+    Box(Modifier.padding(start = 6.dp).background(p.headFill, SHAPE).border(1.dp, p.headRim, SHAPE).padding(horizontal = 6.dp, vertical = 1.dp)) {
         Text(count.toString(), style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = p.ink)
     }
 }
@@ -336,4 +338,58 @@ fun AttachBadge() {
     ) {
         Icon(painterResource(com.opensolr.mail.R.drawable.ic_attach), null, tint = p.accent, modifier = Modifier.size(13.dp))
     }
+}
+
+/** One action of a [ToolRow]. */
+data class Tool(@DrawableRes val icon: Int, val label: String, val accent: Boolean = false, val active: Boolean = false, val enabled: Boolean = true, val strong: Boolean = false, val onClick: () -> Unit)
+
+/** Actions as the Opensolr Photos header: a row of small icons with a short label under each. */
+@Composable
+fun ToolRow(tools: List<Tool>, modifier: Modifier = Modifier) {
+    val p = LocalPalette.current
+    val view = androidx.compose.ui.platform.LocalView.current
+    Row(modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        // A short row keeps small tiles, a quarter of the width each, instead of stretching them.
+        tools.forEach { t ->
+            val tint = when {
+                !t.enabled -> p.hairline
+                t.accent || t.active -> p.accent
+                else -> p.ink
+            }
+            Column(
+                Modifier
+                    .weight(1f)
+                    .clip(SHAPE)
+                    .background(p.buttonFill)
+                    .border(1.dp, if (t.accent || t.active) p.accent else p.hairline, SHAPE)
+                    .clickable(enabled = t.enabled) { if (t.strong) Haptics.tick(view, true) else Haptics.tap(view); t.onClick() }
+                    .padding(vertical = 6.dp, horizontal = 2.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                Icon(painterResource(t.icon), contentDescription = t.label, tint = tint, modifier = Modifier.size(20.dp))
+                Spacer(Modifier.height(3.dp))
+                Text(
+                    t.label, fontSize = 10.sp, lineHeight = 12.sp, fontWeight = FontWeight.SemiBold, color = tint,
+                    maxLines = 1, softWrap = false, overflow = TextOverflow.Clip,
+                )
+            }
+        }
+        if (tools.size < 3) Spacer(Modifier.weight((4 - tools.size).toFloat()))
+    }
+}
+
+/** Asks before an action that cannot be taken back: what it does, Cancel, and the action in the accent. */
+@Composable
+fun ConfirmDialog(title: String, text: String, action: String, onDismiss: () -> Unit, onConfirm: () -> Unit) {
+    val p = LocalPalette.current
+    androidx.compose.material3.AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(title) },
+        text = { Text(text) },
+        confirmButton = { androidx.compose.material3.TextButton(onClick = onConfirm) { Text(action, color = p.accent) } },
+        dismissButton = { androidx.compose.material3.TextButton(onClick = onDismiss) { Text(androidx.compose.ui.res.stringResource(com.opensolr.mail.R.string.cancel), color = p.ink) } },
+        containerColor = p.paper,
+        titleContentColor = p.ink,
+        textContentColor = p.muted,
+    )
 }

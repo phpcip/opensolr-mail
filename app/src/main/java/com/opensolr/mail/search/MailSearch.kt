@@ -106,16 +106,21 @@ class MailSearch(private val context: Context) {
         if (q.isEmpty()) {
             matched = "*:*"
         } else {
+            // The same parameters as search.opensolr.com, on the mail fields.
             p += "uq" to q
-            p += "lexicalRaw" to "{!edismax qf=\"$QF\" mm=\"$MM\" v=\$uq}"
+            p += "qf" to QF
+            p += "mm" to MM
+            p += "df" to "subject_t"
+            val lexical = "{!edismax qf=\"$QF\" mm=\"$MM\" v=\$uq}"
             val vector = if (prefs.aiSearch && prefs.vectorAllowed) runCatching { vectorOf(connection.indexName, q) }.getOrNull() else null
             matched = if (vector != null) {
                 smart = true
                 p += "vectorQuery" to "{!knn f=${MailIndexer.VECTOR} topK=$TOP_K}" + vector.joinToString(",", "[", "]")
-                val alpha = String.format(Locale.US, "%.2f", 1f - prefs.lexicalWeight)
+                p += "lexicalRaw" to lexical
+                val alpha = java.math.BigDecimal(String.format(Locale.US, "%.2f", 1f - prefs.lexicalWeight)).stripTrailingZeros().toPlainString()
                 "{!hybrid lexical=\$lexicalRaw vector=\$vectorQuery mode=union alpha=$alpha topN=$TOP_K}"
             } else {
-                "{!bool should=\$lexicalRaw}"
+                lexical
             }
         }
         if (prefs.freshSearch) {
@@ -160,12 +165,29 @@ class MailSearch(private val context: Context) {
         p += "f.weekday_i.facet.sort" to "index"
         if (q.isNotEmpty()) {
             p += "hl" to "true"
-            p += "hl.method" to "unified"
+            // With vectors the highlighter gets the words with mm=0, so a match found by meaning still shows its words.
+            p += "hl.q" to if (smart) "{!edismax qf=\"$QF\" mm=0 v=\$uq}" else q
             p += "hl.fl" to "subject_t,body_t,attachment_text_t"
-            p += "hl.q" to q
+            p += "hl.method" to "unified"
+            p += "hl.defaultSummary" to "true"
+            p += "hl.fragsize" to "300"
             p += "hl.snippets" to "1"
-            p += "hl.fragsize" to "180"
-            p += "hl.defaultSummary" to "false"
+            p += "hl.simple.pre" to "<em>"
+            p += "hl.simple.post" to "</em>"
+            p += "hl.highlightMultiTerm" to "true"
+            p += "hl.usePhraseHighlighter" to "true"
+            p += "hl.maxAnalyzedChars" to "1000"
+            p += "hl.requireFieldMatch" to "false"
+            p += "f.subject_t.hl.fragsize" to "0"
+            p += "spellcheck" to "true"
+            p += "spellcheck.q" to q
+            p += "spellcheck.onlyMorePopular" to "false"
+            p += "spellcheck.extendedResults" to "false"
+            p += "spellcheck.count" to "5"
+            p += "spellcheck.collate" to "true"
+            p += "spellcheck.collateExtendedResults" to "false"
+            p += "spellcheck.maxCollationTries" to "15"
+            p += "spellcheck.maxCollations" to "3"
         }
         val field = groupBy.field
         if (field != null) {
@@ -192,9 +214,13 @@ class MailSearch(private val context: Context) {
             val d = docs.getJSONObject(i)
             val id = d.optString("id")
             val h = hl.optJSONObject(id)
-            val snippet = h?.optJSONArray("body_t")?.optString(0)?.takeIf { it.isNotBlank() }
-                ?: h?.optJSONArray("attachment_text_t")?.optString(0)?.takeIf { it.isNotBlank() }
-                ?: d.optString("preview_t")
+            // The fragment with the words found, from the body or an attachment; a plain summary only when neither has them.
+            val body = h?.optJSONArray("body_t")?.optString(0).orEmpty()
+            val att = h?.optJSONArray("attachment_text_t")?.optString(0).orEmpty()
+            val found = listOf(body, att).firstOrNull { "<em>" in it }?.replace(Regex("\\s+"), " ")?.trim()
+            // One line in the list: it starts shortly before the first word found, so that word is always in view.
+            val snippet = found?.let { f -> val at = f.indexOf("<em>"); if (at > 40) "\u2026" + f.substring(f.lastIndexOf(' ', at - 30).coerceAtLeast(0)).trimStart() else f }
+                ?: d.optString("preview_t").ifBlank { body }
             val to = d.optJSONArray("to_tm")?.let { a -> (0 until a.length()).joinToString(", ") { a.getString(it) } }.orEmpty()
             aiDocs += AiPrompt.Doc(
                 id = id, score = if (d.has("score")) d.optDouble("score") else null, title = d.optString("subject_t"),
@@ -346,9 +372,9 @@ class MailSearch(private val context: Context) {
         private val vectors = object : LinkedHashMap<String, FloatArray>(64, 0.75f, true) {
             override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, FloatArray>?) = size > 100
         }
-        private const val QF = "subject_t^4 from_t^3 to_tm^2 cc_tm attachment_names_tm^2 body_t attachment_text_t^0.7 words_ng^0.5 address_ngk^0.5"
+        private const val QF = "subject_t^0.9 from_t to_tm cc_tm attachment_names_tm body_t^0.8 attachment_text_t^0.01 words_ng^0.01 address_ngk^0.01"
         private const val MM = "2<65% 4<50% 8<40%"
-        private const val TOP_K = 100
+        private const val TOP_K = 790
         private const val GROUP_LIMIT = 5
         private const val GROUP_ROWS = 20
 

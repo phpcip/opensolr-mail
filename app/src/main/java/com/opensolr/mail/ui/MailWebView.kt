@@ -3,7 +3,6 @@ package com.opensolr.mail.ui
 import android.annotation.SuppressLint
 import android.content.Context
 import android.content.Intent
-import android.graphics.Color
 import android.net.Uri
 import android.webkit.WebResourceRequest
 import android.webkit.WebResourceResponse
@@ -11,6 +10,7 @@ import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.viewinterop.AndroidView
 import com.opensolr.mail.data.AccountStore
 import com.opensolr.mail.data.Attachment
@@ -22,11 +22,18 @@ import java.io.File
 @SuppressLint("SetJavaScriptEnabled")
 @Composable
 fun MailWebView(html: String, acc: String, attachments: List<Attachment>, remoteImages: Boolean, modifier: Modifier = Modifier) {
+    val dark = androidx.compose.foundation.isSystemInDarkTheme()
+    val paper = com.opensolr.mail.ui.theme.LocalPalette.current.paper
     AndroidView(
         modifier = modifier,
         factory = { ctx ->
             WebView(ctx).apply {
-                setBackgroundColor(Color.WHITE)
+                setBackgroundColor(paper.toArgb())
+                // In the dark theme the message is darkened by the WebView itself, its own colours included,
+                // instead of standing as a white block.
+                if (androidx.webkit.WebViewFeature.isFeatureSupported(androidx.webkit.WebViewFeature.ALGORITHMIC_DARKENING)) {
+                    androidx.webkit.WebSettingsCompat.setAlgorithmicDarkeningAllowed(settings, dark)
+                }
                 settings.javaScriptEnabled = false
                 settings.allowFileAccess = false
                 settings.allowContentAccess = false
@@ -39,6 +46,10 @@ fun MailWebView(html: String, acc: String, attachments: List<Attachment>, remote
             }
         },
         update = { w ->
+            w.setBackgroundColor(paper.toArgb())
+            if (androidx.webkit.WebViewFeature.isFeatureSupported(androidx.webkit.WebViewFeature.ALGORITHMIC_DARKENING)) {
+                androidx.webkit.WebSettingsCompat.setAlgorithmicDarkeningAllowed(w.settings, dark)
+            }
             w.settings.blockNetworkImage = !remoteImages
             w.settings.blockNetworkLoads = !remoteImages
             (w.webViewClient as? MailClient)?.attachments = attachments

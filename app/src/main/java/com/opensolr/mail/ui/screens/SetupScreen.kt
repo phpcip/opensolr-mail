@@ -36,7 +36,7 @@ fun SetupScreen(vm: AppViewModel) {
         Spacer(Modifier.height(6.dp))
         Text(stringResource(R.string.setup_step2_body), style = MaterialTheme.typography.bodyMedium, color = p.muted)
         Spacer(Modifier.height(20.dp))
-        AccentButton(stringResource(R.string.sign_in_fastmail), onClick = { vm.startFastmailSignIn(context) }, modifier = Modifier.fillMaxWidth())
+        com.opensolr.mail.ui.ToolRow(listOf(com.opensolr.mail.ui.Tool(R.drawable.ic_tool_signin, stringResource(R.string.tool_fastmail), accent = true) { vm.startFastmailSignIn(context) }))
         Spacer(Modifier.height(36.dp))
         Text(stringResource(R.string.setup_search), style = MaterialTheme.typography.titleMedium, color = p.ink)
         Spacer(Modifier.height(6.dp))
@@ -45,7 +45,7 @@ fun SetupScreen(vm: AppViewModel) {
         if (vm.signedIn) {
             Text(stringResource(R.string.setup_opensolr_connected, vm.prefs.email), style = MaterialTheme.typography.bodyMedium, color = p.accent)
         } else {
-            GhostButton(stringResource(R.string.connect_opensolr), { vm.startOpensolrSignIn(context) }, Modifier.fillMaxWidth())
+            com.opensolr.mail.ui.ToolRow(listOf(com.opensolr.mail.ui.Tool(R.drawable.ic_tool_signin, stringResource(R.string.tool_connect)) { vm.startOpensolrSignIn(context) }))
         }
     }
 }

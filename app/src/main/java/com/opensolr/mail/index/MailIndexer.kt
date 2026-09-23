@@ -7,6 +7,7 @@ import com.opensolr.mail.data.MailAccount
 import com.opensolr.mail.data.MailDb
 import com.opensolr.mail.data.Mailbox
 import com.opensolr.mail.data.Message
+import com.opensolr.mail.jmap.Html
 import com.opensolr.mail.jmap.Jmap
 import com.opensolr.mail.jmap.MailSync
 import com.opensolr.mail.jmap.MailSync.Companion.strings
@@ -43,6 +44,7 @@ class MailIndexer(private val context: Context) {
     private val store = AccountStore.get(context)
 
     suspend fun run(deadline: Long): Outcome = runLock.withLock {
+        if (prefs.indexStopped) return@withLock Outcome.DONE
         runUntil = deadline
         _status.value = _status.value.copy(running = true, error = null, pending = db.indexPending())
         var solrForCount: SolrClient? = null
@@ -103,6 +105,49 @@ class MailIndexer(private val context: Context) {
         outcome
     }
 
+    /**
+     * Starts the index over: the queue is dropped and every account's history is read again from the
+     * newest message. With [wipe] the whole index is emptied first (every document, *:*). With
+     * [restart] false indexing stays stopped afterwards. Waits for a running pass to end first.
+     */
+    suspend fun startOver(wipe: Boolean, restart: Boolean) = runLock.withLock {
+        val connection = MailIndex(context).ensure()
+        val solr = SolrClient(connection)
+        if (wipe) solr.resetAll()
+        db.clearIndexQueue()
+        store.all().forEach { db.setState(it.key, MailSync.STATE_BACKFILL, "start") }
+        context.getSharedPreferences("index_status", Context.MODE_PRIVATE).edit().putInt("doc_version", DOC_VERSION).putBoolean("reindex_all", false).commit()
+        prefs.indexStopped = !restart
+        refreshCounts(solr)
+        _status.value = _status.value.copy(running = false, phase = Phase.IDLE, error = null, at = System.currentTimeMillis())
+        persist()
+    }
+
+    /**
+     * Repair: every message of this phone's accounts still without a vector is written once more, so
+     * its vector is asked for again. One pass only; what fails again stays marked and is not retried.
+     */
+    suspend fun queueMissingVectors(): Int {
+        val connection = MailIndex(context).ensure()
+        val solr = SolrClient(connection)
+        val mine = localFilter() ?: return 0
+        var cursor = "*"
+        var queued = 0
+        while (true) {
+            val r = solr.select(listOf("q" to "*:*", "fq" to "vec_b:false", "fq" to mine.first, "acc" to mine.second,
+                "fl" to "account_s,email_id_s", "sort" to "id asc", "rows" to "1000", "cursorMark" to cursor))
+            val docs = r.optJSONObject("response")?.optJSONArray("docs") ?: break
+            (0 until docs.length()).map { docs.getJSONObject(it) }.groupBy { it.optString("account_s") }.forEach { (acc, list) ->
+                localAccount(acc)?.let { a -> db.queueIndex(a.key, list.map { it.optString("email_id_s") }, MailSync.OP_UPSERT); queued += list.size }
+            }
+            val next = r.optString("nextCursorMark")
+            if (next.isEmpty() || next == cursor) break
+            cursor = next
+        }
+        prefs.indexStopped = false
+        return queued
+    }
+
     /** Documents in the index, how many carry a vector, what is still queued, and whether every account's history was walked. One faceted query. */
     private suspend fun refreshCounts(solr: SolrClient?) {
         val s = _status.value
@@ -110,19 +155,21 @@ class MailIndexer(private val context: Context) {
         var meaning = s.withMeaning
         var attachments = s.attachmentsLeft
         var withAtt = s.indexedWithAtt
+        var current = s.upToDate
         if (solr != null) runCatching {
             val mine = localFilter() ?: return
-            val r = solr.select(listOf("q" to "*:*", "fq" to mine.first, "acc" to mine.second, "rows" to "0", "facet" to "true", "facet.query" to "{!key=v}vec_b:true", "facet.query" to "{!key=a}att_todo_b:true", "facet.query" to "{!key=h}has_attachment_b:true"))
+            val r = solr.select(listOf("q" to "*:*", "fq" to mine.first, "acc" to mine.second, "rows" to "0", "facet" to "true", "facet.query" to "{!key=v}vec_b:true", "facet.query" to "{!key=a}att_todo_b:true", "facet.query" to "{!key=h}has_attachment_b:true", "facet.query" to "{!key=c}dv_i:$DOC_VERSION"))
             indexed = r.getJSONObject("response").getLong("numFound")
             val fq = r.optJSONObject("facet_counts")?.optJSONObject("facet_queries")
             meaning = fq?.optLong("v") ?: meaning
             attachments = fq?.optLong("a") ?: attachments
             withAtt = fq?.optLong("h") ?: withAtt
+            current = fq?.optLong("c") ?: current
         }
         val totals = mailboxTotals()
         val done = store.all().isNotEmpty() && store.all().all { db.state(it.key, MailSync.STATE_BACKFILL) == "done" }
         _status.value = _status.value.copy(
-            indexed = indexed, withMeaning = meaning, attachmentsLeft = attachments, indexedWithAtt = withAtt,
+            indexed = indexed, withMeaning = meaning, attachmentsLeft = attachments, indexedWithAtt = withAtt, upToDate = current,
             mailTotal = totals?.first ?: _status.value.mailTotal, mailWithAtt = totals?.second ?: _status.value.mailWithAtt,
             pending = db.indexPending(), historyDone = done,
         )
@@ -156,7 +203,7 @@ class MailIndexer(private val context: Context) {
         val s = _status.value
         context.getSharedPreferences("index_status", Context.MODE_PRIVATE).edit()
             .putLong("indexed", s.indexed).putLong("meaning", s.withMeaning).putInt("pending", s.pending).putLong("attachments", s.attachmentsLeft)
-            .putLong("with_att", s.indexedWithAtt).putLong("mail_total", s.mailTotal).putLong("mail_with_att", s.mailWithAtt)
+            .putLong("with_att", s.indexedWithAtt).putLong("up_to_date", s.upToDate).putLong("mail_total", s.mailTotal).putLong("mail_with_att", s.mailWithAtt)
             .putBoolean("done", s.historyDone).putBoolean("no_room", s.noRoom).putString("error", s.error).putLong("at", s.at).apply()
     }
 
@@ -166,7 +213,7 @@ class MailIndexer(private val context: Context) {
         val sp = context.getSharedPreferences("index_status", Context.MODE_PRIVATE)
         _status.value = Status(
             indexed = sp.getLong("indexed", -1), withMeaning = sp.getLong("meaning", -1), pending = sp.getInt("pending", 0), attachmentsLeft = sp.getLong("attachments", -1),
-            indexedWithAtt = sp.getLong("with_att", -1), mailTotal = sp.getLong("mail_total", -1), mailWithAtt = sp.getLong("mail_with_att", -1),
+            indexedWithAtt = sp.getLong("with_att", -1), upToDate = sp.getLong("up_to_date", -1), mailTotal = sp.getLong("mail_total", -1), mailWithAtt = sp.getLong("mail_with_att", -1),
             historyDone = sp.getBoolean("done", false), noRoom = sp.getBoolean("no_room", false), error = sp.getString("error", null), at = sp.getLong("at", 0),
         )
     }
@@ -297,15 +344,19 @@ class MailIndexer(private val context: Context) {
         val gone = ids.filterNot { it in found }
         if (gone.isNotEmpty()) solr.deleteIds(gone.map { docId(account, it) })
 
-        val vectors = embed(name, entries.map { (m, b) ->
-            embedTextOf(
-                m.subject, m.sender?.let { (it.name + " " + it.email).trim() }.orEmpty(), m.to.joinToString(", ") { it.label }, b.text,
-                b.attachments.filter { !it.inline }.map { it.name }.filter { it.isNotBlank() }, attText[m.id].orEmpty(),
-            )
-        })
+        // Only messages with a subject or a body get a vector; an empty one is sent nothing, not a placeholder.
+        // A text is never cut: one longer than the embedding endpoint takes stays without a vector.
+        val texts = entries.map { (m, b) -> embedTextOf(m.subject, b.text) }
+        val sendable = texts.indices.filter { texts[it].trim().toByteArray().size >= 2 && texts[it].toByteArray().size <= MAX_EMBED_BYTES }
+        val got = embed(name, sendable.map { texts[it] })
+        val vectors = HashMap<Int, FloatArray>()
+        val skip = texts.indices.filter { it !in sendable }.toMutableSet()
+        if (got != null) sendable.forEachIndexed { j, i -> got[j]?.let { vectors[i] = it } ?: skip.add(i) }
         val docs = JSONArray()
         entries.forEachIndexed { i, (m, b) ->
-            val o = doc(account, m, b, boxes, vectors?.getOrNull(i))
+            val o = doc(account, m, b, boxes, vectors[i])
+            // Not asked again by the vector backfill: there is nothing to embed, or the embedder cannot take it.
+            if (i in skip) o.put("vec_skip_b", true)
             attText[m.id]?.let { o.put("attachment_text_t", it.take(MAX_ATTACHMENT_TEXT)) }
             if (m.id in attDone) o.put("att_todo_b", false)
             docs.put(o)
@@ -315,10 +366,21 @@ class MailIndexer(private val context: Context) {
     }
 
     /** Vectors for [texts], or null when the plan or the monthly quota says no; the documents then go in with words only. */
-    private suspend fun embed(name: String, texts: List<String>): List<FloatArray>? {
+    private suspend fun embed(name: String, texts: List<String>): List<FloatArray?>? {
         if (texts.isEmpty() || !prefs.vectorAllowed || prefs.embedPausedUntil > System.currentTimeMillis() || embedDownUntil > System.currentTimeMillis()) return null
         return try {
-            api.batchEmbed(name, texts)
+            // Whole texts, never cut: a call carries at most 40 of them and about a million characters.
+            val out = ArrayList<FloatArray?>(texts.size)
+            var batch = ArrayList<String>()
+            var chars = 0
+            for (t in texts) {
+                if (batch.isNotEmpty() && (batch.size >= BATCH || chars + t.length > 1_000_000)) {
+                    out += api.batchEmbed(name, batch); batch = ArrayList(); chars = 0
+                }
+                batch += t; chars += t.length
+            }
+            if (batch.isNotEmpty()) out += api.batchEmbed(name, batch)
+            out
         } catch (e: com.opensolr.mail.net.ServiceException) {
             // The embedder did not answer: the words go in now, the meaning is added by the vector backfill once it is back.
             android.util.Log.w("MailIndexer", "embedding unavailable", e)
@@ -343,7 +405,7 @@ class MailIndexer(private val context: Context) {
     private suspend fun vectorBackfill(solr: SolrClient, name: String): Boolean {
         if (!prefs.vectorAllowed || prefs.embedPausedUntil > System.currentTimeMillis() || embedDownUntil > System.currentTimeMillis()) return true
         val mine = localFilter() ?: return true
-        val res = solr.select(listOf("q" to "*:*", "fq" to "vec_b:false", "fq" to mine.first, "acc" to mine.second, "fl" to "account_s,email_id_s", "rows" to "200", "sort" to "received_dt desc"))
+        val res = solr.select(listOf("q" to "*:*", "fq" to "vec_b:false", "fq" to "-vec_skip_b:true", "fq" to mine.first, "acc" to mine.second, "fl" to "account_s,email_id_s", "rows" to "200", "sort" to "received_dt desc"))
         val docs = res.optJSONObject("response")?.optJSONArray("docs") ?: return true
         if (docs.length() == 0) return true
         (0 until docs.length()).map { docs.getJSONObject(it) }.groupBy { it.optString("account_s") }.forEach { (acc, list) ->
@@ -404,6 +466,8 @@ class MailIndexer(private val context: Context) {
         o.put("weekday_i", cal.get(Calendar.DAY_OF_WEEK))
         o.put("hour_i", cal.get(Calendar.HOUR_OF_DAY))
         if (vector != null) o.put(VECTOR, JSONArray(vector.toList())).put("vec_b", true) else o.put("vec_b", false)
+        // Which way of indexing wrote it: a rewrite after a change counts as work left until it is done.
+        o.put("dv_i", DOC_VERSION)
         return o
     }
 
@@ -518,6 +582,8 @@ class MailIndexer(private val context: Context) {
         val pending: Int = 0,
         /** Indexed messages whose attachments are still to be read into text. */
         val attachmentsLeft: Long = -1,
+        /** Messages written the current way; the rest are still to be written again. */
+        val upToDate: Long = -1,
         /** Indexed messages that have attachments. */
         val indexedWithAtt: Long = -1,
         /** Messages at Fastmail, and those of them with attachments: what the whole job is measured against. */
@@ -531,7 +597,7 @@ class MailIndexer(private val context: Context) {
         val at: Long = 0,
     ) {
         /** Messages at Fastmail not yet in the index. */
-        val messagesLeft: Long get() = if (mailTotal < 0 || indexed < 0) -1 else (mailTotal - indexed).coerceAtLeast(0)
+        val messagesLeft: Long get() = if (mailTotal < 0 || upToDate < 0) -1 else (mailTotal - upToDate).coerceAtLeast(0)
 
         /** Messages whose attachments are still to be read: those in the index plus those with attachments not indexed yet. */
         val attLeft: Long get() = if (attachmentsLeft < 0) -1 else attachmentsLeft + if (mailWithAtt < 0 || indexedWithAtt < 0) 0 else (mailWithAtt - indexedWithAtt).coerceAtLeast(0)
@@ -547,11 +613,12 @@ class MailIndexer(private val context: Context) {
 
     companion object {
         const val VECTOR = "embeddings_vec"
-        const val DOC_VERSION = 5
+        const val DOC_VERSION = 7
+        /** The most one text may weigh at batch_embed. */
+        private const val MAX_EMBED_BYTES = 50_000
         private const val BATCH = 40
         private const val MAX_BODY = 30_000
         private const val MAX_ATTACHMENT_TEXT = 100_000
-        private const val EMBED_CHARS = 1800
 
         private val runLock = Mutex()
         @Volatile private var countedAt = 0L
@@ -578,8 +645,6 @@ class MailIndexer(private val context: Context) {
 
         fun docId(account: MailAccount, emailId: String) = indexKey(account) + ":" + emailId
 
-        fun embedText(m: Message, body: String, attachments: List<String> = emptyList()): String =
-            embedTextOf(m.subject, m.sender?.let { (it.name + " " + it.email).trim() }.orEmpty(), m.to.joinToString(", ") { it.label }, body, attachments)
 
         /** "Name (address)", or the bare address: the same person on ten addresses stays ten entries. */
         fun labelOf(a: com.opensolr.mail.data.Address): String {
@@ -650,24 +715,15 @@ class MailIndexer(private val context: Context) {
             out.toByteArray()
         }.getOrNull()
 
-        /** What the vector is made of: who, to whom, about what, and the new words of the message, without quoted history or signature. */
-        fun embedTextOf(subject: String, from: String, to: String, body: String, attachments: List<String> = emptyList(), attachmentText: String = ""): String {
-            val fresh = body.lineSequence()
-                .takeWhile { line -> !line.startsWith("-- ") && !Regex("^On .{4,120} wrote:\\s*$").matches(line.trim()) && !line.startsWith("-----Original Message") }
-                .filterNot { it.trimStart().startsWith(">") }
-                .joinToString("\n")
-                .replace(Regex("\\n{3,}"), "\n\n")
-                .trim()
-            val head = buildString {
-                if (subject.isNotBlank()) append("Subject: ").append(subject).append('\n')
-                if (from.isNotBlank()) append("From: ").append(from).append('\n')
-                if (to.isNotBlank()) append("To: ").append(to).append('\n')
-                if (attachments.isNotEmpty()) append("Attachments: ").append(attachments.joinToString(", ")).append('\n')
+        /** What the vector is made of: the subject and the whole body, both plain text; empty when the message has neither. */
+        fun embedTextOf(subject: String, body: String): String {
+            val sub = Html.plain(subject)
+            val text = Html.plain(body)
+            return when {
+                sub.isEmpty() -> text
+                text.isEmpty() -> sub
+                else -> sub + "\n\n" + text
             }
-            val main = (head + "\n" + fresh).take(EMBED_CHARS)
-            val extra = attachmentText.trim().replace(Regex("\\s+"), " ")
-            val room = EMBED_CHARS + 600 - main.length
-            return (if (extra.isNotEmpty() && room > 80) main + "\n\n" + extra.take(room) else main).ifBlank { subject.ifBlank { "(empty)" } }
         }
     }
 }
