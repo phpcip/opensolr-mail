@@ -403,10 +403,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     fun archive(acc: String, ids: kotlin.collections.List<String>) = io { actions.archive(acc, ids) }
     fun reportJunk(acc: String, ids: kotlin.collections.List<String>) = io { actions.reportJunk(acc, ids) }
 
-    /** Whole conversations reported as spam, kept out of lists and search at once. */
+    /** Whole conversations reported as spam: they leave the lists by moving to Junk, where they show. */
     fun reportJunkRows(rows: kotlin.collections.List<ThreadRow>) {
         if (rows.isEmpty()) return
-        rows.forEach { hiddenThreads[it.acc + ":" + it.threadId] = true }
         viewModelScope.launch {
             rows.groupBy { it.acc }.forEach { (acc, rs) ->
                 val ids = rs.flatMap { threadIds(it) }
