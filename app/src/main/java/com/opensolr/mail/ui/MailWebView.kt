@@ -10,7 +10,7 @@ import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.viewinterop.AndroidView
 import com.opensolr.mail.data.AccountStore
@@ -22,14 +22,13 @@ import java.io.File
 /** One message body. Scripts never run; remote images only when allowed; inline images (cid:) come from the message itself. */
 @SuppressLint("SetJavaScriptEnabled")
 @Composable
-fun MailWebView(html: String, acc: String, attachments: List<Attachment>, remoteImages: Boolean, modifier: Modifier = Modifier) {
+fun MailWebView(html: String, acc: String, attachments: List<Attachment>, remoteImages: Boolean, modifier: Modifier = Modifier, onEdgeDrag: (Float) -> Unit = {}, onEdgeFling: (Float) -> Unit = {}) {
+    val edgeDrag by androidx.compose.runtime.rememberUpdatedState(onEdgeDrag)
+    val edgeFling by androidx.compose.runtime.rememberUpdatedState(onEdgeFling)
     val dark = androidx.compose.foundation.isSystemInDarkTheme()
     val paper = com.opensolr.mail.ui.theme.LocalPalette.current.paper
-    // A zoomed message moves freely: what the WebView cannot scroll itself (up and down, since it is as tall as its
-    // content) passes to the conversation's scroll through nested scrolling, sideways stays in the WebView.
-    val interop = androidx.compose.ui.platform.rememberNestedScrollInteropConnection()
     AndroidView(
-        modifier = modifier.nestedScroll(interop),
+        modifier = modifier,
         factory = { ctx ->
             WebView(ctx).apply {
                 setBackgroundColor(paper.toArgb())
@@ -46,7 +45,35 @@ fun MailWebView(html: String, acc: String, attachments: List<Attachment>, remote
                 settings.builtInZoomControls = true
                 settings.displayZoomControls = false
                 isVerticalScrollBarEnabled = false
-                isNestedScrollingEnabled = true
+                // A finger on the message belongs to the message: it pans in every direction at once; only past the
+                // message's top or bottom does the drag go on to the conversation.
+                @SuppressLint("ClickableViewAccessibility")
+                var lastY = 0f
+                var edge = false
+                var tracker: android.view.VelocityTracker? = null
+                setOnTouchListener { v, e ->
+                    v.parent?.requestDisallowInterceptTouchEvent(true)
+                    when (e.actionMasked) {
+                        android.view.MotionEvent.ACTION_DOWN -> {
+                            lastY = e.rawY; edge = false
+                            tracker?.recycle(); tracker = android.view.VelocityTracker.obtain()
+                        }
+                        android.view.MotionEvent.ACTION_MOVE -> if (e.pointerCount == 1) {
+                            val dy = e.rawY - lastY
+                            lastY = e.rawY
+                            // Past the message's top or bottom the drag moves the conversation instead.
+                            edge = dy != 0f && !v.canScrollVertically(if (dy < 0) 1 else -1)
+                            if (edge) edgeDrag(dy)
+                        }
+                        android.view.MotionEvent.ACTION_UP -> {
+                            tracker?.let { t -> t.addMovement(e); t.computeCurrentVelocity(1000); if (edge) edgeFling(t.yVelocity) }
+                            tracker?.recycle(); tracker = null
+                        }
+                        android.view.MotionEvent.ACTION_CANCEL -> { tracker?.recycle(); tracker = null }
+                    }
+                    if (e.actionMasked != android.view.MotionEvent.ACTION_UP) tracker?.addMovement(android.view.MotionEvent.obtain(e).also { it.setLocation(e.rawX, e.rawY) })
+                    false
+                }
                 webViewClient = MailClient(ctx, acc, attachments)
             }
         },

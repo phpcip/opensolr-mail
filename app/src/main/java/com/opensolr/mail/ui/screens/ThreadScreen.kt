@@ -44,6 +44,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.foundation.gestures.animateScrollBy
 import androidx.core.content.FileProvider
 import com.opensolr.mail.R
 import com.opensolr.mail.data.Mailbox
@@ -227,7 +228,14 @@ fun ThreadScreen(vm: AppViewModel, acc: String, threadId: String) {
                                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp).hapticClickable { images[m.id] = true },
                                 )
                             }
-                            MailWebView(html, acc, full.attachments, allow, Modifier.fillMaxWidth().heightIn(min = 40.dp))
+                            // At most a screen tall: inside it the message moves freely in every direction at once, as the
+                            // finger goes (zoomed or not); at its top or bottom edge the drag carries on to the conversation.
+                            val maxBody = (androidx.compose.ui.platform.LocalConfiguration.current.screenHeightDp - 190).coerceAtLeast(240).dp
+                            MailWebView(
+                                html, acc, full.attachments, allow, Modifier.fillMaxWidth().heightIn(min = 40.dp, max = maxBody),
+                                onEdgeDrag = { dy -> threadScroll.dispatchRawDelta(-dy) },
+                                onEdgeFling = { vy -> scope.launch { threadScroll.animateScrollBy(-vy * 0.35f) } },
+                            )
                             val files = full.attachments.filter { !it.inline || it.cid == null }
                             if (files.isNotEmpty()) Attachments(files, onSave = { a ->
                                 // Download only: the file goes to Downloads, the system notification opens it later.
