@@ -129,7 +129,8 @@ class MailSearch(private val context: Context) {
             p += "fq" to "{!terms f=$field tag=$field separator=\u0001 v=\$$param}"
             p += param to values.joinToString("\u0001")
         }
-        filters.dates?.let { d -> p += "fq" to "received_dt:[${iso(d.from)} TO ${iso(d.to + 86_399_999)}]" }
+        // The picker gives calendar days as UTC midnights; the range is those days in the phone's own time.
+        filters.dates?.let { d -> p += "fq" to "received_dt:[${iso(localMidnight(d.from))} TO ${iso(localMidnight(d.to) + 86_399_999)}]" }
         if (filters.unread) p += "fq" to "seen_b:false"
         if (filters.flagged) p += "fq" to "flagged_b:true"
         if (filters.answered) p += "fq" to "answered_b:true"
@@ -275,6 +276,8 @@ class MailSearch(private val context: Context) {
         }
         return out
     }
+
+    private fun localMidnight(utcMidnight: Long): Long = utcMidnight - TimeZone.getDefault().getOffset(utcMidnight)
 
     private fun iso(ms: Long): String = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", Locale.US).apply { timeZone = TimeZone.getTimeZone("UTC") }.format(ms)
 

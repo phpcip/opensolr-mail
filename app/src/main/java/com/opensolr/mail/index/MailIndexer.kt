@@ -288,7 +288,8 @@ class MailIndexer(private val context: Context) {
     }
 
     private fun doc(account: MailAccount, m: Message, body: MailSync.Body, boxes: Map<String, Mailbox>, vector: FloatArray?): JSONObject {
-        val cal = Calendar.getInstance(TimeZone.getTimeZone("UTC")).apply { timeInMillis = m.received }
+        // Day, month, weekday and hour are the phone's own local time, so a message at 01:56 is filed under that day, not the UTC one.
+        val cal = Calendar.getInstance(TimeZone.getDefault()).apply { timeInMillis = m.received }
         val text = body.text.take(MAX_BODY)
         val o = JSONObject()
             .put("id", docId(account.key, m.id))
@@ -429,7 +430,7 @@ class MailIndexer(private val context: Context) {
 
     companion object {
         const val VECTOR = "embeddings_vec"
-        const val DOC_VERSION = 3
+        const val DOC_VERSION = 4
         private const val BATCH = 40
         private const val MAX_BODY = 30_000
         private const val MAX_ATTACHMENT_TEXT = 100_000

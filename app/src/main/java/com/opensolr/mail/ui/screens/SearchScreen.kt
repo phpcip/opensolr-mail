@@ -427,7 +427,10 @@ private fun ActivePills(filters: MailSearch.Filters, onChange: (MailSearch.Filte
     val view = LocalView.current
     val pills = buildList {
         filters.facets.forEach { (field, values) -> values.forEach { v -> add(facetValueLabel(field, v) to filters.toggled(field, v)) } }
-        filters.dates?.let { add(fmtDate(it.from).take(10) + " – " + fmtDate(it.to).take(10) to filters.copy(dates = null)) }
+        filters.dates?.let {
+            val day = SimpleDateFormat("MM/dd/yyyy", Locale.US).apply { timeZone = TimeZone.getTimeZone("UTC") }
+            add(day.format(it.from) + " – " + day.format(it.to) to filters.copy(dates = null))
+        }
         if (filters.unread) add(stringResource(R.string.unread) to filters.copy(unread = false))
         if (filters.flagged) add(stringResource(R.string.flagged) to filters.copy(flagged = false))
         if (filters.answered) add(stringResource(R.string.f_answered) to filters.copy(answered = false))
