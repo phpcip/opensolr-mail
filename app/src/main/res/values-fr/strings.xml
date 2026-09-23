@@ -231,4 +231,7 @@
     <string name="feedback">Retour</string>
     <string name="n_messages">%1$d messages</string>
     <string name="preparing_forward">Préparation du transfert…</string>
+    <string name="swipes">Balayages</string>
+    <string name="ask_before_swipe_delete">Demander avant de supprimer par balayage</string>
+    <string name="undo_after_swipe_flag">Barre Annuler après un signalement par balayage</string>
 </resources>

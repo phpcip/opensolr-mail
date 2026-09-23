@@ -66,6 +66,8 @@ fun SettingsScreen(vm: AppViewModel) {
     var notify by remember { mutableStateOf(vm.prefs.notifyNewMail) }
     var images by remember { mutableStateOf(vm.prefs.remoteImages) }
     var haptics by remember { mutableStateOf(vm.prefs.haptics) }
+    var confirmDelete by remember { mutableStateOf(vm.prefs.confirmSwipeDelete) }
+    var undoFlag by remember { mutableStateOf(vm.prefs.undoSwipeFlag) }
     var confirmRemove by remember { mutableStateOf<String?>(null) }
     var confirmSignOut by remember { mutableStateOf(false) }
     val open = vm.zonesOpen
@@ -81,7 +83,7 @@ fun SettingsScreen(vm: AppViewModel) {
         Column(Modifier.fillMaxSize().verticalScroll(settingsScroll).padding(horizontal = 20.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Box(Modifier.weight(1f)) { ScreenHeader(stringResource(R.string.settings), onBack = { vm.back() }) }
-            val allZones = setOf("updates", "accounts", "opensolr", "index", "preferences", "pref_search", "pref_reading", "pref_feedback", "pref_language")
+            val allZones = setOf("updates", "accounts", "opensolr", "index", "preferences", "pref_search", "pref_reading", "pref_feedback", "pref_swipes", "pref_language")
             val anyOpen = allZones.any { it in open }
             com.opensolr.mail.ui.IconBtn(if (anyOpen) R.drawable.ic_collapse_all else R.drawable.ic_expand_all, { vm.setKeySet("settings_zones", if (anyOpen) emptySet() else allZones) })
         }
@@ -228,6 +230,13 @@ fun SettingsScreen(vm: AppViewModel) {
                 SubZone(stringResource(R.string.feedback), "pref_feedback" in open, { vm.toggleZone("pref_feedback") }) {
                 Column {
                     Toggle(stringResource(R.string.haptic_feedback), haptics) { haptics = it; vm.prefs.haptics = it; com.opensolr.mail.ui.Haptics.enabled = it }
+                }
+                }
+                SubZone(stringResource(R.string.swipes), "pref_swipes" in open, { vm.toggleZone("pref_swipes") }) {
+                Column {
+                    Toggle(stringResource(R.string.ask_before_swipe_delete), confirmDelete) { confirmDelete = it; vm.prefs.confirmSwipeDelete = it }
+                    Hairline()
+                    Toggle(stringResource(R.string.undo_after_swipe_flag), undoFlag) { undoFlag = it; vm.prefs.undoSwipeFlag = it }
                 }
                 }
                 SubZone(stringResource(R.string.language), "pref_language" in open, { vm.toggleZone("pref_language") }) {

@@ -73,6 +73,16 @@ class AppPrefs(context: Context) {
         get() = sp.getBoolean("haptics", true)
         set(v) = sp.edit().putBoolean("haptics", v).apply()
 
+    /** Swipe left asks before deleting; off deletes at once (the undo bar still follows). */
+    var confirmSwipeDelete: Boolean
+        get() = sp.getBoolean("confirm_swipe_delete", true)
+        set(v) = sp.edit().putBoolean("confirm_swipe_delete", v).apply()
+
+    /** Swipe right shows the undo bar after flagging or unflagging. */
+    var undoSwipeFlag: Boolean
+        get() = sp.getBoolean("undo_swipe_flag", true)
+        set(v) = sp.edit().putBoolean("undo_swipe_flag", v).apply()
+
     var remoteImages: Boolean
         get() = sp.getBoolean(K_IMAGES, false)
         set(v) = sp.edit().putBoolean(K_IMAGES, v).apply()

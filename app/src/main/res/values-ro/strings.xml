@@ -231,4 +231,7 @@
     <string name="feedback">Feedback</string>
     <string name="n_messages">%1$d mesaje</string>
     <string name="preparing_forward">Pregătesc forward-ul…</string>
+    <string name="swipes">Swipe-uri</string>
+    <string name="ask_before_swipe_delete">Întreabă înainte de ștergerea cu swipe</string>
+    <string name="undo_after_swipe_flag">Bară de Undo după flag cu swipe</string>
 </resources>

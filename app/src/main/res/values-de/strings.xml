@@ -231,4 +231,7 @@
     <string name="feedback">Rückmeldung</string>
     <string name="n_messages">%1$d Nachrichten</string>
     <string name="preparing_forward">Weiterleitung wird vorbereitet…</string>
+    <string name="swipes">Wischgesten</string>
+    <string name="ask_before_swipe_delete">Vor dem Löschen per Wischen fragen</string>
+    <string name="undo_after_swipe_flag">Rückgängig-Leiste nach Markieren per Wischen</string>
 </resources>

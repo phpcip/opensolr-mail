@@ -215,7 +215,7 @@ fun ThreadListScreen(vm: AppViewModel, view: View) {
                   Column(itemMotion()) {
                     SwipeRow(
                         key = r,
-                        onDelete = { confirmDelete = r },
+                        onDelete = { if (vm.prefs.confirmSwipeDelete) confirmDelete = r else vm.deleteWithUndo(r, view) },
                         onFlag = { vm.toggleFlagWithUndo(r) },
                         enabled = selected.isEmpty(),
                     ) {
