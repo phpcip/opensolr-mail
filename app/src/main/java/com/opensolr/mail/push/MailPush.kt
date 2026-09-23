@@ -24,6 +24,8 @@ import kotlin.coroutines.resumeWithException
 object MailPush {
 
     private const val RENEW_BEFORE = 2 * 86_400_000L
+    /** Every subscription is made afresh once a day, so one whose relay address was lost heals by itself. */
+    private const val RENEW_EVERY = 86_400_000L
 
     /** Registers the phone with opensolr.com and makes sure every account has a live subscription. */
     suspend fun ensure(context: Context, token: String? = null) {
@@ -32,9 +34,15 @@ object MailPush {
         val fcm = token ?: FirebaseMessaging.getInstance().token.await()
         val sp = context.getSharedPreferences("push", Context.MODE_PRIVATE)
         val store = AccountStore.get(context)
+        // Once, after this update: subscriptions made before may point at relay addresses removed by a sign-out.
+        if (!sp.getBoolean("healed_1", false)) {
+            store.all().forEach { a -> store.update(a.key) { it.copy(pushExpires = 0, pushVerified = false) } }
+            sp.edit().putBoolean("healed_1", true).apply()
+        }
         val now = System.currentTimeMillis()
         val needs = store.all().filter {
-            it.pushSubscriptionId.isEmpty() || it.pushExpires - now < RENEW_BEFORE || (!it.pushVerified && now - it.pushCreated > 10 * 60_000L)
+            it.pushSubscriptionId.isEmpty() || it.pushExpires - now < RENEW_BEFORE || now - it.pushCreated > RENEW_EVERY ||
+                (!it.pushVerified && now - it.pushCreated > 10 * 60_000L)
         }
         val due = needs.isNotEmpty() || sp.getString("token", null) != fcm || System.currentTimeMillis() - sp.getLong("at", 0L) > 86_400_000L
         val api = OpensolrApi(prefs)

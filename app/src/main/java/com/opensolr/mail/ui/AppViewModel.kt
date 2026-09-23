@@ -280,6 +280,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     fun signOutOpensolr() {
         viewModelScope.launch {
             runCatching { com.opensolr.mail.net.OpensolrApi(prefs).pushUnregister(null) }
+            // The relay addresses are gone: every account subscribes again at the next sign-in instead of trusting a dead one.
+            store.all().forEach { a -> store.update(a.key) { it.copy(pushExpires = 0, pushVerified = false) } }
             prefs.clearSession()
             MailIndex(ctx).forget()
             signedIn = false
