@@ -25,6 +25,8 @@
     <string name="to_list">Către: %1$s</string>
     <string name="cc_list">Cc: %1$s</string>
     <string name="load_images">Arată imaginile</string>
+    <string name="always_images_sender">Arată mereu imaginile</string>
+    <string name="stop_images_sender">Nu mai arăta imaginile</string>
     <string name="move_to">Mută în</string>
     <string name="cancel">Anulează</string>
     <string name="new_message">Mesaj nou</string>

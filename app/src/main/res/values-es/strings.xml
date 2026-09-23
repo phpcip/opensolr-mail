@@ -25,6 +25,8 @@
     <string name="to_list">Para: %1$s</string>
     <string name="cc_list">Cc: %1$s</string>
     <string name="load_images">Mostrar imágenes</string>
+    <string name="always_images_sender">Mostrar siempre las imágenes</string>
+    <string name="stop_images_sender">Dejar de mostrar imágenes</string>
     <string name="move_to">Mover a</string>
     <string name="cancel">Cancelar</string>
     <string name="new_message">Mensaje nuevo</string>

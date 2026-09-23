@@ -25,6 +25,8 @@
     <string name="to_list">宛先: %1$s</string>
     <string name="cc_list">Cc: %1$s</string>
     <string name="load_images">画像を表示</string>
+    <string name="always_images_sender">常に画像を表示</string>
+    <string name="stop_images_sender">画像の表示をやめる</string>
     <string name="move_to">移動先</string>
     <string name="cancel">キャンセル</string>
     <string name="new_message">新規メッセージ</string>

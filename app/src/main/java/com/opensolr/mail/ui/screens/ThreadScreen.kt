@@ -226,12 +226,25 @@ fun ThreadScreen(vm: AppViewModel, acc: String, threadId: String) {
                             }
                             // Any picture fetched from the web: <img src>, srcset, background="...", CSS url(...), with or without http:
                             val hasRemote = remember(html) { REMOTE_IMAGE.containsMatchIn(html) }
-                            val allow = vm.prefs.remoteImages || images[m.id] == true
-                            if (hasRemote && !allow) {
-                                Text(
-                                    stringResource(R.string.load_images), style = MaterialTheme.typography.labelSmall, color = p.accent,
-                                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp).hapticClickable { images[m.id] = true },
-                                )
+                            // Pictures can be allowed for one message, or for every message from its sender until stopped.
+                            val sender = m.sender?.email.orEmpty().trim().lowercase()
+                            val trusted = sender.isNotEmpty() && sender in vm.keySet(IMAGE_SENDERS)
+                            val allow = vm.prefs.remoteImages || trusted || images[m.id] == true
+                            if (hasRemote && !vm.prefs.remoteImages) {
+                                Row(Modifier.padding(horizontal = 16.dp, vertical = 6.dp), horizontalArrangement = Arrangement.spacedBy(20.dp)) {
+                                    if (!allow) Text(
+                                        stringResource(R.string.load_images), style = MaterialTheme.typography.labelSmall, color = p.accent,
+                                        modifier = Modifier.hapticClickable { images[m.id] = true },
+                                    )
+                                    if (sender.isNotEmpty()) Text(
+                                        stringResource(if (trusted) R.string.stop_images_sender else R.string.always_images_sender),
+                                        style = MaterialTheme.typography.labelSmall, color = p.accent,
+                                        modifier = Modifier.hapticClickable {
+                                            if (trusted) images.remove(m.id)
+                                            vm.toggleKey(IMAGE_SENDERS, sender)
+                                        },
+                                    )
+                                }
                             }
                             // At most a screen tall: inside it the message moves freely in every direction at once, as the
                             // finger goes (zoomed or not); at its top or bottom edge the drag carries on to the conversation.
@@ -511,5 +524,8 @@ private object AttachmentFiles {
         }
     }
 }
+
+/** Senders whose pictures always load. */
+private const val IMAGE_SENDERS = "image_senders"
 
 private val REMOTE_IMAGE = Regex("""(?i)(\b(src|srcset|background|poster)\s*=\s*["']?\s*(https?:)?//)|(url\(\s*["']?\s*(https?:)?//)""")

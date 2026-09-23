@@ -29,6 +29,8 @@
     <string name="to_list">To: %1$s</string>
     <string name="cc_list">Cc: %1$s</string>
     <string name="load_images">Show images</string>
+    <string name="always_images_sender">Always show images</string>
+    <string name="stop_images_sender">Stop showing images</string>
     <string name="move_to">Move to</string>
     <string name="cancel">Cancel</string>
 
