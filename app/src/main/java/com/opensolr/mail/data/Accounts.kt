@@ -52,7 +52,6 @@ data class MailAccount(
 /** The Fastmail accounts, their tokens sealed with the Keystore. One instance per process. */
 class AccountStore private constructor(context: Context) {
 
-    private val app = context.applicationContext
     private val sp = context.applicationContext.getSharedPreferences("mail_accounts", Context.MODE_PRIVATE)
 
     private val _accounts = MutableStateFlow(load())
@@ -64,33 +63,11 @@ class AccountStore private constructor(context: Context) {
 
     private fun load(): List<MailAccount> {
         val raw = sp.getString(K_LIST, null) ?: return emptyList()
-        val all = runCatching {
+        return runCatching {
             val a = JSONArray(raw)
             (0 until a.length()).mapNotNull { a.optJSONObject(it)?.let(MailAccount::fromJson) }
                 .filter { it.key.isNotEmpty() }
         }.getOrDefault(emptyList())
-        // One Fastmail mailbox is one account, whatever address it was signed in with: a mailbox added twice
-        // (once by one of its addresses, once by another) keeps the first, and the second is let go.
-        val kept = all.filter { a -> a.jmapAccountId.isEmpty() || all.first { it.jmapAccountId == a.jmapAccountId } === a }
-        val dropped = all - kept.toSet()
-        if (dropped.isNotEmpty()) {
-            val pending = (sp.getStringSet(K_DROPPED, emptySet()) ?: emptySet()) + dropped.map { it.key + "|" + it.username }
-            val e = sp.edit().putString(K_LIST, JSONArray(kept.map { it.toJson() }).toString()).putStringSet(K_DROPPED, pending)
-            dropped.forEach { e.remove("rt_${it.key}").remove("at_${it.key}").remove("ax_${it.key}") }
-            e.commit()
-            dropped.forEach { d ->
-                runCatching { MailDb.get(app).forgetAccount(d.key) }
-                runCatching { com.opensolr.mail.dav.CalendarSync.removeAccount(app, d.username) }
-            }
-        }
-        return kept
-    }
-
-    /** Accounts let go as copies of another, as "key|username": their index documents and push addresses still to clear. */
-    fun droppedCopies(): Set<String> = sp.getStringSet(K_DROPPED, emptySet()) ?: emptySet()
-
-    fun clearDroppedCopy(entry: String) {
-        sp.edit().putStringSet(K_DROPPED, droppedCopies() - entry).apply()
     }
 
     @SuppressLint("ApplySharedPref")
@@ -134,7 +111,6 @@ class AccountStore private constructor(context: Context) {
 
     companion object {
         private const val K_LIST = "accounts"
-        private const val K_DROPPED = "dropped_copies"
 
         @Volatile
         private var instance: AccountStore? = null
