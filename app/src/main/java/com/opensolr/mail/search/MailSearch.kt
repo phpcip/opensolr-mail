@@ -22,11 +22,14 @@ class MailSearch(private val context: Context) {
 
     private val prefs = AppPrefs(context)
     private val api = OpensolrApi(prefs)
+    private val db = com.opensolr.mail.data.MailDb.get(context)
 
     data class Hit(
         val acc: String,
         val emailId: String,
         val threadId: String,
+        /** Messages in the conversation: the local count, or at least the matches found in it. */
+        val threadCount: Int = 1,
         val subject: String,
         val from: String,
         val fromEmail: String,
@@ -91,7 +94,7 @@ class MailSearch(private val context: Context) {
     )
 
 
-    suspend fun search(text: String, filters: Filters, groupBy: GroupBy, start: Int = 0, rows: Int = 40): Result {
+    suspend fun search(text: String, filters: Filters, groupBy: GroupBy, start: Int = 0, rows: Int = 40, byRelevance: Boolean = false): Result {
         val connection = MailIndex(context).ensure()
         val solr = SolrClient(connection)
         val q = text.trim().take(500)
@@ -137,7 +140,8 @@ class MailSearch(private val context: Context) {
         if (filters.attachments) p += "fq" to "has_attachment_b:true"
         if (filters.attachmentText) p += "fq" to "attachment_text_t:[* TO *]"
 
-        val newest = q.isEmpty() || groupBy == GroupBy.DATE || groupBy == GroupBy.DAY
+        // Results read newest first, like the inbox; only the AI answer asks for the most relevant.
+        val newest = q.isEmpty() || !byRelevance
         p += "sort" to if (newest) "received_dt desc, id asc" else "score desc, received_dt desc"
         p += "fl" to "id,score,account_s,email_id_s,thread_id_s,subject_t,from_t,from_s,from_name_s,to_tm,received_dt,preview_t,seen_b,flagged_b,has_attachment_b"
         p += "facet" to "true"
@@ -222,6 +226,22 @@ class MailSearch(private val context: Context) {
             hits += parse(response.optJSONArray("docs") ?: JSONArray())
         }
 
+        // One line per conversation, its newest match, with the size of the whole conversation.
+        val sizes = HashMap<String, Map<String, Int>>()
+        hits.groupBy { it.acc }.forEach { (acc, hs) -> sizes[acc] = runCatching { db.threadSizes(acc, hs.map { it.threadId }.filter { it.isNotEmpty() }) }.getOrDefault(emptyMap()) }
+        fun byThread(list: List<Hit>): List<Hit> {
+            val out = LinkedHashMap<String, Hit>()
+            val matches = HashMap<String, Int>()
+            list.forEach { h ->
+                val k = h.acc + ":" + h.threadId.ifEmpty { h.emailId }
+                matches[k] = (matches[k] ?: 0) + 1
+                if (!out.containsKey(k)) out[k] = h
+            }
+            return out.map { (k, h) -> h.copy(threadCount = maxOf(sizes[h.acc]?.get(h.threadId) ?: 1, matches[k] ?: 1)) }
+        }
+        val threadHits = if (byRelevance) hits else byThread(hits)
+        val threadGroups = groups.map { it.copy(hits = byThread(it.hits)) }
+
         val ff = json.optJSONObject("facet_counts")?.optJSONObject("facet_fields")
         val facets = Filters.FACETS.associateWith { facetList(ff?.optJSONArray(it)) }
         val names = HashMap<String, Pair<String, Int>>()
@@ -231,14 +251,14 @@ class MailSearch(private val context: Context) {
             val best = names[email]
             if (best == null || f.count > best.second) names[email] = m.groupValues[1] to f.count
         }
-        return Result(hits, groups, total, smart, facets, names.mapValues { it.value.first }, aiDocs, hlMap)
+        return Result(threadHits, threadGroups, total, smart, facets, names.mapValues { it.value.first }, aiDocs, hlMap)
     }
 
     /** Streams the AI answer to [question] over the top results of the search that was just run. */
     suspend fun answer(question: String, filters: Filters, onChunk: (String) -> Unit) {
         val connection = MailIndex(context).ensure()
         // The answer reads the most relevant messages, not the first ones of a list grouped by date.
-        val result = search(question, filters, GroupBy.NONE, rows = AiPrompt.TOP_N)
+        val result = search(question, filters, GroupBy.NONE, rows = AiPrompt.TOP_N, byRelevance = true)
         val top = result.docs.take(AiPrompt.TOP_N)
         if (top.isEmpty()) return
         val bodies = HashMap<String, String>()

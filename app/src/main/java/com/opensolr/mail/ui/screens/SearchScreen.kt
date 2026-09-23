@@ -187,7 +187,8 @@ fun SearchScreen(vm: AppViewModel, sheet: String?) {
 
     val r = result
     r?.let { knownNames = knownNames + it.names }
-    val shownHits = (r?.hits.orEmpty()) + extraHits
+    // Later pages can bring more matches from a conversation already listed: it stays one line.
+    val shownHits = remember(r, extraHits) { ((r?.hits.orEmpty()) + extraHits).distinctBy { it.acc + ":" + it.threadId.ifEmpty { it.emailId } } }
     val shownGroups = (r?.groups.orEmpty()) + extraGroups
     val atEnd by remember { derivedStateOf { listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index?.let { it >= listState.layoutInfo.totalItemsCount - 4 } == true } }
     LaunchedEffect(atEnd, shownHits.size, shownGroups.size) {
@@ -499,8 +500,9 @@ private fun GroupHeader(label: String, total: Long, open: Boolean, onToggle: () 
 private fun HitRow(vm: AppViewModel, h: MailSearch.Hit, multi: Boolean, color: Int?) {
     val p = LocalPalette.current
     val view = LocalView.current
+    Column(Modifier.fillMaxWidth().background(if (h.flagged) p.flagFill else p.paper)) {
     Row(
-        Modifier.fillMaxWidth().background(if (h.flagged) p.flagFill else p.paper).clickable { if (h.threadId.isNotEmpty()) vm.go(Screen.Thread(h.acc, h.threadId)) },
+        Modifier.fillMaxWidth().clickable { if (h.threadId.isNotEmpty()) vm.go(Screen.Thread(h.acc, h.threadId)) },
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Box(Modifier.width(3.dp).height(72.dp).background(if (multi && color != null) Color(color) else Color.Transparent))
@@ -508,7 +510,11 @@ private fun HitRow(vm: AppViewModel, h: MailSearch.Hit, multi: Boolean, color: I
         Avatar(if (h.from == h.fromEmail) "" else h.from, h.fromEmail)
         Column(Modifier.weight(1f).padding(start = 10.dp, end = 12.dp, top = 6.dp, bottom = 6.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(h.from, style = MaterialTheme.typography.bodyMedium, fontWeight = if (h.seen) FontWeight.Medium else FontWeight.Bold, color = p.ink, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+                Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
+                    Text(h.from, style = MaterialTheme.typography.bodyMedium, fontWeight = if (h.seen) FontWeight.Medium else FontWeight.Bold, color = p.ink, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
+                    com.opensolr.mail.ui.CountBadge(h.threadCount)
+                }
+                Spacer(Modifier.width(6.dp))
                 Text(fmtDate(h.received), style = MaterialTheme.typography.bodySmall, color = p.muted)
             }
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -519,7 +525,9 @@ private fun HitRow(vm: AppViewModel, h: MailSearch.Hit, multi: Boolean, color: I
             Text(highlighted(h.snippet), style = MaterialTheme.typography.bodySmall, color = p.muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
     }
+    com.opensolr.mail.ui.StackEdges(h.threadCount)
     Hairline()
+    }
 }
 
 @Composable

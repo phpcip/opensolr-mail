@@ -294,6 +294,27 @@ fun ScreenHeader(title: String, onBack: (() -> Unit)?) {
     }
 }
 
+/** The edges of the cards under a conversation of several messages, so a thread reads as a stack. */
+@Composable
+fun StackEdges(count: Int) {
+    if (count < 2) return
+    val p = LocalPalette.current
+    androidx.compose.foundation.layout.Column(Modifier.fillMaxWidth()) {
+        Box(Modifier.fillMaxWidth().padding(start = 52.dp, end = 10.dp).height(3.dp).background(p.chip, androidx.compose.foundation.shape.RoundedCornerShape(bottomStart = 2.dp, bottomEnd = 2.dp)).border(1.dp, p.hairline, androidx.compose.foundation.shape.RoundedCornerShape(bottomStart = 2.dp, bottomEnd = 2.dp)))
+        if (count > 2) Box(Modifier.fillMaxWidth().padding(start = 60.dp, end = 18.dp).height(3.dp).background(p.band, androidx.compose.foundation.shape.RoundedCornerShape(bottomStart = 2.dp, bottomEnd = 2.dp)).border(1.dp, p.hairline, androidx.compose.foundation.shape.RoundedCornerShape(bottomStart = 2.dp, bottomEnd = 2.dp)))
+    }
+}
+
+/** The number of messages of a conversation, on a small bordered tile like the other row badges. */
+@Composable
+fun CountBadge(count: Int) {
+    if (count < 2) return
+    val p = LocalPalette.current
+    Box(Modifier.padding(start = 6.dp).background(p.chip, SHAPE).border(1.dp, p.hairline, SHAPE).padding(horizontal = 6.dp, vertical = 1.dp)) {
+        Text(count.toString(), style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = p.ink)
+    }
+}
+
 /** The flag of a flagged message, on a warm tile that stands out more than the attachment badge. */
 @Composable
 fun FlagBadge() {

@@ -346,10 +346,14 @@ class MailDb private constructor(context: Context) : SQLiteOpenHelper(context.ap
                     "WHERE b.acc = m.acc AND b.msg = m.id AND x.role IN ('trash','junk'))"
             }
         }
-        val sql = "SELECT acc, thread, MAX(received) AS latest, COUNT(DISTINCT id), MIN(seen), MAX(flagged), MAX(has_att) " +
-            "FROM ($scope) GROUP BY acc, thread" +
+        // A conversation sorts by its newest message anywhere (a reply in Sent brings it back up), and
+        // counts every message it holds; both read through the (acc, thread, received) index.
+        val sql = "SELECT g.acc, g.thread, " +
+            "(SELECT MAX(t.received) FROM message t WHERE t.acc = g.acc AND t.thread = g.thread) AS latest, " +
+            "(SELECT COUNT(*) FROM message t WHERE t.acc = g.acc AND t.thread = g.thread), g.s, g.f, g.a " +
+            "FROM (SELECT acc, thread, MIN(seen) AS s, MAX(flagged) AS f, MAX(has_att) AS a FROM ($scope) GROUP BY acc, thread" +
             (when (flagged) { true -> " HAVING MAX(flagged) = 1"; false -> " HAVING MAX(flagged) = 0"; null -> "" }) +
-            " ORDER BY latest DESC LIMIT $limit OFFSET $offset"
+            ") g ORDER BY latest DESC LIMIT $limit OFFSET $offset"
         data class G(val acc: String, val thread: String, val latest: Long, val count: Int, val unread: Boolean, val flagged: Boolean, val att: Boolean)
         val groups = readableDatabase.rawQuery(sql, args.toTypedArray()).use { c ->
             generateSequence {
@@ -390,6 +394,19 @@ class MailDb private constructor(context: Context) : SQLiteOpenHelper(context.ap
                 fromName = latestFrom[k]?.first.orEmpty(), fromEmail = latestFrom[k]?.second.orEmpty(),
             )
         }
+    }
+
+    /** How many messages each conversation holds locally, for [threads] of one account, in one query. */
+    fun threadSizes(acc: String, threads: Collection<String>): Map<String, Int> {
+        if (threads.isEmpty()) return emptyMap()
+        val out = HashMap<String, Int>()
+        threads.distinct().chunked(400).forEach { chunk ->
+            val marks = chunk.joinToString(",") { "?" }
+            readableDatabase.rawQuery("SELECT thread, COUNT(*) FROM message WHERE acc = ? AND thread IN ($marks) GROUP BY thread", arrayOf(acc) + chunk).use { c ->
+                while (c.moveToNext()) out[c.getString(0)] = c.getInt(1)
+            }
+        }
+        return out
     }
 
     /** Oldest message date the view holds for [acc], to page further back from. */

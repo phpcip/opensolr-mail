@@ -329,8 +329,11 @@ private fun SelectionBar(onRead: () -> Unit, readIcon: Int, onFlag: () -> Unit, 
 private fun ThreadRowView(r: ThreadRow, stripe: Color?, selected: Boolean, onClick: () -> Unit, onLongClick: () -> Unit) {
     val p = LocalPalette.current
     val view = LocalView.current
+    val bg = if (selected) p.accent.copy(alpha = 0.16f).compositeOver(p.paper) else if (r.flagged) p.flagFill else p.paper
+    // A conversation of several messages carries the edges of the cards under it, like a stack.
+    Column(Modifier.fillMaxWidth().background(bg)) {
     Row(
-        Modifier.fillMaxWidth().background(if (selected) p.accent.copy(alpha = 0.16f).compositeOver(p.paper) else if (r.flagged) p.flagFill else p.paper)
+        Modifier.fillMaxWidth().background(bg)
             .combinedClickable(onClick = onClick, onLongClick = { Haptics.tick(view, true); onLongClick() }),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -350,12 +353,14 @@ private fun ThreadRowView(r: ThreadRow, stripe: Color?, selected: Boolean, onCli
                     Box(Modifier.size(7.dp).background(p.accent, androidx.compose.foundation.shape.CircleShape))
                     Spacer(Modifier.width(5.dp))
                 }
-                Text(
-                    r.senders.ifBlank { " " }, style = MaterialTheme.typography.bodyMedium,
-                    fontWeight = if (r.unread) FontWeight.Bold else FontWeight.Medium,
-                    color = p.ink, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f),
-                )
-                if (r.count > 1) Text(" ${r.count}", style = MaterialTheme.typography.labelSmall, color = p.muted)
+                Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        r.senders.ifBlank { " " }, style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = if (r.unread) FontWeight.Bold else FontWeight.Medium,
+                        color = p.ink, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false),
+                    )
+                    com.opensolr.mail.ui.CountBadge(r.count)
+                }
                 Spacer(Modifier.width(6.dp))
                 Text(fmtDate(r.received), style = MaterialTheme.typography.bodySmall, color = p.muted, maxLines = 1)
             }
@@ -370,6 +375,8 @@ private fun ThreadRowView(r: ThreadRow, stripe: Color?, selected: Boolean, onCli
             }
             Text(r.preview, style = MaterialTheme.typography.bodySmall, color = p.muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
+    }
+    com.opensolr.mail.ui.StackEdges(r.count)
     }
 }
 
