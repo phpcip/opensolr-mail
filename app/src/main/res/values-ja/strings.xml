@@ -288,4 +288,7 @@
     <string name="reported_junk">迷惑メールとして報告: 迷惑メールへ移動し、この差出人からの今後のメールも迷惑メールに入ります</string>
     <string name="reorder_folders">フォルダを並べ替え</string>
     <string name="reorder_done">完了</string>
+    <string name="text_size">文字サイズ</string>
+    <string name="text_size_value">標準の %1$d%%</string>
+    <string name="text_size_sample">メッセージはこの大きさで表示され、入力されます。</string>
 </resources>

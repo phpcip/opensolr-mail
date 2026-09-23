@@ -24,6 +24,7 @@ import java.io.File
 @Composable
 fun MailWebView(html: String, acc: String, attachments: List<Attachment>, remoteImages: Boolean, modifier: Modifier = Modifier, onEdgeDrag: (Float) -> Unit = {}, onEdgeFling: (Float) -> Unit = {}, onZoomed: (Boolean) -> Unit = {}) {
     val zoomedNow by androidx.compose.runtime.rememberUpdatedState(onZoomed)
+    val textZoom = com.opensolr.mail.data.AppPrefs(androidx.compose.ui.platform.LocalContext.current).textScale
     val edgeDrag by androidx.compose.runtime.rememberUpdatedState(onEdgeDrag)
     val edgeFling by androidx.compose.runtime.rememberUpdatedState(onEdgeFling)
     val dark = androidx.compose.foundation.isSystemInDarkTheme()
@@ -84,6 +85,8 @@ fun MailWebView(html: String, acc: String, attachments: List<Attachment>, remote
         },
         update = { w ->
             w.setBackgroundColor(paper.toArgb())
+            // The reader's text size, from Preferences.
+            w.settings.textZoom = textZoom
             if (androidx.webkit.WebViewFeature.isFeatureSupported(androidx.webkit.WebViewFeature.ALGORITHMIC_DARKENING)) {
                 androidx.webkit.WebSettingsCompat.setAlgorithmicDarkeningAllowed(w.settings, dark)
             }

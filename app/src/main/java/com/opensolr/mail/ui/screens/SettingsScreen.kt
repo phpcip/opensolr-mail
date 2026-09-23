@@ -40,6 +40,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.border
 import com.opensolr.mail.BuildConfig
 import com.opensolr.mail.R
+import kotlin.math.roundToInt
 import com.opensolr.mail.ui.ConfirmDialog
 import com.opensolr.mail.ui.ToolRow
 import com.opensolr.mail.ui.Tool
@@ -262,6 +263,21 @@ fun SettingsScreen(vm: AppViewModel) {
                     Toggle(stringResource(R.string.notify_new_mail), notify) { notify = it; vm.prefs.notifyNewMail = it }
                     Hairline()
                     Toggle(stringResource(R.string.remote_images), images) { images = it; vm.prefs.remoteImages = it }
+                    Hairline()
+                    // Size of message text when reading and writing; 100% is the standard size.
+                    var scale by remember { mutableStateOf(vm.prefs.textScale) }
+                    Spacer(Modifier.height(12.dp))
+                    Text(stringResource(R.string.text_size), style = MaterialTheme.typography.titleSmall, color = p.ink)
+                    Text(stringResource(R.string.text_size_value, scale), style = MaterialTheme.typography.bodySmall, color = p.muted)
+                    androidx.compose.material3.Slider(
+                        value = scale.toFloat(),
+                        onValueChange = { v -> val next = ((v / 10f).roundToInt() * 10).coerceIn(80, 200); if (next != scale) { Haptics.tick(view, false); scale = next } },
+                        onValueChangeFinished = { vm.prefs.textScale = scale },
+                        valueRange = 80f..200f, steps = 11,
+                        colors = androidx.compose.material3.SliderDefaults.colors(thumbColor = p.accentFill, activeTrackColor = p.accentFill, inactiveTrackColor = p.hairline),
+                    )
+                    Text(stringResource(R.string.text_size_sample), style = MaterialTheme.typography.bodyMedium.let { it.copy(fontSize = it.fontSize * scale / 100f, lineHeight = it.lineHeight * scale / 100f) }, color = p.ink)
+                    Spacer(Modifier.height(12.dp))
                 }
                 }
                 SubZone(stringResource(R.string.feedback), "pref_feedback" in open, { vm.toggleZone("pref_feedback") }) {

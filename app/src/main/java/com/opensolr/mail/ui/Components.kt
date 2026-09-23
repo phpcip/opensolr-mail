@@ -28,6 +28,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.res.painterResource
@@ -136,6 +137,7 @@ fun Field(
     singleLine: Boolean = true,
     email: Boolean = false,
     minHeight: Int = 44,
+    focus: androidx.compose.ui.focus.FocusRequester? = null,
 ) {
     val p = LocalPalette.current
     Box(modifier = modifier.heightIn(min = minHeight.dp).padding(PaddingValues(horizontal = 12.dp, vertical = 11.dp))) {
@@ -144,8 +146,37 @@ fun Field(
             value = value, onValueChange = onChange, singleLine = singleLine,
             textStyle = MaterialTheme.typography.bodyMedium.copy(color = p.ink),
             cursorBrush = SolidColor(p.accent),
-            keyboardOptions = if (email) KeyboardOptions(keyboardType = KeyboardType.Email) else KeyboardOptions.Default,
-            modifier = Modifier.fillMaxWidth(),
+            keyboardOptions = textKeyboard(email),
+            modifier = Modifier.fillMaxWidth().then(if (focus != null) Modifier.focusRequester(focus) else Modifier),
+        )
+    }
+}
+
+/** Addresses get the email keyboard; everything else starts sentences with a capital and is autocorrected, as usual. */
+fun textKeyboard(email: Boolean): KeyboardOptions =
+    if (email) KeyboardOptions(keyboardType = KeyboardType.Email)
+    else KeyboardOptions(capitalization = androidx.compose.ui.text.input.KeyboardCapitalization.Sentences, keyboardType = KeyboardType.Text)
+
+/** The message being written: its cursor set where the reader starts typing, its text at the reading size. */
+@Composable
+fun BodyField(
+    value: androidx.compose.ui.text.input.TextFieldValue,
+    onChange: (androidx.compose.ui.text.input.TextFieldValue) -> Unit,
+    hint: String,
+    textScale: Float,
+    modifier: Modifier = Modifier,
+    focus: androidx.compose.ui.focus.FocusRequester? = null,
+) {
+    val p = LocalPalette.current
+    val style = MaterialTheme.typography.bodyMedium.let { it.copy(color = p.ink, fontSize = it.fontSize * textScale, lineHeight = it.lineHeight * textScale) }
+    Box(modifier = modifier.heightIn(min = 320.dp).padding(PaddingValues(horizontal = 12.dp, vertical = 11.dp))) {
+        if (value.text.isEmpty()) Text(hint, style = style.copy(color = p.muted))
+        BasicTextField(
+            value = value, onValueChange = onChange, singleLine = false,
+            textStyle = style,
+            cursorBrush = SolidColor(p.accent),
+            keyboardOptions = textKeyboard(false),
+            modifier = Modifier.fillMaxWidth().then(if (focus != null) Modifier.focusRequester(focus) else Modifier),
         )
     }
 }

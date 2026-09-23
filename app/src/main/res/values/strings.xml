@@ -297,4 +297,7 @@
     <string name="reported_junk">Reported as spam: moved to Junk, and what this sender sends next goes to Junk too</string>
     <string name="reorder_folders">Reorder folders</string>
     <string name="reorder_done">Done</string>
+    <string name="text_size">Text size</string>
+    <string name="text_size_value">%1$d%% of the standard size</string>
+    <string name="text_size_sample">This is how your messages read and how you write them.</string>
 </resources>

@@ -288,4 +288,7 @@
     <string name="reported_junk">Als Spam gemeldet: in Junk verschoben, und was dieser Absender weiter schickt, landet auch in Junk</string>
     <string name="reorder_folders">Ordner anordnen</string>
     <string name="reorder_done">Fertig</string>
+    <string name="text_size">Textgröße</string>
+    <string name="text_size_value">%1$d%% der Standardgröße</string>
+    <string name="text_size_sample">So lesen sich Ihre Nachrichten und so schreiben Sie sie.</string>
 </resources>

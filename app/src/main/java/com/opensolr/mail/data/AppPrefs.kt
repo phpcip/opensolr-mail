@@ -130,6 +130,11 @@ class AppPrefs(context: Context) {
         get() = sp.getString("unified_order", null)?.split(",")?.filter { it.isNotBlank() } ?: emptyList()
         set(v) = sp.edit().putString("unified_order", v.joinToString(",")).apply()
 
+    /** Size of message text, reading and writing, in percent of the standard size. */
+    var textScale: Int
+        get() = sp.getInt("text_scale", 100).coerceIn(80, 200)
+        set(v) = sp.edit().putInt("text_scale", v.coerceIn(80, 200)).apply()
+
     var listGroup: String
         get() = sp.getString("list_group", "DAY") ?: "DAY"
         set(v) = sp.edit().putString("list_group", v).apply()

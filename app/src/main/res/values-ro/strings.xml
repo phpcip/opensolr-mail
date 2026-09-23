@@ -288,4 +288,7 @@
     <string name="reported_junk">Raportat ca spam: mutat în Junk, iar ce mai trimite expeditorul ajunge tot în Junk</string>
     <string name="reorder_folders">Reordonează dosarele</string>
     <string name="reorder_done">Gata</string>
+    <string name="text_size">Mărimea textului</string>
+    <string name="text_size_value">%1$d%% din mărimea standard</string>
+    <string name="text_size_sample">Așa se citesc mesajele tale și așa le scrii.</string>
 </resources>

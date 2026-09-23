@@ -288,4 +288,7 @@
     <string name="reported_junk">Signalé comme spam : déplacé dans Indésirables, et ce que cet expéditeur enverra ira aussi dans Indésirables</string>
     <string name="reorder_folders">Réordonner les dossiers</string>
     <string name="reorder_done">Terminé</string>
+    <string name="text_size">Taille du texte</string>
+    <string name="text_size_value">%1$d%% de la taille standard</string>
+    <string name="text_size_sample">Voici comment vos messages se lisent et s\'écrivent.</string>
 </resources>

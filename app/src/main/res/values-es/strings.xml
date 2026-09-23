@@ -288,4 +288,7 @@
     <string name="reported_junk">Marcado como spam: movido a No deseado, y lo que envíe este remitente irá también a No deseado</string>
     <string name="reorder_folders">Reordenar carpetas</string>
     <string name="reorder_done">Listo</string>
+    <string name="text_size">Tamaño del texto</string>
+    <string name="text_size_value">%1$d%% del tamaño estándar</string>
+    <string name="text_size_sample">Así se leen tus mensajes y así los escribes.</string>
 </resources>

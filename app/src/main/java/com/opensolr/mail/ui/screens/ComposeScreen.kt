@@ -39,6 +39,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import com.opensolr.mail.R
+import androidx.compose.runtime.LaunchedEffect
+import com.opensolr.mail.ui.BodyField
 import com.opensolr.mail.data.Address
 import com.opensolr.mail.jmap.MailActions
 import com.opensolr.mail.ui.AccentButton
@@ -77,7 +79,18 @@ fun ComposeScreen(vm: AppViewModel, init: ComposeInit) {
     var showCc by remember { mutableStateOf(init.cc.isNotBlank()) }
     var subject by remember { mutableStateOf(init.subject) }
     val signature = identity?.signature?.takeIf { it.isNotBlank() }?.let { "\n\n-- \n$it" }.orEmpty()
-    var body by remember { mutableStateOf(if (init.draftId != null) init.body else signature + init.body) }
+    // The cursor starts at the very top, above the signature and the quoted message, ready to type.
+    var bodyValue by remember { mutableStateOf(androidx.compose.ui.text.input.TextFieldValue(if (init.draftId != null) init.body else signature + init.body, androidx.compose.ui.text.TextRange(0))) }
+    val body = bodyValue.text
+    val toFocus = remember { androidx.compose.ui.focus.FocusRequester() }
+    val bodyFocus = remember { androidx.compose.ui.focus.FocusRequester() }
+    val keyboard = androidx.compose.ui.platform.LocalSoftwareKeyboardController.current
+    // A reply or forward with its recipients filled opens ready to write; a new message opens on To.
+    LaunchedEffect(Unit) {
+        kotlinx.coroutines.delay(300)
+        runCatching { if (init.to.isNotBlank() || init.draftId != null) bodyFocus.requestFocus() else toFocus.requestFocus() }
+        keyboard?.show()
+    }
     val files = remember { mutableStateListOf<MailActions.OutFile>().apply { addAll(init.files) } }
     var picking by remember { mutableStateOf(false) }
     var leaving by remember { mutableStateOf(false) }
@@ -124,7 +137,7 @@ fun ComposeScreen(vm: AppViewModel, init: ComposeInit) {
                 Text(identity?.let { if (it.name.isBlank()) it.email else "${it.name} <${it.email}>" }.orEmpty(), style = MaterialTheme.typography.bodyMedium, color = p.ink, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
             Hairline()
-            Line(stringResource(R.string.to)) { Field(to, { to = it }, "", Modifier.weight(1f), email = true) }
+            Line(stringResource(R.string.to)) { Field(to, { to = it }, "", Modifier.weight(1f), email = true, focus = toFocus) }
             Hairline()
             if (showCc) {
                 Line(stringResource(R.string.cc)) { Field(cc, { cc = it }, "", Modifier.weight(1f), email = true) }
@@ -149,7 +162,7 @@ fun ComposeScreen(vm: AppViewModel, init: ComposeInit) {
                     IconBtn(R.drawable.ic_close, { files.remove(f); File(f.path).delete() })
                 }
             }
-            Field(body, { body = it }, stringResource(R.string.message_hint), Modifier.fillMaxWidth(), singleLine = false, minHeight = 320)
+            BodyField(bodyValue, { bodyValue = it }, stringResource(R.string.message_hint), vm.prefs.textScale / 100f, Modifier.fillMaxWidth(), focus = bodyFocus)
             Spacer(Modifier.height(bottomInset()))
         }
     }

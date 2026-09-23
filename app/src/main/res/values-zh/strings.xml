@@ -288,4 +288,7 @@
     <string name="reported_junk">已举报为垃圾邮件：已移至垃圾邮件，此发件人之后的邮件也会进入垃圾邮件</string>
     <string name="reorder_folders">调整文件夹顺序</string>
     <string name="reorder_done">完成</string>
+    <string name="text_size">文字大小</string>
+    <string name="text_size_value">标准大小的 %1$d%%</string>
+    <string name="text_size_sample">邮件的阅读和书写都以此大小显示。</string>
 </resources>
