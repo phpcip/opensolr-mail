@@ -315,20 +315,50 @@ class MailSearch(private val context: Context) {
     suspend fun answer(question: String, top: List<AiPrompt.Doc>, highlights: Map<String, Map<String, List<String>>>, onChunk: (String) -> Unit) {
         if (top.isEmpty()) return
         val connection = MailIndex(context).ensure()
-        val bodies = HashMap<String, String>()
-        val r = SolrClient(connection).select(
+        val solr = SolrClient(connection)
+        fun textOf(d: JSONObject): String {
+            val att = flatten(d.optString("attachment_text_t"))
+            return (flatten(freshPart(d.optString("body_t"))) + if (att.isNotEmpty()) "\nAttachment text: $att" else "").trim()
+        }
+        // The results themselves, with the conversation each belongs to.
+        val r = solr.select(
             listOf(
                 "q" to "*:*",
                 "fq" to "{!terms f=id v=\$ids}",
                 "ids" to top.joinToString(",") { it.id },
-                "fl" to "id,body_t,attachment_text_t",
+                "fl" to "id,account_s,thread_id_s,body_t,attachment_text_t",
                 "rows" to top.size.toString(),
             )
         )
         val docs = r.optJSONObject("response")?.optJSONArray("docs") ?: JSONArray()
-        for (i in 0 until docs.length()) docs.getJSONObject(i).let {
-            val att = flatten(it.optString("attachment_text_t"))
-            bodies[it.optString("id")] = (flatten(freshPart(it.optString("body_t"))) + if (att.isNotEmpty()) "\nAttachment text: $att" else "").trim()
+        val own = (0 until docs.length()).map { docs.getJSONObject(it) }.associateBy { it.optString("id") }
+        // A result that is a conversation goes whole: every message of it, oldest first, in one query for all of them.
+        val threads = own.values.mapNotNull { d -> d.optString("thread_id_s").takeIf { it.isNotBlank() }?.let { d.optString("account_s") to it } }.distinct()
+        val whole = HashMap<Pair<String, String>, List<JSONObject>>()
+        if (threads.isNotEmpty()) {
+            val t = solr.select(
+                listOf(
+                    "q" to "*:*",
+                    "fq" to "{!terms f=thread_id_s v=\$tids}",
+                    "tids" to threads.joinToString(",") { it.second },
+                    "fq" to "{!terms f=account_s v=\$accs}",
+                    "accs" to threads.map { it.first }.distinct().joinToString(","),
+                    "fl" to "id,account_s,thread_id_s,from_t,received_dt,body_t,attachment_text_t",
+                    "sort" to "received_dt asc",
+                    "rows" to "300",
+                )
+            )
+            val all = t.optJSONObject("response")?.optJSONArray("docs") ?: JSONArray()
+            (0 until all.length()).map { all.getJSONObject(it) }
+                .groupBy { it.optString("account_s") to it.optString("thread_id_s") }
+                .forEach { (k, v) -> whole[k] = v }
+        }
+        val bodies = HashMap<String, String>()
+        own.forEach { (id, d) ->
+            val conversation = whole[d.optString("account_s") to d.optString("thread_id_s")].orEmpty()
+            bodies[id] = if (conversation.size > 1) conversation.joinToString("\n\n") { m ->
+                "From: " + m.optString("from_t") + " | Date: " + localDate(m.optString("received_dt")) + "\n" + textOf(m)
+            } else textOf(d)
         }
         val ctx = AiPrompt.context(top.map { it.copy(text = bodies[it.id].orEmpty()) }, highlights)
         if (ctx.isEmpty()) return
