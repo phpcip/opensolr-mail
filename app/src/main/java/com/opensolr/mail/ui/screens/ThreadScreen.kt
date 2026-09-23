@@ -220,7 +220,8 @@ fun ThreadScreen(vm: AppViewModel, acc: String, threadId: String) {
                                 if (raw.isBlank()) com.opensolr.mail.jmap.Html.fromTextFolded(full.bodyText ?: m.preview, quoted, hideQuoted)
                                 else com.opensolr.mail.jmap.Html.foldQuotes(raw, quoted, hideQuoted)
                             }
-                            val hasRemote = Regex("(?i)<img[^>]+src=[\"']?https?:").containsMatchIn(html)
+                            // Any picture fetched from the web: <img src>, srcset, background="...", CSS url(...), with or without http:
+                            val hasRemote = remember(html) { REMOTE_IMAGE.containsMatchIn(html) }
                             val allow = vm.prefs.remoteImages || images[m.id] == true
                             if (hasRemote && !allow) {
                                 Text(
@@ -498,3 +499,5 @@ private object AttachmentFiles {
         }
     }
 }
+
+private val REMOTE_IMAGE = Regex("""(?i)(\b(src|srcset|background|poster)\s*=\s*["']?\s*(https?:)?//)|(url\(\s*["']?\s*(https?:)?//)""")

@@ -92,8 +92,10 @@ fun MailWebView(html: String, acc: String, attachments: List<Attachment>, remote
                 "padding:6px 12px;border:1px solid #d9d4cc;background:#f3efe9;border-radius:2px}details.osq>summary::-webkit-details-marker{display:none}" +
                 "details.osq[open]>summary{margin-bottom:10px}details.osq[open]>summary .s,details.osq:not([open])>summary .h{display:none}</style></head><body>" +
                 html + "</body></html>"
-            if (w.tag != doc.hashCode()) {
-                w.tag = doc.hashCode()
+            // Allowing pictures loads the message again, so they appear at once.
+            val tag = doc.hashCode() * 31 + if (remoteImages) 1 else 0
+            if (w.tag != tag) {
+                w.tag = tag
                 w.loadDataWithBaseURL(null, doc, "text/html", "utf-8", null)
             }
         },
