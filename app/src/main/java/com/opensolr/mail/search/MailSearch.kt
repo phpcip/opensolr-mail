@@ -44,6 +44,8 @@ class MailSearch(private val context: Context) {
         val docId: String = "",
         /** "trash" or "junk" when the message lies there, else empty. */
         val bin: String = "",
+        /** The message's own Message-ID: the same mail held by two accounts shows once. */
+        val messageId: String = "",
     )
 
     data class DateRange(val from: Long, val to: Long)
@@ -171,7 +173,7 @@ class MailSearch(private val context: Context) {
         // Only a list with no words is ordered newest first.
         val newest = q.isEmpty()
         p += "sort" to if (newest) "received_dt desc, id asc" else "score desc, received_dt desc"
-        p += "fl" to "id,score,account_s,email_id_s,thread_id_s,subject_t,from_t,from_s,from_name_s,to_tm,received_dt,preview_t,seen_b,flagged_b,has_attachment_b,mailbox_role_ss"
+        p += "fl" to "id,score,account_s,email_id_s,thread_id_s,subject_t,from_t,from_s,from_name_s,to_tm,received_dt,preview_t,seen_b,flagged_b,has_attachment_b,mailbox_role_ss,message_id_s"
         p += "facet" to "true"
         Filters.FACETS.forEach { f -> p += "facet.field" to "{!ex=$f}$f" }
         p += "facet.field" to "{!ex=from_s key=from_names}from_label_s"
@@ -252,7 +254,7 @@ class MailSearch(private val context: Context) {
                 subject = d.optString("subject_t"), from = d.optString("from_name_s").ifBlank { d.optString("from_t") },
                 fromEmail = d.optString("from_s"), received = MailSync.parseDate(d.optString("received_dt")), snippet = snippet,
                 seen = d.optBoolean("seen_b", true), flagged = d.optBoolean("flagged_b"), hasAttachment = d.optBoolean("has_attachment_b"),
-                score = d.optDouble("score", 0.0), docId = id,
+                score = d.optDouble("score", 0.0), docId = id, messageId = d.optString("message_id_s"),
                 bin = d.optJSONArray("mailbox_role_ss")?.let { a -> (0 until a.length()).map { a.optString(it) } }?.firstOrNull { it == "trash" || it == "junk" }.orEmpty(),
             )
         }

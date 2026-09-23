@@ -484,6 +484,18 @@ class MailDb private constructor(context: Context) : SQLiteOpenHelper(context.ap
         return out
     }
 
+    /** The Message-ID of each of [ids] of [acc]. */
+    fun messageIds(acc: String, ids: Collection<String>): Map<String, String> {
+        if (ids.isEmpty()) return emptyMap()
+        val out = HashMap<String, String>()
+        ids.distinct().chunked(400).forEach { chunk ->
+            readableDatabase.rawQuery("SELECT id, message_id FROM message WHERE acc = ? AND id IN (${chunk.joinToString(",") { "?" }})", arrayOf(acc) + chunk).use { c ->
+                while (c.moveToNext()) out[c.getString(0)] = c.getString(1)
+            }
+        }
+        return out
+    }
+
     /** Of each conversation held here: whether any message is flagged and whether any is unread. One query per 400. */
     fun threadStates(acc: String, threads: Collection<String>): Map<String, Pair<Boolean, Boolean>> {
         if (threads.isEmpty()) return emptyMap()

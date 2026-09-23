@@ -192,7 +192,11 @@ fun SearchScreen(vm: AppViewModel, sheet: String?) {
     val r = result
     r?.let { knownNames = knownNames + it.names }
     // Later pages can bring more matches from a conversation already listed: it stays one line.
-    val shownHits = remember(r, extraHits) { ((r?.hits.orEmpty()) + extraHits).distinctBy { it.acc + ":" + it.threadId.ifEmpty { it.emailId } } }
+    // One line per conversation, and one per mail: the same message held by two accounts (an alias, a copy sent to both) shows once.
+    val shownHits = remember(r, extraHits) {
+        ((r?.hits.orEmpty()) + extraHits).distinctBy { it.acc + ":" + it.threadId.ifEmpty { it.emailId } }
+            .distinctBy { it.messageId.ifEmpty { it.acc + ":" + it.emailId } }
+    }
     val shownGroups = (r?.groups.orEmpty()) + extraGroups
     // The next page comes once the reader is a quarter of the way down what is loaded, well before the end,
     // so neither scrolling nor the fast scroller ever reaches a bottom that is not the real one.
@@ -389,7 +393,7 @@ fun SearchScreen(vm: AppViewModel, sheet: String?) {
                         Box(itemMotion()) { GroupHeader(groupValueLabel(groupBy, g.value, accounts), g.total, !folded) { vm.toggleFold("search_folds", key) } }
                     }
                     if (!folded) {
-                        items(g.hits.filter { vm.hiddenThreads[keyOf(it)] != true && gone[keyOf(it)] != true }, key = { "gh:$key:" + it.acc + ":" + it.emailId }) { h -> Box(itemMotion()) { ActionHit(h) } }
+                        items(g.hits.filter { vm.hiddenThreads[keyOf(it)] != true && gone[keyOf(it)] != true }.distinctBy { it.messageId.ifEmpty { it.acc + ":" + it.emailId } }, key = { "gh:$key:" + it.acc + ":" + it.emailId }) { h -> Box(itemMotion()) { ActionHit(h) } }
                         if (g.total > g.hits.size) item(key = "more:$key") {
                             Text(
                                 stringResource(R.string.show_all_n, String.format(Locale.US, "%,d", g.total)),
