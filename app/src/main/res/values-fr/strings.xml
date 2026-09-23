@@ -318,4 +318,9 @@
     <string name="ops_comb_ex">doit contenir \"invoice\" et la phrase \"purchase order\", rien venant d\'une newsletter.</string>
     <string name="ops_why_h">Pourquoi c\'est utile avec AI</string>
     <string name="ops_why_b">La recherche AI ramène aussi des messages proches par le sens qui ne sont pas ce que vous voulez : hosting invoice peut ramener des devis. +invoice ne garde que ceux qui le disent.</string>
+    <string name="ai_instructions">Instructions pour la réponse AI</string>
+    <string name="ai_instructions_sub">Ajoutées à chaque réponse AI, sans toucher à la recherche. Enregistrées sur ce téléphone.</string>
+    <string name="ai_instructions_hint">Par exemple : uniquement des listes courtes et ciblées</string>
+    <string name="save">Enregistrer</string>
+    <string name="clear">Effacer</string>
 </resources>

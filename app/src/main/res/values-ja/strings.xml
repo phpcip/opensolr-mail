@@ -318,4 +318,9 @@
     <string name="ops_comb_ex">\"invoice\" とフレーズ \"purchase order\" を含み、ニュースレターは除外します。</string>
     <string name="ops_why_h">AI オンで役立つ理由</string>
     <string name="ops_why_b">AI 検索は意味の近い、求めていないメッセージも出します。hosting invoice で見積もりも出ることがあります。+invoice でそれを含むものだけが残ります。</string>
+    <string name="ai_instructions">AI 回答への指示</string>
+    <string name="ai_instructions_sub">検索そのものは変えずに、すべての AI 回答に追加されます。この端末に保存されます。</string>
+    <string name="ai_instructions_hint">例：短く要点を絞った箇条書きだけ</string>
+    <string name="save">保存</string>
+    <string name="clear">消去</string>
 </resources>

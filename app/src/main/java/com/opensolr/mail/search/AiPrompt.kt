@@ -40,7 +40,8 @@ object AiPrompt {
         return sb.toString()
     }
 
-    fun instruction(context: String, query: String): String {
+    /** [extra] are the reader's own instructions, placed right before the question; none leaves the prompt as canonical. */
+    fun instruction(context: String, query: String, extra: String = ""): String {
         val count = maxOf(1, Regex("===== DOCUMENT ").findAll(context).count())
         return context + "\n\n" +
             "Those were the " + count + " documents.\n\n" +
@@ -64,6 +65,7 @@ object AiPrompt {
             "Only if not one of the " + count + " documents is about the question, reply with " +
             "a single sentence that starts \"There is no information about\" and then names " +
             "what they cover instead.\n\n" +
+            (if (extra.isNotBlank()) "Additional instructions: " + extra.trim() + "\n\n" else "") +
             "Question: " + query + "\n" +
             "Answer:"
     }

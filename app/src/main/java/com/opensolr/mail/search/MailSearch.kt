@@ -424,7 +424,7 @@ class MailSearch(private val context: Context) {
         }
         val ctx = AiPrompt.context(out, highlights, topN = out.size, maxWords = AI_DOC_WORDS)
         if (ctx.isEmpty()) return
-        api.aiAnswer(connection.indexName, AiPrompt.instruction(ctx, question), onChunk)
+        api.aiAnswer(connection.indexName, AiPrompt.instruction(ctx, question, prefs.aiInstructions), onChunk)
     }
 
     /**

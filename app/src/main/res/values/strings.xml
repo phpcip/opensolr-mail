@@ -327,4 +327,9 @@
     <string name="ops_comb_ex">must contain \"invoice\" and the exact phrase \"purchase order\", and nothing from a newsletter.</string>
     <string name="ops_why_h">Why this matters with AI on</string>
     <string name="ops_why_b">AI search also brings messages close in meaning that are not what you want: a search for hosting invoice may also bring quotes and offers. +invoice keeps only the messages that say it.</string>
+    <string name="ai_instructions">Instructions for the AI answer</string>
+    <string name="ai_instructions_sub">Added to every AI answer, without touching the search itself. Saved on this phone.</string>
+    <string name="ai_instructions_hint">For example: give me only short, focused bullet lists</string>
+    <string name="save">Save</string>
+    <string name="clear">Clear</string>
 </resources>

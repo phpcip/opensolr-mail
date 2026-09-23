@@ -100,6 +100,11 @@ class AppPrefs(context: Context) {
         get() = sp.getBoolean("ai_search", true)
         set(v) = sp.edit().putBoolean("ai_search", v).apply()
 
+    /** The reader's own instructions for the AI answer, added to every question; empty by default. */
+    var aiInstructions: String
+        get() = sp.getString("ai_instructions", "") ?: ""
+        set(v) = sp.edit().putString("ai_instructions", v.trim().take(2000)).apply()
+
     var freshSearch: Boolean
         get() = sp.getBoolean("fresh_search", false)
         set(v) = sp.edit().putBoolean("fresh_search", v).apply()

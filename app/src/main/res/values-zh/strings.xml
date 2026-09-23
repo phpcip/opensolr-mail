@@ -318,4 +318,9 @@
     <string name="ops_comb_ex">必须包含 \"invoice\" 和短语 \"purchase order\"，不含新闻通讯。</string>
     <string name="ops_why_h">开启 AI 时为何有用</string>
     <string name="ops_why_b">AI 搜索也会带来意思相近但不是你要的邮件：hosting invoice 可能带来报价。+invoice 只保留真正提到它的邮件。</string>
+    <string name="ai_instructions">AI 回答的指示</string>
+    <string name="ai_instructions_sub">添加到每个 AI 回答中，不影响搜索本身。保存在此手机上。</string>
+    <string name="ai_instructions_hint">例如：只给我简短、聚焦的要点列表</string>
+    <string name="save">保存</string>
+    <string name="clear">清除</string>
 </resources>

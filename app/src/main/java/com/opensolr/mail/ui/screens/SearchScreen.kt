@@ -149,6 +149,8 @@ fun SearchScreen(vm: AppViewModel, sheet: String?) {
     var showFilters by remember { mutableStateOf(sheet == "filters") }
     var showGroup by remember { mutableStateOf(sheet == "group") }
     var showOperators by remember { mutableStateOf(false) }
+    var showInstructions by remember { mutableStateOf(false) }
+    var instructions by remember { mutableStateOf(vm.prefs.aiInstructions) }
     val zonesOpen = vm.keySet("filter_zones")
     vm.keySet("search_folds")
     val focus = remember { FocusRequester() }
@@ -318,6 +320,11 @@ fun SearchScreen(vm: AppViewModel, sheet: String?) {
                 )
             }
             if (query.isNotEmpty()) IconBtn(R.drawable.ic_close, { query = "" })
+            // Lit when the reader has instructions of their own for the AI answer.
+            Icon(
+                painterResource(R.drawable.ic_instructions), contentDescription = stringResource(R.string.ai_instructions), tint = if (instructions.isNotBlank()) p.accent else p.ink,
+                modifier = Modifier.size(40.dp).clickable { Haptics.tick(view, false); showInstructions = true }.padding(9.dp),
+            )
             Icon(
                 painterResource(R.drawable.ic_help), contentDescription = stringResource(R.string.cd_search_help), tint = p.muted,
                 modifier = Modifier.size(40.dp).clickable { Haptics.tick(view, false); showOperators = true }.padding(9.dp),
@@ -530,6 +537,11 @@ fun SearchScreen(vm: AppViewModel, sheet: String?) {
     }
 
     if (showOperators) SearchOperatorsDialog(onDismiss = { showOperators = false })
+    if (showInstructions) InstructionsDialog(instructions, onSave = { text ->
+        vm.prefs.aiInstructions = text
+        instructions = vm.prefs.aiInstructions
+        showInstructions = false
+    }, onDismiss = { showInstructions = false })
 
     if (showFilters) {
         FilterSheet(
@@ -537,6 +549,43 @@ fun SearchScreen(vm: AppViewModel, sheet: String?) {
             open = zonesOpen, onToggle = { vm.toggleKey("filter_zones", it) }, onAll = { vm.setKeySet("filter_zones", it) }, onChange = { filters = it }, onDismiss = { showFilters = false },
         )
     }
+}
+
+/** The reader's own instructions for the AI answer: saved on this phone, empty until written. */
+@Composable
+private fun InstructionsDialog(current: String, onSave: (String) -> Unit, onDismiss: () -> Unit) {
+    val p = LocalPalette.current
+    var text by remember { mutableStateOf(current) }
+    androidx.compose.material3.AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Column {
+                Text(stringResource(R.string.ai_instructions))
+                Text(stringResource(R.string.ai_instructions_sub), style = MaterialTheme.typography.bodyMedium, color = p.muted)
+            }
+        },
+        text = {
+            androidx.compose.material3.OutlinedTextField(
+                value = text, onValueChange = { text = it.take(2000) },
+                placeholder = { Text(stringResource(R.string.ai_instructions_hint), color = p.muted) },
+                minLines = 4, maxLines = 10,
+                keyboardOptions = KeyboardOptions(capitalization = androidx.compose.ui.text.input.KeyboardCapitalization.Sentences),
+                colors = androidx.compose.material3.OutlinedTextFieldDefaults.colors(
+                    focusedBorderColor = p.accent, unfocusedBorderColor = p.hairline, cursorColor = p.accent,
+                    focusedTextColor = p.ink, unfocusedTextColor = p.ink,
+                ),
+                modifier = Modifier.fillMaxWidth(),
+            )
+        },
+        confirmButton = { androidx.compose.material3.TextButton(onClick = { onSave(text) }) { Text(stringResource(R.string.save), color = p.accent, fontWeight = FontWeight.Bold) } },
+        dismissButton = {
+            Row {
+                if (current.isNotBlank()) androidx.compose.material3.TextButton(onClick = { onSave("") }) { Text(stringResource(R.string.clear), color = p.ink) }
+                androidx.compose.material3.TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel), color = p.ink) }
+            }
+        },
+        containerColor = p.paper, titleContentColor = p.ink, textContentColor = p.ink,
+    )
 }
 
 /** The same Search Operators help as on search.opensolr.com and in Opensolr Photos; the syntax itself is untranslated. */

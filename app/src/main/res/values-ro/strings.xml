@@ -318,4 +318,9 @@
     <string name="ops_comb_ex">trebuie să conțină \"invoice\" și fraza exactă \"purchase order\", fără nimic din newslettere.</string>
     <string name="ops_why_h">De ce contează cu AI pornit</string>
     <string name="ops_why_b">Căutarea AI aduce și mesaje apropiate ca sens care nu sunt ce cauți: hosting invoice poate aduce și oferte. +invoice le păstrează doar pe cele care chiar o spun.</string>
+    <string name="ai_instructions">Instrucțiuni pentru răspunsul AI</string>
+    <string name="ai_instructions_sub">Se adaugă la fiecare răspuns AI, fără să schimbe căutarea. Se salvează pe telefon.</string>
+    <string name="ai_instructions_hint">De exemplu: dă-mi doar liste scurte, la obiect</string>
+    <string name="save">Salvează</string>
+    <string name="clear">Șterge</string>
 </resources>
