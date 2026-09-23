@@ -291,4 +291,5 @@
     <string name="tool_not_junk">Not junk</string>
     <string name="show_quoted">Show quoted text</string>
     <string name="hide_quoted">Hide quoted text</string>
+    <string name="att_saved_downloads">Saved to Downloads: %1$s</string>
 </resources>

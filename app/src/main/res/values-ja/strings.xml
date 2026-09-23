@@ -282,4 +282,5 @@
     <string name="tool_not_junk">迷惑でない</string>
     <string name="show_quoted">引用を表示</string>
     <string name="hide_quoted">引用を隠す</string>
+    <string name="att_saved_downloads">ダウンロードに保存しました: %1$s</string>
 </resources>

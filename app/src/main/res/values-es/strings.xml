@@ -282,4 +282,5 @@
     <string name="tool_not_junk">No es spam</string>
     <string name="show_quoted">Mostrar texto citado</string>
     <string name="hide_quoted">Ocultar texto citado</string>
+    <string name="att_saved_downloads">Guardado en Descargas: %1$s</string>
 </resources>

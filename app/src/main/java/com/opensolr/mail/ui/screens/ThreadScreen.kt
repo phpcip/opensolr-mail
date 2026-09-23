@@ -64,6 +64,7 @@ import com.opensolr.mail.ui.hapticClickable
 import com.opensolr.mail.ui.scrollMark
 import com.opensolr.mail.ui.FastScroller
 import com.opensolr.mail.ui.theme.LocalPalette
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -228,31 +229,39 @@ fun ThreadScreen(vm: AppViewModel, acc: String, threadId: String) {
                             }
                             MailWebView(html, acc, full.attachments, allow, Modifier.fillMaxWidth().heightIn(min = 40.dp))
                             val files = full.attachments.filter { !it.inline || it.cid == null }
-                            if (files.isNotEmpty()) Attachments(files, onSave = { a -> saving = a; saveAs.launch(a.name.ifBlank { "attachment" }) }) { a ->
+                            if (files.isNotEmpty()) Attachments(files, onSave = { a ->
+                                // Saved straight into Downloads; the save picker only where Android has no Downloads store (before 10).
                                 val a0 = vm.store.get(acc) ?: return@Attachments
                                 scope.launch {
                                     try {
-                                        val dir = File(context.cacheDir, "attachments").apply { mkdirs() }
-                                        val safe = a.name.ifBlank { "file" }.replace(Regex("[^A-Za-z0-9._ -]"), "_").take(100)
-                                        val f = File(dir, safe)
-                                        vm.toast(R.string.att_opening, a.name.ifBlank { "file" })
-                                        Jmap(context, a0).download(a.blobId, a.name, a.type, f)
+                                        val f = AttachmentFiles.fetch(context, a0, a)
                                         val type = withContext(Dispatchers.IO) { AttachmentFiles.typeOf(f, a.name, a.type) }
-                                        val uri = FileProvider.getUriForFile(context, context.packageName + ".files", f)
+                                        if (withContext(Dispatchers.IO) { AttachmentFiles.inDownloads(context, f, AttachmentFiles.nameOf(a), type) } != null) vm.toast(R.string.att_saved_downloads, AttachmentFiles.nameOf(a))
+                                        else { saving = a; saveAs.launch(AttachmentFiles.nameOf(a)) }
+                                    } catch (e: CancellationException) { throw e } catch (e: Exception) { vm.message = e.message }
+                                }
+                            }) { a ->
+                                val a0 = vm.store.get(acc) ?: return@Attachments
+                                scope.launch {
+                                    try {
+                                        // First the whole file is downloaded and saved into Downloads, then that saved file
+                                        // is handed to the app that opens it (Adobe or any other), never a half-read stream.
+                                        vm.toast(R.string.att_opening, AttachmentFiles.nameOf(a))
+                                        val f = AttachmentFiles.fetch(context, a0, a)
+                                        val type = withContext(Dispatchers.IO) { AttachmentFiles.typeOf(f, a.name, a.type) }
+                                        val saved = withContext(Dispatchers.IO) { AttachmentFiles.inDownloads(context, f, AttachmentFiles.nameOf(a), type) }
+                                        val uri = saved ?: FileProvider.getUriForFile(context, context.packageName + ".files", f)
                                         val view = Intent(Intent.ACTION_VIEW).setDataAndType(uri, type)
                                             .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
                                         try {
                                             context.startActivity(view)
                                             vm.message = null
                                         } catch (e: android.content.ActivityNotFoundException) {
-                                            // Nothing on the phone opens this kind of file: it goes to Downloads instead.
-                                            if (withContext(Dispatchers.IO) { AttachmentFiles.toDownloads(context, f, a.name.ifBlank { safe }, type) }) {
-                                                vm.toast(R.string.att_no_app_saved, a.name.ifBlank { safe })
-                                            } else {
-                                                saving = a
-                                                saveAs.launch(a.name.ifBlank { "attachment" })
-                                            }
+                                            if (saved != null) vm.toast(R.string.att_no_app_saved, AttachmentFiles.nameOf(a))
+                                            else { saving = a; saveAs.launch(AttachmentFiles.nameOf(a)) }
                                         }
+                                    } catch (e: CancellationException) {
+                                        throw e
                                     } catch (e: Exception) {
                                         vm.message = e.message
                                     }
@@ -428,6 +437,45 @@ private object AttachmentFiles {
         val byName = if (ext.isEmpty()) null else android.webkit.MimeTypeMap.getSingleton().getMimeTypeFromExtension(ext)
         val clean = declared.substringBefore(';').trim().lowercase()
         return byName ?: clean.takeIf { it.isNotEmpty() && it != "application/octet-stream" } ?: "application/octet-stream"
+    }
+
+    fun nameOf(a: com.opensolr.mail.data.Attachment): String = a.name.ifBlank { "attachment" }
+
+    /** The attachment downloaded in full to the app's cache. */
+    suspend fun fetch(context: android.content.Context, account: com.opensolr.mail.data.MailAccount, a: com.opensolr.mail.data.Attachment): File {
+        val dir = File(context.cacheDir, "attachments").apply { mkdirs() }
+        val f = File(dir, a.blobId.filter { it.isLetterOrDigit() || it == '-' || it == '_' }.take(80) + "_" + nameOf(a).replace(Regex("[^A-Za-z0-9._ -]"), "_").take(100))
+        if (!f.exists() || f.length() == 0L) Jmap(context, account).download(a.blobId, a.name, a.type, f)
+        return f
+    }
+
+    /**
+     * The file in the phone's Downloads folder: the copy already there when one of the same name and size
+     * exists, otherwise a new one. Null before Android 10, where only the save picker can write there.
+     */
+    fun inDownloads(context: android.content.Context, f: File, name: String, type: String): android.net.Uri? {
+        if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.Q) return null
+        val resolver = context.contentResolver
+        val store = android.provider.MediaStore.Downloads.EXTERNAL_CONTENT_URI
+        resolver.query(
+            store, arrayOf(android.provider.MediaStore.Downloads._ID),
+            "${android.provider.MediaStore.Downloads.DISPLAY_NAME} = ? AND ${android.provider.MediaStore.Downloads.SIZE} = ?",
+            arrayOf(name, f.length().toString()), null,
+        )?.use { c -> if (c.moveToFirst()) return android.content.ContentUris.withAppendedId(store, c.getLong(0)) }
+        val values = android.content.ContentValues().apply {
+            put(android.provider.MediaStore.Downloads.DISPLAY_NAME, name)
+            put(android.provider.MediaStore.Downloads.MIME_TYPE, type)
+            put(android.provider.MediaStore.Downloads.IS_PENDING, 1)
+        }
+        val uri = resolver.insert(store, values) ?: return null
+        return try {
+            resolver.openOutputStream(uri)?.use { out -> f.inputStream().use { it.copyTo(out) } } ?: throw java.io.IOException("No output")
+            resolver.update(uri, android.content.ContentValues().apply { put(android.provider.MediaStore.Downloads.IS_PENDING, 0) }, null, null)
+            uri
+        } catch (e: Exception) {
+            resolver.delete(uri, null, null)
+            null
+        }
     }
 
     /** Copies the file into the public Downloads folder; false where that needs the system file picker (before Android 10). */

@@ -282,4 +282,5 @@
     <string name="tool_not_junk">非垃圾邮件</string>
     <string name="show_quoted">显示引用内容</string>
     <string name="hide_quoted">隐藏引用内容</string>
+    <string name="att_saved_downloads">已保存到“下载”：%1$s</string>
 </resources>
