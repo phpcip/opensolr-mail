@@ -193,20 +193,11 @@ fun SettingsScreen(vm: AppViewModel) {
                 InfoRow(stringResource(R.string.idx_row_indexed), if (s.indexed < 0) "\u2014" else n(s.indexed))
                 InfoRow(stringResource(R.string.idx_row_meaning), if (s.withMeaning < 0) "\u2014" else n(s.withMeaning))
                 // What is left is measured against everything at Fastmail, not against what was queued so far.
+                // Each count with its own bar: messages against all at Fastmail, attachments against all messages that have them.
                 InfoRow(stringResource(R.string.idx_row_msgs_left), if (s.messagesLeft < 0) "\u2014" else n(s.messagesLeft))
+                s.messageProgress?.let { (done, total) -> ProgressLine(done, total) }
                 InfoRow(stringResource(R.string.idx_row_attachments), if (s.attLeft < 0) "\u2014" else n(s.attLeft))
-                s.progress?.let { (done, total) ->
-                    Spacer(Modifier.height(10.dp))
-                    Text(stringResource(R.string.idx_progress, (done * 100 / total).toInt()), style = MaterialTheme.typography.bodyMedium, color = p.muted)
-                    Spacer(Modifier.height(6.dp))
-                    LinearProgressIndicator(
-                        progress = { (done.toDouble() / total).toFloat().coerceIn(0f, 1f) },
-                        modifier = Modifier.fillMaxWidth().height(6.dp),
-                        color = p.accent, trackColor = p.hairline,
-                        strokeCap = androidx.compose.ui.graphics.StrokeCap.Butt, gapSize = 0.dp, drawStopIndicator = {},
-                    )
-                    Spacer(Modifier.height(6.dp))
-                }
+                s.attachmentProgress?.let { (done, total) -> ProgressLine(done, total) }
                 InfoRow(stringResource(R.string.idx_row_history), stringResource(if (s.historyDone) R.string.idx_row_done else R.string.idx_row_reading))
                 InfoRow(stringResource(R.string.idx_row_last), if (s.at > 0) fmtDate(s.at) else "\u2014")
                 InfoRow(stringResource(R.string.idx_row_name), vm.prefs.indexName.ifBlank { "\u2014" })
@@ -331,3 +322,18 @@ private fun activityOf(context: Context): Activity? {
     return null
 }
 
+/** A percentage and its bar, under the count it belongs to. */
+@Composable
+private fun ProgressLine(done: Long, total: Long) {
+    val p = LocalPalette.current
+    Spacer(Modifier.height(4.dp))
+    Text(stringResource(R.string.idx_progress, (done * 100 / total).toInt()), style = MaterialTheme.typography.bodySmall, color = p.muted)
+    Spacer(Modifier.height(4.dp))
+    LinearProgressIndicator(
+        progress = { (done.toDouble() / total).toFloat().coerceIn(0f, 1f) },
+        modifier = Modifier.fillMaxWidth().height(6.dp),
+        color = p.accent, trackColor = p.hairline,
+        strokeCap = androidx.compose.ui.graphics.StrokeCap.Butt, gapSize = 0.dp, drawStopIndicator = {},
+    )
+    Spacer(Modifier.height(10.dp))
+}

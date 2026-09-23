@@ -257,12 +257,12 @@
     <string name="idx_tool_now">Indexează</string>
     <string name="idx_tool_stop">Oprește</string>
     <string name="idx_tool_repair">Repară</string>
-    <string name="idx_tool_reindex">Reindexează</string>
+    <string name="idx_tool_reindex">Refă tot</string>
     <string name="idx_tool_clean">Curat</string>
     <string name="idx_tool_reset">Resetează</string>
     <string name="idx_repair_confirm">Repararea rescrie o dată fiecare mesaj fără vector, ca sensul lui să fie cerut din nou. Ce tot nu primește vector rămâne așa.</string>
     <string name="idx_repair_started">Se cere din nou sensul pentru %1$s mesaje.</string>
-    <string name="idx_tools_text">Indexează pornește imediat. Oprește ține indexarea oprită până la Indexează. Repară cere încă o dată sensul care lipsește. Reindexează rescrie tot, Curat golește întâi indexul, Resetează îl golește și oprește.</string>
+    <string name="idx_tools_text">Indexează pornește imediat. Oprește ține indexarea oprită până la Indexează. Repară cere încă o dată sensul care lipsește. Refă tot rescrie fiecare mesaj, Curat golește întâi indexul, Resetează îl golește și oprește.</string>
     <string name="tool_check">Verifică</string>
     <string name="tool_sign_in">Autentificare</string>
     <string name="tool_add_account">Adaugă cont</string>

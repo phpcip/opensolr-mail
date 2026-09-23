@@ -819,13 +819,13 @@ class MailIndexer(private val context: Context) {
         /** Messages whose attachments are still to be read: those in the index plus those with attachments not indexed yet. */
         val attLeft: Long get() = if (attachmentsLeft < 0) -1 else attachmentsLeft + if (mailWithAtt < 0 || indexedWithAtt < 0) 0 else (mailWithAtt - indexedWithAtt).coerceAtLeast(0)
 
-        /** Done and total work over both, for one honest progress bar; null until the totals are known. */
-        val progress: Pair<Long, Long>? get() {
-            if (messagesLeft < 0 || attLeft < 0 || mailWithAtt < 0) return null
-            val total = mailTotal + mailWithAtt
-            val left = messagesLeft + attLeft.coerceAtMost(mailWithAtt)
-            return if (total <= 0) null else (total - left).coerceAtLeast(0) to total
-        }
+        /** Messages done of all at Fastmail; null until the totals are known. */
+        val messageProgress: Pair<Long, Long>? get() =
+            if (messagesLeft < 0 || mailTotal <= 0) null else (mailTotal - messagesLeft).coerceAtLeast(0) to mailTotal
+
+        /** Messages with attachments whose attachments are done, of all with attachments; null until known. */
+        val attachmentProgress: Pair<Long, Long>? get() =
+            if (attLeft < 0 || mailWithAtt <= 0) null else (mailWithAtt - attLeft.coerceAtMost(mailWithAtt)) to mailWithAtt
     }
 
     companion object {

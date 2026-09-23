@@ -173,9 +173,9 @@ class IndexWorker(context: Context, params: WorkerParameters) : CoroutineWorker(
             MailIndexer.Phase.ATTACHMENTS -> R.string.idx_phase_attachments
             MailIndexer.Phase.IDLE -> R.string.indexing
         })
-        // Everything still left at Fastmail, with one bar over messages and attachments together.
+        // Everything still left at Fastmail; the bar is the one of the stage at work, attachments or messages.
         val text = if (s.messagesLeft >= 0 && s.attLeft >= 0) words.getString(R.string.notif_left, n(s.messagesLeft), n(s.attLeft)) else null
-        val progress = s.progress
+        val progress = if (s.phase == MailIndexer.Phase.ATTACHMENTS) s.attachmentProgress else s.messageProgress
         val n = NotificationCompat.Builder(applicationContext, Notifier.CHANNEL_APP)
             .setSmallIcon(R.drawable.ic_notify)
             .setContentTitle(title)

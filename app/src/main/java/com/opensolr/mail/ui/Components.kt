@@ -348,7 +348,8 @@ data class Tool(@DrawableRes val icon: Int, val label: String, val accent: Boole
 fun ToolRow(tools: List<Tool>, modifier: Modifier = Modifier) {
     val p = LocalPalette.current
     val view = androidx.compose.ui.platform.LocalView.current
-    Row(modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+    // Tiles of a row share one height; a label that does not fit on one line takes two, never cut.
+    Row(modifier.fillMaxWidth().height(androidx.compose.foundation.layout.IntrinsicSize.Min), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
         // A short row keeps small tiles, a quarter of the width each, instead of stretching them.
         tools.forEach { t ->
             val tint = when {
@@ -359,6 +360,7 @@ fun ToolRow(tools: List<Tool>, modifier: Modifier = Modifier) {
             Column(
                 Modifier
                     .weight(1f)
+                    .fillMaxHeight()
                     .clip(SHAPE)
                     .background(p.buttonFill)
                     .border(1.dp, if (t.accent || t.active) p.accent else p.hairline, SHAPE)
@@ -370,7 +372,7 @@ fun ToolRow(tools: List<Tool>, modifier: Modifier = Modifier) {
                 Spacer(Modifier.height(3.dp))
                 Text(
                     t.label, fontSize = 10.sp, lineHeight = 12.sp, fontWeight = FontWeight.SemiBold, color = tint,
-                    maxLines = 1, softWrap = false, overflow = TextOverflow.Clip,
+                    maxLines = 2, textAlign = androidx.compose.ui.text.style.TextAlign.Center,
                 )
             }
         }

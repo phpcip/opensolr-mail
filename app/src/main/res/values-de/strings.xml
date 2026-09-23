@@ -256,13 +256,13 @@
     <string name="idx_reindex_started">Indexierung von vorn gestartet.</string>
     <string name="idx_tool_now">Jetzt</string>
     <string name="idx_tool_stop">Stopp</string>
-    <string name="idx_tool_repair">Reparieren</string>
+    <string name="idx_tool_repair">Reparatur</string>
     <string name="idx_tool_reindex">Neu</string>
     <string name="idx_tool_clean">Sauber</string>
-    <string name="idx_tool_reset">Zurücksetzen</string>
+    <string name="idx_tool_reset">Leeren</string>
     <string name="idx_repair_confirm">Reparieren schreibt jede Nachricht ohne Vektor noch einmal, damit ihre Bedeutung erneut angefragt wird. Was wieder keinen bekommt, bleibt so.</string>
     <string name="idx_repair_started">Bedeutung für %1$s Nachrichten wird erneut angefragt.</string>
-    <string name="idx_tools_text">Jetzt startet sofort. Stopp hält die Indexierung bis Jetzt an. Reparieren fragt fehlende Bedeutung noch einmal an. Neu schreibt alles neu, Sauber leert den Index vorher, Zurücksetzen leert ihn und stoppt.</string>
+    <string name="idx_tools_text">Jetzt startet sofort. Stopp hält die Indexierung bis Jetzt an. Reparatur fragt fehlende Bedeutung noch einmal an. Neu schreibt alles neu, Sauber leert den Index vorher, Leeren leert ihn und stoppt.</string>
     <string name="tool_check">Prüfen</string>
     <string name="tool_sign_in">Anmelden</string>
     <string name="tool_add_account">Konto hinzufügen</string>

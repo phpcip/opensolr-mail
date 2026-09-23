@@ -259,10 +259,10 @@
     <string name="idx_tool_repair">Réparer</string>
     <string name="idx_tool_reindex">Réindexer</string>
     <string name="idx_tool_clean">À neuf</string>
-    <string name="idx_tool_reset">Réinitialiser</string>
+    <string name="idx_tool_reset">Vider</string>
     <string name="idx_repair_confirm">Réparer réécrit une fois chaque message sans vecteur, pour redemander son sens. Ce qui n\'en obtient toujours pas reste tel quel.</string>
     <string name="idx_repair_started">Nouvelle demande du sens de %1$s messages.</string>
-    <string name="idx_tools_text">Indexer démarre tout de suite. Arrêter garde l\'indexation arrêtée jusqu\'à Indexer. Réparer redemande le sens manquant. Réindexer réécrit tout, À neuf vide d\'abord l\'index, Réinitialiser le vide et s\'arrête.</string>
+    <string name="idx_tools_text">Indexer démarre tout de suite. Arrêter garde l\'indexation arrêtée jusqu\'à Indexer. Réparer redemande le sens manquant. Réindexer réécrit tout, À neuf vide d\'abord l\'index, Vider le vide et s\'arrête.</string>
     <string name="tool_check">Vérifier</string>
     <string name="tool_sign_in">Connexion</string>
     <string name="tool_add_account">Ajouter un compte</string>
