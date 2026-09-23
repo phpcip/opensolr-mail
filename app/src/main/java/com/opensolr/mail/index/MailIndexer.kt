@@ -43,6 +43,7 @@ class MailIndexer(private val context: Context) {
     private val store = AccountStore.get(context)
 
     suspend fun run(deadline: Long): Outcome = runLock.withLock {
+        runUntil = deadline
         _status.value = _status.value.copy(running = true, error = null, pending = db.indexPending())
         var solrForCount: SolrClient? = null
         val outcome = try {
@@ -72,13 +73,18 @@ class MailIndexer(private val context: Context) {
 
             var more = false
             for (account in store.all()) {
-                if (System.currentTimeMillis() > deadline) { more = true; break }
-                if (!indexAccount(account, solr, name, deadline)) more = true
+                if (System.currentTimeMillis() > runUntil) { more = true; break }
+                if (!indexAccount(account, solr, name)) more = true
             }
-            if (!more && System.currentTimeMillis() < deadline) more = !vectorBackfill(solr, name, deadline)
-            if (!more && System.currentTimeMillis() < deadline && unmetered()) more = !attachmentPass(solr, name, deadline)
+            if (!more && System.currentTimeMillis() < runUntil) more = !vectorBackfill(solr, name)
+            if (!more && System.currentTimeMillis() < runUntil && unmetered()) more = !attachmentPass(solr, name)
             _status.value = _status.value.copy(error = null)
             if (more) Outcome.MORE else Outcome.DONE
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            // Stopped by the system: not an error, the next run carries on where this one left off.
+            _status.value = _status.value.copy(running = false, phase = Phase.IDLE, at = System.currentTimeMillis())
+            persist()
+            throw e
         } catch (e: SignInRequiredException) {
             _status.value = _status.value.copy(error = e.message)
             Outcome.DONE
@@ -154,13 +160,13 @@ class MailIndexer(private val context: Context) {
     }
 
     /** True when the account has nothing left to do. */
-    private suspend fun indexAccount(account: MailAccount, solr: SolrClient, name: String, deadline: Long): Boolean {
+    private suspend fun indexAccount(account: MailAccount, solr: SolrClient, name: String): Boolean {
         val acc = account.key
         val jmap = Jmap(context, account)
         val boxes = db.mailboxes(acc).associateBy { it.id }
         val notes = notesBox(boxes.values)
 
-        while (System.currentTimeMillis() < deadline) {
+        while (System.currentTimeMillis() < runUntil) {
             val deletes = db.indexBatch(acc, MailSync.OP_DELETE, 500)
             if (deletes.isNotEmpty()) {
                 solr.deleteIds(deletes.map { docId(account, it) })
@@ -301,7 +307,7 @@ class MailIndexer(private val context: Context) {
     }
 
     /** Documents written without a vector are written again once vectors can be made. True when none are left. */
-    private suspend fun vectorBackfill(solr: SolrClient, name: String, deadline: Long): Boolean {
+    private suspend fun vectorBackfill(solr: SolrClient, name: String): Boolean {
         if (!prefs.vectorAllowed || prefs.embedPausedUntil > System.currentTimeMillis() || embedDownUntil > System.currentTimeMillis()) return true
         val mine = localFilter() ?: return true
         val res = solr.select(listOf("q" to "*:*", "fq" to "vec_b:false", "fq" to mine.first, "acc" to mine.second, "fl" to "account_s,email_id_s", "rows" to "200", "sort" to "received_dt desc"))
@@ -378,8 +384,8 @@ class MailIndexer(private val context: Context) {
      * documents through doc_to_text. The text goes into the document and into its vector.
      * True when nothing is left to read (or the documents endpoint is not live yet).
      */
-    private suspend fun attachmentPass(solr: SolrClient, name: String, deadline: Long): Boolean {
-        while (System.currentTimeMillis() < deadline) {
+    private suspend fun attachmentPass(solr: SolrClient, name: String): Boolean {
+        while (System.currentTimeMillis() < runUntil) {
             val mine = localFilter() ?: return true
             val res = solr.select(listOf("q" to "*:*", "fq" to "att_todo_b:true", "fq" to mine.first, "acc" to mine.second, "rows" to "5", "sort" to "received_dt desc", "fl" to "account_s,email_id_s"))
             val docs = res.optJSONObject("response")?.optJSONArray("docs") ?: return true
@@ -485,6 +491,12 @@ class MailIndexer(private val context: Context) {
         @Volatile private var countedAt = 0L
         private const val EMBED_RETRY_MS = 10 * 60_000L
         @Volatile private var embedDownUntil = 0L
+        @Volatile private var runUntil = 0L
+
+        /** Lets a run that got its foreground notification go on longer than the background limit. */
+        fun extendRun(until: Long) {
+            if (until > runUntil) runUntil = until
+        }
         private val _status = MutableStateFlow(Status())
         val status: StateFlow<Status> = _status
 
