@@ -372,7 +372,7 @@ class MailSearch(private val context: Context) {
         private val vectors = object : LinkedHashMap<String, FloatArray>(64, 0.75f, true) {
             override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, FloatArray>?) = size > 100
         }
-        private const val QF = "subject_t^0.9 from_t to_tm cc_tm attachment_names_tm body_t^0.8 attachment_text_t^0.01 words_ng^0.01 address_ngk^0.01"
+        private const val QF = "subject_t^3 from_t to_tm cc_tm attachment_names_tm body_t^2 attachment_text_t^0.01 words_ng^0.01 address_ngk^0.01"
         private const val MM = "2<65% 4<50% 8<40%"
         private const val TOP_K = 790
         private const val GROUP_LIMIT = 5
