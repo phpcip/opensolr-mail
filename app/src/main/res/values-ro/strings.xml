@@ -285,5 +285,5 @@
     <string name="att_saved_downloads">Salvat în Downloads: %1$s</string>
     <string name="att_downloading">Se descarcă %1$s…</string>
     <string name="tool_junk">Spam</string>
-    <string name="reported_junk">Raportat ca spam: mutat în Junk, expeditorul e blocat</string>
+    <string name="reported_junk">Raportat ca spam: mutat în Junk, iar ce mai trimite expeditorul ajunge tot în Junk</string>
 </resources>

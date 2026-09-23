@@ -285,5 +285,5 @@
     <string name="att_saved_downloads">Enregistré dans Téléchargements : %1$s</string>
     <string name="att_downloading">Téléchargement de %1$s…</string>
     <string name="tool_junk">Spam</string>
-    <string name="reported_junk">Signalé comme spam : déplacé dans Indésirables, l\'expéditeur est bloqué</string>
+    <string name="reported_junk">Signalé comme spam : déplacé dans Indésirables, et ce que cet expéditeur enverra ira aussi dans Indésirables</string>
 </resources>
