@@ -520,17 +520,17 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     /** A swipe flag or unflag, applied at once and undone by putting the flags back as they were. */
-    fun toggleFlagWithUndo(row: ThreadRow) {
+    fun toggleFlagWithUndo(row: ThreadRow, onUndone: () -> Unit = {}) {
         viewModelScope.launch {
             val ids = threadIds(row)
             if (row.flagged) {
                 val before = withContext(Dispatchers.IO) { db.messages(row.acc, ids).filter { it.flagged }.map { it.id } }
                 io { actions.setFlagged(row.acc, ids, false) }
-                if (prefs.undoSwipeFlag) offerUndo(ctx.getString(R.string.unflagged_one), onUndo = { io { actions.setFlagged(row.acc, before, true) } }) {}
+                if (prefs.undoSwipeFlag) offerUndo(ctx.getString(R.string.unflagged_one), onUndo = { io { actions.setFlagged(row.acc, before, true) }; onUndone() }) {}
             } else {
                 val last = ids.takeLast(1)
                 io { actions.setFlagged(row.acc, last, true) }
-                if (prefs.undoSwipeFlag) offerUndo(ctx.getString(R.string.flagged_one), onUndo = { io { actions.setFlagged(row.acc, last, false) } }) {}
+                if (prefs.undoSwipeFlag) offerUndo(ctx.getString(R.string.flagged_one), onUndo = { io { actions.setFlagged(row.acc, last, false) }; onUndone() }) {}
             }
         }
     }

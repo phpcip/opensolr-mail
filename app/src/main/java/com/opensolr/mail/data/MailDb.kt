@@ -409,6 +409,19 @@ class MailDb private constructor(context: Context) : SQLiteOpenHelper(context.ap
         return out
     }
 
+    /** Of each conversation held here: whether any message is flagged and whether any is unread. One query per 400. */
+    fun threadStates(acc: String, threads: Collection<String>): Map<String, Pair<Boolean, Boolean>> {
+        if (threads.isEmpty()) return emptyMap()
+        val out = HashMap<String, Pair<Boolean, Boolean>>()
+        threads.distinct().chunked(400).forEach { chunk ->
+            val marks = chunk.joinToString(",") { "?" }
+            readableDatabase.rawQuery("SELECT thread, MAX(flagged), MIN(seen) FROM message WHERE acc = ? AND thread IN ($marks) GROUP BY thread", arrayOf(acc) + chunk).use { c ->
+                while (c.moveToNext()) out[c.getString(0)] = (c.getInt(1) != 0) to (c.getInt(2) == 0)
+            }
+        }
+        return out
+    }
+
     /** Oldest message date the view holds for [acc], to page further back from. */
     fun oldestIn(acc: String, boxIds: List<String>): Long? {
         if (boxIds.isEmpty()) return null

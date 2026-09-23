@@ -71,6 +71,9 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.opensolr.mail.R
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.Dispatchers
+import com.opensolr.mail.data.View
 import com.opensolr.mail.search.MailSearch
 import com.opensolr.mail.ui.AppViewModel
 import com.opensolr.mail.ui.Avatar
@@ -218,10 +221,30 @@ fun SearchScreen(vm: AppViewModel, sheet: String?) {
     // Conversations deleted or archived from here stay out of the results until the index catches up.
     val gone = remember { androidx.compose.runtime.mutableStateMapOf<String, Boolean>() }
     var confirmDelete by remember { mutableStateOf<com.opensolr.mail.data.ThreadRow?>(null) }
+    // A result in Trash or Junk acts on what lies there, like those folders do: a delete there is for good.
+    val binOf = remember { androidx.compose.runtime.mutableStateMapOf<String, String>() }
+    fun viewOf(row: com.opensolr.mail.data.ThreadRow): View? = when (binOf[row.acc + ":" + row.threadId]) {
+        "trash" -> View.Unified(com.opensolr.mail.data.Role.TRASH)
+        "junk" -> View.Unified(com.opensolr.mail.data.Role.JUNK)
+        else -> null
+    }
     fun keyOf(h: MailSearch.Hit) = h.acc + ":" + h.threadId
+    // Flag and read state as this phone holds it, which leads the index: one query per account for the results shown.
+    val dbVersion by vm.db.version.collectAsState()
+    var held by remember { mutableStateOf<Map<String, Pair<Boolean, Boolean>>>(emptyMap()) }
+    LaunchedEffect(shownHits, shownGroups, dbVersion) {
+        val hits = shownHits + shownGroups.flatMap { it.hits }
+        held = withContext(Dispatchers.IO) {
+            hits.filter { it.threadId.isNotEmpty() }.groupBy { it.acc }.flatMap { (acc, hs) ->
+                vm.db.threadStates(acc, hs.map { it.threadId }).map { (t, st) -> "$acc:$t" to st }
+            }.toMap()
+        }
+    }
+    fun flaggedOf(h: MailSearch.Hit) = flagNow[keyOf(h)] ?: held[keyOf(h)]?.first ?: h.flagged
+    fun seenOf(h: MailSearch.Hit) = seenNow[keyOf(h)] ?: held[keyOf(h)]?.let { !it.second } ?: h.seen
     fun rowOf(h: MailSearch.Hit) = com.opensolr.mail.data.ThreadRow(
         acc = h.acc, threadId = h.threadId, latestId = h.emailId, subject = h.subject, senders = h.from, preview = h.snippet,
-        received = h.received, count = h.threadCount, unread = !(seenNow[keyOf(h)] ?: h.seen), flagged = flagNow[keyOf(h)] ?: h.flagged,
+        received = h.received, count = h.threadCount, unread = !seenOf(h), flagged = flaggedOf(h),
         hasAttachment = h.hasAttachment, fromName = h.from, fromEmail = h.fromEmail,
     )
     val allHits = (shownHits + shownGroups.flatMap { it.hits }).filter { it.threadId.isNotEmpty() }.distinctBy { keyOf(it) }
@@ -231,12 +254,13 @@ fun SearchScreen(vm: AppViewModel, sheet: String?) {
     @Composable
     fun ActionHit(h: MailSearch.Hit) {
         val k = keyOf(h)
-        val shown = h.copy(flagged = flagNow[k] ?: h.flagged, seen = seenNow[k] ?: h.seen)
+        if (h.bin.isNotEmpty()) binOf[k] = h.bin
+        val shown = h.copy(flagged = flaggedOf(h), seen = seenOf(h))
         val row = rowOf(h)
         SwipeRow(
             key = row,
-            onDelete = { if (vm.prefs.confirmSwipeDelete) confirmDelete = row else { gone[k] = true; vm.deleteWithUndo(row, null) { gone.remove(k) } } },
-            onFlag = { flagNow[k] = !row.flagged; vm.toggleFlagWithUndo(row) },
+            onDelete = { if (vm.prefs.confirmSwipeDelete) confirmDelete = row else { gone[k] = true; vm.deleteWithUndo(row, viewOf(row)) { gone.remove(k) } } },
+            onFlag = { val was = row.flagged; flagNow[k] = !was; vm.toggleFlagWithUndo(row) { flagNow[k] = was } },
             enabled = selectedKeys.isEmpty() && h.threadId.isNotEmpty(),
         ) {
             HitRow(
@@ -402,12 +426,21 @@ fun SearchScreen(vm: AppViewModel, sheet: String?) {
                 onDelete = {
                     val rows = selectedRows
                     rows.forEach { gone[it.acc + ":" + it.threadId] = true }
-                    vm.viewModelScopeLaunch { rows.groupBy { it.acc }.forEach { (acc, rs) -> vm.delete(acc, rs.flatMap { vm.deleteIds(it, null) }) } }
+                    vm.viewModelScopeLaunch { rows.groupBy { it.acc }.forEach { (acc, rs) -> vm.delete(acc, rs.flatMap { vm.deleteIds(it, viewOf(it)) }) } }
                     selectedKeys = emptySet()
                 },
                 onForward = { vm.forwardSelected(selectedRows); selectedKeys = emptySet() },
-                restoreLabel = null,
-                onRestore = {},
+                // Results that all lie in Trash, or all in Junk, can go back to the Inbox, as from those folders.
+                restoreLabel = selectedRows.map { binOf[it.acc + ":" + it.threadId].orEmpty() }.distinct().singleOrNull()?.let {
+                    when (it) { "junk" -> R.string.not_junk; "trash" -> R.string.move_to_inbox; else -> null }
+                },
+                onRestore = {
+                    val rows = selectedRows
+                    val notJunk = rows.all { binOf[it.acc + ":" + it.threadId] == "junk" }
+                    vm.viewModelScopeLaunch { rows.groupBy { it.acc }.forEach { (acc, rs) -> vm.restoreToInbox(acc, rs.flatMap { vm.threadIds(it, viewOf(it)) }, notJunk) } }
+                    rows.forEach { binOf.remove(it.acc + ":" + it.threadId) }
+                    selectedKeys = emptySet()
+                },
             )
         }
     }
@@ -415,13 +448,13 @@ fun SearchScreen(vm: AppViewModel, sheet: String?) {
         androidx.compose.material3.AlertDialog(
             onDismissRequest = { confirmDelete = null },
             title = { Text(stringResource(R.string.confirm_delete_title)) },
-            text = { Text(stringResource(R.string.confirm_delete_trash)) },
+            text = { Text(stringResource(if (viewOf(row) != null) R.string.confirm_delete_forever else R.string.confirm_delete_trash)) },
             confirmButton = {
                 androidx.compose.material3.TextButton(onClick = {
                     Haptics.heavy(view); confirmDelete = null
                     val k = row.acc + ":" + row.threadId
                     gone[k] = true
-                    vm.deleteWithUndo(row, null) { gone.remove(k) }
+                    vm.deleteWithUndo(row, viewOf(row)) { gone.remove(k) }
                 }) {
                     Text(stringResource(R.string.delete), color = p.accent, fontWeight = FontWeight.Bold)
                 }

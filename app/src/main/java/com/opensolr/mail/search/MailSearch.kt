@@ -42,6 +42,8 @@ class MailSearch(private val context: Context) {
         val score: Double,
         /** The document in the index this row came from. */
         val docId: String = "",
+        /** "trash" or "junk" when the message lies there, else empty. */
+        val bin: String = "",
     )
 
     data class DateRange(val from: Long, val to: Long)
@@ -157,7 +159,7 @@ class MailSearch(private val context: Context) {
         // Only a list with no words is ordered newest first.
         val newest = q.isEmpty()
         p += "sort" to if (newest) "received_dt desc, id asc" else "score desc, received_dt desc"
-        p += "fl" to "id,score,account_s,email_id_s,thread_id_s,subject_t,from_t,from_s,from_name_s,to_tm,received_dt,preview_t,seen_b,flagged_b,has_attachment_b"
+        p += "fl" to "id,score,account_s,email_id_s,thread_id_s,subject_t,from_t,from_s,from_name_s,to_tm,received_dt,preview_t,seen_b,flagged_b,has_attachment_b,mailbox_role_ss"
         p += "facet" to "true"
         Filters.FACETS.forEach { f -> p += "facet.field" to "{!ex=$f}$f" }
         p += "facet.field" to "{!ex=from_s key=from_names}from_label_s"
@@ -239,6 +241,7 @@ class MailSearch(private val context: Context) {
                 fromEmail = d.optString("from_s"), received = MailSync.parseDate(d.optString("received_dt")), snippet = snippet,
                 seen = d.optBoolean("seen_b", true), flagged = d.optBoolean("flagged_b"), hasAttachment = d.optBoolean("has_attachment_b"),
                 score = d.optDouble("score", 0.0), docId = id,
+                bin = d.optJSONArray("mailbox_role_ss")?.let { a -> (0 until a.length()).map { a.optString(it) } }?.firstOrNull { it == "trash" || it == "junk" }.orEmpty(),
             )
         }
 
