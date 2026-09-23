@@ -153,8 +153,9 @@ class MailSearch(private val context: Context) {
         if (filters.attachments) p += "fq" to "has_attachment_b:true"
         if (filters.attachmentText) p += "fq" to "attachment_text_t:[* TO *]"
 
-        // Results read newest first, like the inbox; only the AI answer asks for the most relevant.
-        val newest = q.isEmpty() || !byRelevance
+        // A search with words is ordered by its score, as on search.opensolr.com; recency comes from Fresh.
+        // Only a list with no words is ordered newest first.
+        val newest = q.isEmpty()
         p += "sort" to if (newest) "received_dt desc, id asc" else "score desc, received_dt desc"
         p += "fl" to "id,score,account_s,email_id_s,thread_id_s,subject_t,from_t,from_s,from_name_s,to_tm,received_dt,preview_t,seen_b,flagged_b,has_attachment_b"
         p += "facet" to "true"
