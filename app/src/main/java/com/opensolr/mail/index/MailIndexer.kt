@@ -77,6 +77,17 @@ class MailIndexer(private val context: Context) {
                 if (!it.aiFull && prefs.embedPausedUntil > System.currentTimeMillis()) prefs.embedPausedUntil = 0
             }
             val sp = context.getSharedPreferences("index_status", Context.MODE_PRIVATE)
+            // A mailbox that had been added twice: the documents written under the copy's name and its push
+            // address go, once, since the account kept already holds every one of those messages.
+            store.droppedCopies().forEach { entry ->
+                val name2 = entry.substringAfter('|')
+                val key2 = entry.substringBefore('|')
+                runCatching {
+                    if (name2.isNotBlank()) solr.deleteQuery("account_s:" + indexKeyOf(name2))
+                    runCatching { api.pushUnregister(key2) }
+                    store.clearDroppedCopy(entry)
+                }
+            }
             if (sp.getInt("doc_version", 1) < DOC_VERSION || sp.getBoolean("reindex_all", false)) {
                 db.clearIndexQueue()
                 dropStrayCopies(solr)

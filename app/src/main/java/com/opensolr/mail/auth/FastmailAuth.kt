@@ -85,10 +85,11 @@ object FastmailAuth {
         val username = session.optString("username")
 
         val store = AccountStore.get(context)
-        val existing = store.all().firstOrNull { it.username.equals(username, true) && it.jmapAccountId == accountId }
+        // The same Fastmail mailbox, signed in again by any of its addresses, is the account already here.
+        val existing = store.all().firstOrNull { it.jmapAccountId == accountId }
         val account = MailAccount(
             key = existing?.key ?: AppPrefs.randomHex(8),
-            username = username,
+            username = existing?.username ?: username,
             name = session.getJSONObject("accounts").optJSONObject(accountId)?.optString("name").orEmpty().ifEmpty { username },
             jmapAccountId = accountId,
             apiUrl = session.getString("apiUrl"),
