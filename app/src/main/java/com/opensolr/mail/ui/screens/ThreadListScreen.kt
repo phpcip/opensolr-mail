@@ -327,7 +327,7 @@ private fun run(vm: AppViewModel, rows: Set<ThreadRow>, view: View?, action: (St
 }
 
 @Composable
-private fun SelectionBar(onRead: () -> Unit, readIcon: Int, readLabel: Int, onFlag: () -> Unit, onArchive: () -> Unit, onDelete: () -> Unit, onForward: () -> Unit, restoreLabel: Int?, onRestore: () -> Unit) {
+internal fun SelectionBar(onRead: () -> Unit, readIcon: Int, readLabel: Int, onFlag: () -> Unit, onArchive: () -> Unit, onDelete: () -> Unit, onForward: () -> Unit, restoreLabel: Int?, onRestore: () -> Unit) {
     val p = LocalPalette.current
     Column(Modifier.fillMaxWidth().background(p.dockFill)) {
         Hairline()
@@ -457,7 +457,7 @@ private fun ListGroupHeader(label: String, count: Int, open: Boolean, onToggle: 
 /** iPhone-style swipes: left deletes the conversation, right flags or unflags it and springs back. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun SwipeRow(key: Any, onDelete: () -> Unit, onFlag: () -> Unit, enabled: Boolean, content: @Composable () -> Unit) {
+internal fun SwipeRow(key: Any, onDelete: () -> Unit, onFlag: () -> Unit, enabled: Boolean, content: @Composable () -> Unit) {
     // A fresh swipe state whenever the row changes (a flag moves it to the pinned group), so it never lands half open.
     androidx.compose.runtime.key(key) {
     val p = LocalPalette.current

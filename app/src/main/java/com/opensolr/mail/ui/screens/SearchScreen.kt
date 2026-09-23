@@ -3,6 +3,8 @@ package com.opensolr.mail.ui.screens
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -208,8 +210,47 @@ fun SearchScreen(vm: AppViewModel, sheet: String?) {
         loadingMore = false
     }
 
+    // The same controls as the mail lists: swipe to delete or flag, long tap to select, the same bar of actions.
+    // Flag and read changes show at once; the index catches up at the next indexing.
+    var selectedKeys by remember { mutableStateOf<Set<String>>(emptySet()) }
+    val flagNow = remember { androidx.compose.runtime.mutableStateMapOf<String, Boolean>() }
+    val seenNow = remember { androidx.compose.runtime.mutableStateMapOf<String, Boolean>() }
+    var confirmDelete by remember { mutableStateOf<com.opensolr.mail.data.ThreadRow?>(null) }
+    fun keyOf(h: MailSearch.Hit) = h.acc + ":" + h.threadId
+    fun rowOf(h: MailSearch.Hit) = com.opensolr.mail.data.ThreadRow(
+        acc = h.acc, threadId = h.threadId, latestId = h.emailId, subject = h.subject, senders = h.from, preview = h.snippet,
+        received = h.received, count = h.threadCount, unread = !(seenNow[keyOf(h)] ?: h.seen), flagged = flagNow[keyOf(h)] ?: h.flagged,
+        hasAttachment = h.hasAttachment, fromName = h.from, fromEmail = h.fromEmail,
+    )
+    val allHits = (shownHits + shownGroups.flatMap { it.hits }).filter { it.threadId.isNotEmpty() }.distinctBy { keyOf(it) }
+    val selectedRows = allHits.filter { keyOf(it) in selectedKeys }.map { rowOf(it) }
+    androidx.activity.compose.BackHandler(enabled = selectedKeys.isNotEmpty()) { selectedKeys = emptySet() }
+
+    @Composable
+    fun ActionHit(h: MailSearch.Hit) {
+        val k = keyOf(h)
+        val shown = h.copy(flagged = flagNow[k] ?: h.flagged, seen = seenNow[k] ?: h.seen)
+        val row = rowOf(h)
+        SwipeRow(
+            key = row,
+            onDelete = { if (vm.prefs.confirmSwipeDelete) confirmDelete = row else vm.deleteWithUndo(row, null) },
+            onFlag = { flagNow[k] = !row.flagged; vm.toggleFlagWithUndo(row) },
+            enabled = selectedKeys.isEmpty() && h.threadId.isNotEmpty(),
+        ) {
+            HitRow(
+                vm, shown, accounts.size > 1, accounts.firstOrNull { it.key == h.acc }?.color, selected = k in selectedKeys,
+                onClick = {
+                    if (selectedKeys.isNotEmpty()) selectedKeys = if (k in selectedKeys) selectedKeys - k else selectedKeys + k
+                    else if (h.threadId.isNotEmpty()) { seenNow[k] = true; vm.go(Screen.Thread(h.acc, h.threadId)) }
+                },
+                onLongClick = { if (h.threadId.isNotEmpty()) selectedKeys = selectedKeys + k },
+            )
+        }
+    }
+
     Column(Modifier.fillMaxSize()) {
-        Row(Modifier.fillMaxWidth().background(p.band).padding(horizontal = 6.dp).height(52.dp), verticalAlignment = Alignment.CenterVertically) {
+        if (selectedKeys.isNotEmpty()) com.opensolr.mail.ui.TopBar(stringResource(R.string.selected_n, selectedKeys.size), onBack = { selectedKeys = emptySet() }) {}
+        else Row(Modifier.fillMaxWidth().background(p.band).padding(horizontal = 6.dp).height(52.dp), verticalAlignment = Alignment.CenterVertically) {
             IconBtn(R.drawable.ic_back, { vm.back() })
             Box(Modifier.weight(1f).padding(horizontal = 4.dp)) {
                 if (query.isEmpty()) Text(stringResource(R.string.search_hint), style = MaterialTheme.typography.bodyLarge, color = p.muted)
@@ -311,7 +352,7 @@ fun SearchScreen(vm: AppViewModel, sheet: String?) {
                 Text(stringResource(R.string.empty_view), style = MaterialTheme.typography.bodyMedium, color = p.muted, modifier = Modifier.padding(24.dp))
             }
             if (groupBy == MailSearch.GroupBy.NONE) {
-                items(shownHits, key = { "h:" + it.acc + ":" + it.emailId }) { h -> Box(itemMotion()) { HitRow(vm, h, accounts.size > 1, accounts.firstOrNull { it.key == h.acc }?.color) } }
+                items(shownHits.filter { vm.hiddenThreads[keyOf(it)] != true }, key = { "h:" + it.acc + ":" + it.emailId }) { h -> Box(itemMotion()) { ActionHit(h) } }
             } else {
                 shownGroups.forEach { g ->
                     val key = groupBy.name + ":" + g.value
@@ -320,7 +361,7 @@ fun SearchScreen(vm: AppViewModel, sheet: String?) {
                         Box(itemMotion()) { GroupHeader(groupValueLabel(groupBy, g.value, accounts), g.total, !folded) { vm.toggleFold("search_folds", key) } }
                     }
                     if (!folded) {
-                        items(g.hits, key = { "gh:$key:" + it.acc + ":" + it.emailId }) { h -> Box(itemMotion()) { HitRow(vm, h, accounts.size > 1, accounts.firstOrNull { it.key == h.acc }?.color) } }
+                        items(g.hits.filter { vm.hiddenThreads[keyOf(it)] != true }, key = { "gh:$key:" + it.acc + ":" + it.emailId }) { h -> Box(itemMotion()) { ActionHit(h) } }
                         if (g.total > g.hits.size) item(key = "more:$key") {
                             Text(
                                 stringResource(R.string.show_all_n, String.format(Locale.US, "%,d", g.total)),
@@ -343,6 +384,44 @@ fun SearchScreen(vm: AppViewModel, sheet: String?) {
         }
         FastScroller(listState, scrollIndex)
         }
+        if (selectedRows.isNotEmpty()) {
+            val anyUnread = selectedRows.any { it.unread }
+            val anyUnflagged = selectedRows.any { !it.flagged }
+            fun each(block: suspend (String, List<String>) -> Unit) {
+                val rows = selectedRows
+                vm.viewModelScopeLaunch { rows.groupBy { it.acc }.forEach { (acc, rs) -> block(acc, rs.flatMap { vm.threadIds(it) }) } }
+            }
+            SelectionBar(
+                onRead = { selectedRows.forEach { seenNow[it.acc + ":" + it.threadId] = anyUnread }; each { acc, ids -> vm.setSeen(acc, ids, anyUnread) }; selectedKeys = emptySet() },
+                readIcon = if (anyUnread) R.drawable.ic_check else R.drawable.ic_unread,
+                readLabel = if (anyUnread) R.string.tool_read else R.string.tool_unread,
+                onFlag = { selectedRows.forEach { flagNow[it.acc + ":" + it.threadId] = anyUnflagged }; each { acc, ids -> vm.setFlagged(acc, ids, anyUnflagged) }; selectedKeys = emptySet() },
+                onArchive = { selectedRows.forEach { vm.hiddenThreads[it.acc + ":" + it.threadId] = true }; each { acc, ids -> vm.archive(acc, ids) }; selectedKeys = emptySet() },
+                onDelete = {
+                    val rows = selectedRows
+                    rows.forEach { vm.hiddenThreads[it.acc + ":" + it.threadId] = true }
+                    vm.viewModelScopeLaunch { rows.groupBy { it.acc }.forEach { (acc, rs) -> vm.delete(acc, rs.flatMap { vm.deleteIds(it, null) }) } }
+                    selectedKeys = emptySet()
+                },
+                onForward = { vm.forwardSelected(selectedRows); selectedKeys = emptySet() },
+                restoreLabel = null,
+                onRestore = {},
+            )
+        }
+    }
+    confirmDelete?.let { row ->
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { confirmDelete = null },
+            title = { Text(stringResource(R.string.confirm_delete_title)) },
+            text = { Text(stringResource(R.string.confirm_delete_trash)) },
+            confirmButton = {
+                androidx.compose.material3.TextButton(onClick = { Haptics.heavy(view); confirmDelete = null; vm.deleteWithUndo(row, null) }) {
+                    Text(stringResource(R.string.delete), color = p.accent, fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = { androidx.compose.material3.TextButton(onClick = { confirmDelete = null }) { Text(stringResource(R.string.cancel), color = p.ink) } },
+            containerColor = p.paper, titleContentColor = p.ink, textContentColor = p.muted,
+        )
     }
 
     if (showFilters) {
@@ -497,17 +576,20 @@ private fun GroupHeader(label: String, total: Long, open: Boolean, onToggle: () 
 }
 
 @Composable
-private fun HitRow(vm: AppViewModel, h: MailSearch.Hit, multi: Boolean, color: Int?) {
+@OptIn(ExperimentalFoundationApi::class)
+private fun HitRow(vm: AppViewModel, h: MailSearch.Hit, multi: Boolean, color: Int?, selected: Boolean, onClick: () -> Unit, onLongClick: () -> Unit) {
     val p = LocalPalette.current
     val view = LocalView.current
-    Column(Modifier.fillMaxWidth().background(if (h.flagged) p.flagFill else p.paper)) {
+    Column(Modifier.fillMaxWidth().background(if (selected) p.chip else if (h.flagged) p.flagFill else p.paper)) {
     Row(
-        Modifier.fillMaxWidth().clickable { if (h.threadId.isNotEmpty()) vm.go(Screen.Thread(h.acc, h.threadId)) },
+        Modifier.fillMaxWidth().combinedClickable(onClick = onClick, onLongClick = { Haptics.tick(view, true); onLongClick() }),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Box(Modifier.width(3.dp).height(72.dp).background(if (multi && color != null) Color(color) else Color.Transparent))
+        Box(Modifier.width(3.dp).height(72.dp).background(if (selected) p.accent else if (multi && color != null) Color(color) else Color.Transparent))
         Spacer(Modifier.width(9.dp))
-        Avatar(if (h.from == h.fromEmail) "" else h.from, h.fromEmail)
+        if (selected) Box(Modifier.size(40.dp).background(p.accentFill, androidx.compose.foundation.shape.CircleShape), contentAlignment = Alignment.Center) {
+            Icon(painterResource(R.drawable.ic_check), null, tint = p.onAccentFill, modifier = Modifier.size(22.dp))
+        } else Avatar(if (h.from == h.fromEmail) "" else h.from, h.fromEmail)
         Column(Modifier.weight(1f).padding(start = 10.dp, end = 12.dp, top = 6.dp, bottom = 6.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
