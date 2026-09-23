@@ -365,10 +365,10 @@ private fun ThreadRowView(r: ThreadRow, stripe: Color?, selected: Boolean, onCli
     val view = LocalView.current
     // Unread stands out plainly: an accent wash behind the row, a large dot, bold sender and subject, the date in the accent.
     val bg = if (selected) p.accent.copy(alpha = 0.16f).compositeOver(p.paper) else if (r.flagged) p.flagFill else if (r.unread) com.opensolr.mail.ui.unreadFill() else p.paper
-    // A conversation of several messages carries the edges of the cards under it, like a stack.
-    Column(Modifier.fillMaxWidth().background(bg)) {
+    // A conversation of several messages is drawn as a stack of cards.
+    com.opensolr.mail.ui.StackCard(r.count, bg) {
     Row(
-        Modifier.fillMaxWidth().background(bg)
+        Modifier.fillMaxWidth()
             .combinedClickable(onClick = onClick, onLongClick = { Haptics.tick(view, true); onLongClick() }),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -411,7 +411,6 @@ private fun ThreadRowView(r: ThreadRow, stripe: Color?, selected: Boolean, onCli
             Text(r.preview, style = MaterialTheme.typography.bodySmall, color = if (r.unread) p.ink else p.muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
     }
-    com.opensolr.mail.ui.StackEdges(r.count)
     }
 }
 

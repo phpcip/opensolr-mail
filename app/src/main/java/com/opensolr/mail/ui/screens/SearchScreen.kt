@@ -93,7 +93,6 @@ import com.opensolr.mail.ui.itemMotion
 import com.opensolr.mail.ui.theme.LocalPalette
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.text.DateFormatSymbols
 import java.text.SimpleDateFormat
@@ -136,6 +135,8 @@ fun SearchScreen(vm: AppViewModel, sheet: String?) {
     val accounts by vm.store.accounts.collectAsState()
     val snap = remember { vm.searchSnapshot as? SearchSnapshot }
     var query by rememberSaveable { mutableStateOf(snap?.query ?: vm.searchQuery) }
+    // What was last searched: typing changes nothing until Search on the keyboard, so no half word is ever searched or embedded.
+    var submitted by rememberSaveable { mutableStateOf(snap?.query ?: vm.searchQuery) }
     var filters by remember { mutableStateOf(snap?.filters ?: vm.searchFilters) }
     var groupBy by remember { mutableStateOf(snap?.groupBy ?: runCatching { MailSearch.GroupBy.valueOf(vm.prefs.groupBy) }.getOrDefault(MailSearch.GroupBy.BEST)) }
     var ai by remember { mutableStateOf(vm.prefs.aiSearch) }
@@ -157,6 +158,7 @@ fun SearchScreen(vm: AppViewModel, sheet: String?) {
     val zonesOpen = vm.keySet("filter_zones")
     vm.keySet("search_folds")
     val focus = remember { FocusRequester() }
+    val focusManager = androidx.compose.ui.platform.LocalFocusManager.current
     val listState = com.opensolr.mail.ui.rememberListMemory("search", result != null, { vm.positions["search"] ?: (0 to 0) }, { i, o -> vm.positions["search"] = i to o })
 
     fun run() {
@@ -165,9 +167,9 @@ fun SearchScreen(vm: AppViewModel, sheet: String?) {
             loading = true
             error = null
             try {
-                result = vm.search.search(query, filters, groupBy)
+                result = vm.search.search(submitted, filters, groupBy)
                 // AI was asked for but the search came back words only: the plan or the allowance may have changed.
-                if (ai && aiOk && query.isNotBlank() && result?.smart == false) vm.refreshLimits(minAgeMs = 60_000)
+                if (ai && aiOk && submitted.isNotBlank() && result?.smart == false) vm.refreshLimits(minAgeMs = 60_000)
                 extraHits = emptyList()
                 fetchedMore = 0
                 extraGroups = emptyList()
@@ -187,19 +189,18 @@ fun SearchScreen(vm: AppViewModel, sheet: String?) {
 
     LaunchedEffect(Unit) { if (sheet == null && snap == null) focus.requestFocus() }
     // Another question stops the answer to the previous one at once.
-    LaunchedEffect(query) { if (vm.aiQuestion != null && vm.aiQuestion != query) vm.stopAi() }
-    LaunchedEffect(query, filters) {
-        vm.searchQuery = query
+    LaunchedEffect(submitted) { if (vm.aiQuestion != null && vm.aiQuestion != submitted) vm.stopAi() }
+    LaunchedEffect(submitted, filters) {
+        vm.searchQuery = submitted
         vm.searchFilters = filters
     }
-    LaunchedEffect(query, filters, groupBy, ai, fresh, aiOk) {
+    LaunchedEffect(submitted, filters, groupBy, ai, fresh, aiOk) {
         if (skipFirst) { skipFirst = false; return@LaunchedEffect }
-        if (query.isNotEmpty()) delay(350)
         run()
     }
     LaunchedEffect(result, extraHits, extraGroups, fetchedMore) {
         val res = result ?: return@LaunchedEffect
-        vm.searchSnapshot = SearchSnapshot(query, filters, groupBy, ai, fresh, res, extraHits, extraGroups, fetchedMore)
+        vm.searchSnapshot = SearchSnapshot(submitted, filters, groupBy, ai, fresh, res, extraHits, extraGroups, fetchedMore)
     }
 
     val r = result
@@ -213,11 +214,11 @@ fun SearchScreen(vm: AppViewModel, sheet: String?) {
     val shownGroups = (r?.groups.orEmpty()) + extraGroups
     // Best matches / Also similar, as in Opensolr Photos: the cut is made once, on the first page, where the
     // score falls the most below the share of the best one; every later page is Also similar.
-    val bestKeys = remember(r, groupBy, query) {
+    val bestKeys = remember(r, groupBy, submitted) {
         val first = r?.hits.orEmpty()
             .distinctBy { it.acc + ":" + it.threadId.ifEmpty { it.emailId } }
             .distinctBy { it.messageId.ifEmpty { it.acc + ":" + it.emailId } }
-        if (groupBy != MailSearch.GroupBy.BEST || query.isBlank()) null
+        if (groupBy != MailSearch.GroupBy.BEST || submitted.isBlank()) null
         else scoreCut(first)?.let { cut -> first.take(cut).map { it.acc + ":" + it.emailId }.toSet() }
     }
     val openKeys = vm.keySet("search_open")
@@ -243,7 +244,7 @@ fun SearchScreen(vm: AppViewModel, sheet: String?) {
         val more = if (grouped) shownGroups.size < res.total && shownGroups.size % 20 == 0 && shownGroups.isNotEmpty() else read < res.total
         if (!more) return@LaunchedEffect
         loadingMore = true
-        runCatching { vm.search.search(query, filters, groupBy, start = if (grouped) shownGroups.size else read) }.onSuccess { next ->
+        runCatching { vm.search.search(submitted, filters, groupBy, start = if (grouped) shownGroups.size else read) }.onSuccess { next ->
             if (grouped) extraGroups = extraGroups + next.groups else { extraHits = extraHits + next.hits; fetchedMore += next.fetched.coerceAtLeast(1) }
         }
         loadingMore = false
@@ -320,11 +321,17 @@ fun SearchScreen(vm: AppViewModel, sheet: String?) {
                     value = query, onValueChange = { query = it }, singleLine = true,
                     textStyle = MaterialTheme.typography.bodyLarge.copy(color = p.ink), cursorBrush = SolidColor(p.accent),
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-                    keyboardActions = KeyboardActions(onSearch = { Haptics.tick(view, true); run() }),
+                    keyboardActions = KeyboardActions(onSearch = {
+                        Haptics.tick(view, true)
+                        focusManager.clearFocus()
+                        // A new text starts a search through the effect; the same text searched again is a refresh.
+                        if (submitted != query.trim()) submitted = query.trim() else run()
+                    }),
                     modifier = Modifier.fillMaxWidth().focusRequester(focus),
                 )
             }
-            if (query.isNotEmpty()) IconBtn(R.drawable.ic_close, { query = "" })
+            // Clearing the box goes back to the plain list, newest first.
+            if (query.isNotEmpty()) IconBtn(R.drawable.ic_close, { query = ""; submitted = "" })
             // Lit when the reader has instructions of their own for the AI answer.
             if (aiOk) Icon(
                 painterResource(R.drawable.ic_instructions), contentDescription = stringResource(R.string.ai_instructions), tint = if (instructions.isNotBlank()) p.accent else p.ink,
@@ -385,7 +392,7 @@ fun SearchScreen(vm: AppViewModel, sheet: String?) {
 
         val groupLabels = shownGroups.map { groupValueLabel(groupBy, it.value, accounts) }
         val searchFolds = vm.keySet("search_folds")
-        val hasAnswerCard = r != null && query.isNotBlank() && shownHits.isNotEmpty() && aiOk
+        val hasAnswerCard = r != null && submitted.isNotBlank() && shownHits.isNotEmpty() && aiOk
         val hasEmpty = r != null && !loading && shownHits.isEmpty()
         // The rows the list shows, and the same rows for the fast scroller: one list, so both always agree.
         val listed = shownHits.filter { vm.hiddenThreads[keyOf(it)] != true && gone[keyOf(it)] != true }
@@ -424,7 +431,7 @@ fun SearchScreen(vm: AppViewModel, sheet: String?) {
         LazyColumn(Modifier.fillMaxSize(), state = listState) {
             if (hasAnswerCard) item(key = "ai") {
                 // The answer shown belongs to the question typed now; another question offers a new one.
-                val mine = vm.aiQuestion == query
+                val mine = vm.aiQuestion == submitted
                 AnswerCard(if (mine) vm.aiText else null, mine && vm.aiRunning, onClose = { vm.stopAi() }) {
                     // The first rows of the list on screen, in their order, go to the answer: nothing else.
                     val res = r ?: return@AnswerCard
@@ -432,7 +439,7 @@ fun SearchScreen(vm: AppViewModel, sheet: String?) {
                     val byId = res.docs.associateBy { it.id }
                     val top = rows.distinctBy { it.acc + ":" + it.threadId.ifEmpty { it.emailId } }
                         .mapNotNull { byId[it.docId] }.take(com.opensolr.mail.search.AiPrompt.TOP_N)
-                    vm.askAi(query, top, res.highlights)
+                    vm.askAi(submitted, top, res.highlights)
                 }
             }
             error?.let { e -> item(key = "err") { Text(e, style = MaterialTheme.typography.bodyMedium, color = p.accent, modifier = Modifier.padding(16.dp)) } }
@@ -842,7 +849,9 @@ private fun GroupHeader(label: String, total: Long, open: Boolean, onToggle: () 
 private fun HitRow(vm: AppViewModel, h: MailSearch.Hit, multi: Boolean, color: Int?, selected: Boolean, onClick: () -> Unit, onLongClick: () -> Unit) {
     val p = LocalPalette.current
     val view = LocalView.current
-    Column(Modifier.fillMaxWidth().background(if (selected) p.chip else if (h.flagged) p.flagFill else if (!h.seen) com.opensolr.mail.ui.unreadFill() else p.paper)) {
+    Column(Modifier.fillMaxWidth()) {
+    // A conversation of several messages is drawn as a stack of cards.
+    com.opensolr.mail.ui.StackCard(h.threadCount, if (selected) p.chip else if (h.flagged) p.flagFill else if (!h.seen) com.opensolr.mail.ui.unreadFill() else p.paper) {
     Row(
         Modifier.fillMaxWidth().combinedClickable(onClick = onClick, onLongClick = { Haptics.tick(view, true); onLongClick() }),
         verticalAlignment = Alignment.CenterVertically,
@@ -870,7 +879,7 @@ private fun HitRow(vm: AppViewModel, h: MailSearch.Hit, multi: Boolean, color: I
             Text(highlighted(h.snippet), style = MaterialTheme.typography.bodySmall, color = p.muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
     }
-    com.opensolr.mail.ui.StackEdges(h.threadCount)
+    }
     Hairline()
     }
 }

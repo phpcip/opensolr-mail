@@ -330,40 +330,46 @@ fun ScreenHeader(title: String, onBack: (() -> Unit)?) {
 }
 
 /**
- * The cards under a conversation of several messages, so a thread reads as a stack: up to three sheets,
- * each narrower than the one above, raised by a light top edge and a dark bottom edge.
+ * A conversation of several messages drawn as a stack of cards: the row itself framed by a thin border,
+ * and under it up to three sheets almost as wide, each a little narrower and darker, each with its own
+ * rim and a shaded bottom edge, so it reads as cards lying one on another. A single message is a plain row.
  */
 @Composable
-fun StackEdges(count: Int) {
-    if (count < 2) return
+fun StackCard(count: Int, fill: Color, content: @Composable () -> Unit) {
+    if (count < 2) {
+        androidx.compose.foundation.layout.Column(Modifier.fillMaxWidth().background(fill)) { content() }
+        return
+    }
     val p = LocalPalette.current
     val dark = p.paper.luminance() < 0.5f
     val fills = if (dark) STACK_FILL_DARK else STACK_FILL_LIGHT
     val rim = if (dark) Color(0xFF5A544C) else Color(0xFFB9AE9E)
-    val light = if (dark) Color(0xFF47423C) else Color(0xFFFFFFFF)
     val shade = if (dark) Color(0xFF0B0A09) else Color(0xFF9C907F)
     val tiers = minOf(count - 1, 3)
-    androidx.compose.foundation.Canvas(Modifier.fillMaxWidth().height(STACK_TIER * tiers + 2.dp)) {
-        val h = STACK_TIER.toPx()
-        val px = 1.dp.toPx()
-        val corner = androidx.compose.ui.geometry.CornerRadius(2.dp.toPx())
-        for (i in 0 until tiers) {
-            val inset = STACK_STEP.toPx() * (i + 1)
-            val left = 44.dp.toPx() + inset
-            val right = size.width - 4.dp.toPx() - inset
-            if (right <= left) break
-            val top = i * h
-            val sheet = androidx.compose.ui.geometry.Size(right - left, h)
-            drawRoundRect(fills[i], androidx.compose.ui.geometry.Offset(left, top), sheet, corner)
-            drawRoundRect(rim, androidx.compose.ui.geometry.Offset(left, top), sheet, corner, style = androidx.compose.ui.graphics.drawscope.Stroke(px))
-            drawLine(light, androidx.compose.ui.geometry.Offset(left + px, top + px), androidx.compose.ui.geometry.Offset(right - px, top + px), px)
-            drawLine(shade, androidx.compose.ui.geometry.Offset(left + 2 * px, top + h + px * 0.75f), androidx.compose.ui.geometry.Offset(right - 2 * px, top + h + px * 0.75f), px * 1.5f)
+    androidx.compose.foundation.layout.Column(Modifier.fillMaxWidth().background(p.paper).padding(start = 6.dp, end = 6.dp, top = 5.dp, bottom = 3.dp)) {
+        Box(Modifier.fillMaxWidth().background(fill, SHAPE).border(1.dp, rim, SHAPE)) { content() }
+        androidx.compose.foundation.Canvas(Modifier.fillMaxWidth().height(STACK_TIER * tiers + 2.dp)) {
+            val h = STACK_TIER.toPx()
+            val px = 1.dp.toPx()
+            for (i in 0 until tiers) {
+                val inset = STACK_STEP.toPx() * (i + 1)
+                val left = inset
+                val right = size.width - inset
+                if (right <= left) break
+                val bottom = (i + 1) * h
+                // The sheet shows below the one above it: its face, its sides and bottom rim, and a shade under it.
+                drawRect(fills[i], androidx.compose.ui.geometry.Offset(left, i * h), androidx.compose.ui.geometry.Size(right - left, h))
+                drawLine(rim, androidx.compose.ui.geometry.Offset(left + px / 2, i * h), androidx.compose.ui.geometry.Offset(left + px / 2, bottom), px)
+                drawLine(rim, androidx.compose.ui.geometry.Offset(right - px / 2, i * h), androidx.compose.ui.geometry.Offset(right - px / 2, bottom), px)
+                drawLine(rim, androidx.compose.ui.geometry.Offset(left, bottom - px / 2), androidx.compose.ui.geometry.Offset(right, bottom - px / 2), px)
+                drawLine(shade, androidx.compose.ui.geometry.Offset(left + px, bottom + px * 0.75f), androidx.compose.ui.geometry.Offset(right - px, bottom + px * 0.75f), px * 1.5f)
+            }
         }
     }
 }
 
-private val STACK_TIER = 6.dp
-private val STACK_STEP = 8.dp
+private val STACK_TIER = 4.dp
+private val STACK_STEP = 5.dp
 private val STACK_FILL_LIGHT = listOf(Color(0xFFEFE8DD), Color(0xFFE6DED1), Color(0xFFDCD3C5))
 private val STACK_FILL_DARK = listOf(Color(0xFF2B2824), Color(0xFF25221F), Color(0xFF1F1D1A))
 
