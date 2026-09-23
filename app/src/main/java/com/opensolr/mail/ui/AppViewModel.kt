@@ -256,7 +256,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             runCatching { MailPush.remove(ctx, a) }
             if (prefs.signedIn) runCatching {
                 val c = MailIndex(ctx).ensure()
-                SolrClient(c).deleteQuery("account_s:${a.key}")
+                SolrClient(c).deleteQuery("account_s:" + com.opensolr.mail.index.MailIndexer.indexKey(a))
             }
             runCatching { FastmailAuth.revoke(ctx, a.key) }
             runCatching { CalendarSync.removeAccount(ctx, a.username) }

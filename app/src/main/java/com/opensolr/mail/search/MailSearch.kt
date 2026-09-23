@@ -23,6 +23,7 @@ class MailSearch(private val context: Context) {
     private val prefs = AppPrefs(context)
     private val api = OpensolrApi(prefs)
     private val db = com.opensolr.mail.data.MailDb.get(context)
+    private val store = com.opensolr.mail.data.AccountStore.get(context)
 
     data class Hit(
         val acc: String,
@@ -125,6 +126,11 @@ class MailSearch(private val context: Context) {
             p += "q" to matched
         }
 
+        // Only the accounts signed in on this phone: another phone's accounts share the index but cannot be opened here.
+        val local = store.all()
+        if (local.isEmpty()) return Result(emptyList(), emptyList(), 0, false, emptyMap(), emptyMap(), emptyList(), emptyMap())
+        p += "fq" to "{!terms f=account_s v=\$f_acc}"
+        p += "f_acc" to local.joinToString(",") { MailIndexer.indexKey(it) }
         if (!filters.includeTrash) p += "fq" to "-mailbox_role_ss:(trash OR junk)"
         filters.facets.forEach { (field, values) ->
             if (values.isEmpty() || field !in Filters.FACETS) return@forEach
@@ -177,6 +183,7 @@ class MailSearch(private val context: Context) {
         }
 
         val json = solr.select(p)
+        val localKey = local.associate { MailIndexer.indexKey(it) to it.key }
         val hl = json.optJSONObject("highlighting") ?: JSONObject()
         val aiDocs = ArrayList<AiPrompt.Doc>()
         val hlMap = HashMap<String, Map<String, List<String>>>()
@@ -198,7 +205,7 @@ class MailSearch(private val context: Context) {
                 "text" to listOfNotNull(h.optJSONArray("body_t"), h.optJSONArray("attachment_text_t")).flatMap { a -> (0 until a.length()).map { a.getString(it) } },
             )
             Hit(
-                acc = d.optString("account_s"), emailId = d.optString("email_id_s"), threadId = d.optString("thread_id_s"),
+                acc = localKey[d.optString("account_s")] ?: d.optString("account_s"), emailId = d.optString("email_id_s"), threadId = d.optString("thread_id_s"),
                 subject = d.optString("subject_t"), from = d.optString("from_name_s").ifBlank { d.optString("from_t") },
                 fromEmail = d.optString("from_s"), received = MailSync.parseDate(d.optString("received_dt")), snippet = snippet,
                 seen = d.optBoolean("seen_b", true), flagged = d.optBoolean("flagged_b"), hasAttachment = d.optBoolean("has_attachment_b"),

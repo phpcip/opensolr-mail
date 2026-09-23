@@ -234,4 +234,5 @@
     <string name="swipes">滑动</string>
     <string name="ask_before_swipe_delete">滑动删除前询问</string>
     <string name="undo_after_swipe_flag">滑动加旗标后显示撤销栏</string>
+    <string name="thread_gone">此会话已不在你的邮箱中。</string>
 </resources>

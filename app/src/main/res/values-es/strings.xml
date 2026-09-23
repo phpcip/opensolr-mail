@@ -234,4 +234,5 @@
     <string name="swipes">Deslizamientos</string>
     <string name="ask_before_swipe_delete">Preguntar antes de eliminar al deslizar</string>
     <string name="undo_after_swipe_flag">Barra de deshacer tras marcar al deslizar</string>
+    <string name="thread_gone">Esta conversación ya no está en tu buzón.</string>
 </resources>

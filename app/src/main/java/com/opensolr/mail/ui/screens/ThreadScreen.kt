@@ -105,9 +105,11 @@ fun ThreadScreen(vm: AppViewModel, acc: String, threadId: String) {
     }
     val account = vm.store.get(acc)
 
+    var loadedOnce by remember(threadId) { mutableStateOf(false) }
     LaunchedEffect(threadId, version) {
         val list = vm.openThread(acc, threadId)
         messages = list
+        loadedOnce = true
         if (list.isNotEmpty() && expanded.isEmpty()) {
             val remembered = vm.threadOpen[acc + ":" + threadId]
             if (remembered != null) remembered.forEach { expanded[it] = true }
@@ -175,6 +177,10 @@ fun ThreadScreen(vm: AppViewModel, acc: String, threadId: String) {
                     account.username, style = MaterialTheme.typography.labelSmall, color = Color(account.color),
                     modifier = Modifier.padding(start = 16.dp, top = 10.dp),
                 )
+            }
+            // A conversation that cannot be found (deleted, or on an account this phone no longer has) says so instead of an empty page.
+            if (loadedOnce && messages.isEmpty()) {
+                Text(stringResource(R.string.thread_gone), style = MaterialTheme.typography.bodyMedium, color = p.muted, modifier = Modifier.padding(24.dp))
             }
             messages.forEach { m ->
                 val open = expanded[m.id] == true

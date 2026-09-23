@@ -65,6 +65,7 @@ class MailIndexer(private val context: Context) {
             val sp = context.getSharedPreferences("index_status", Context.MODE_PRIVATE)
             if (sp.getInt("doc_version", 1) < DOC_VERSION || sp.getBoolean("reindex_all", false)) {
                 db.clearIndexQueue()
+                dropStrayCopies(solr)
                 store.all().forEach { db.setState(it.key, MailSync.STATE_BACKFILL, "start") }
                 sp.edit().putInt("doc_version", DOC_VERSION).putBoolean("reindex_all", false).commit()
             }
@@ -130,6 +131,18 @@ class MailIndexer(private val context: Context) {
         )
     }
 
+    /** The account on this phone behind an index key, or null for an account only another phone has. */
+    private fun localAccount(indexKey: String): MailAccount? = store.all().firstOrNull { indexKey(it) == indexKey }
+
+    /** Copies of this phone's accounts written under an older id scheme or by another install: removed once. */
+    private suspend fun dropStrayCopies(solr: SolrClient) {
+        store.all().forEach { a ->
+            runCatching {
+                solr.deleteQuery("account_email_s:\"" + a.username.replace("\\", "\\\\").replace("\"", "\\\"") + "\" AND -account_s:" + indexKey(a))
+            }
+        }
+    }
+
     /** True when the account has nothing left to do. */
     private suspend fun indexAccount(account: MailAccount, solr: SolrClient, name: String, deadline: Long): Boolean {
         val acc = account.key
@@ -140,7 +153,7 @@ class MailIndexer(private val context: Context) {
         while (System.currentTimeMillis() < deadline) {
             val deletes = db.indexBatch(acc, MailSync.OP_DELETE, 500)
             if (deletes.isNotEmpty()) {
-                solr.deleteIds(deletes.map { docId(acc, it) })
+                solr.deleteIds(deletes.map { docId(account, it) })
                 db.indexDone(acc, deletes)
                 continue
             }
@@ -199,7 +212,7 @@ class MailIndexer(private val context: Context) {
         val readBefore = HashSet<String>()
         runCatching {
             val r0 = solr.select(listOf(
-                "q" to "*:*", "fq" to "{!terms f=id v=\$ids}", "ids" to ids.joinToString(",") { docId(acc, it) },
+                "q" to "*:*", "fq" to "{!terms f=id v=\$ids}", "ids" to ids.joinToString(",") { docId(account, it) },
                 "fl" to "email_id_s,attachment_text_t,att_todo_b", "rows" to ids.size.toString(),
             ))
             val arr = r0.optJSONObject("response")?.optJSONArray("docs") ?: JSONArray()
@@ -231,7 +244,7 @@ class MailIndexer(private val context: Context) {
             entries += m to MailSync.parseBody(o)
         }
         val gone = ids.filterNot { it in found }
-        if (gone.isNotEmpty()) solr.deleteIds(gone.map { docId(acc, it) })
+        if (gone.isNotEmpty()) solr.deleteIds(gone.map { docId(account, it) })
 
         val vectors = embed(name, entries.map { (m, b) ->
             embedTextOf(
@@ -282,7 +295,7 @@ class MailIndexer(private val context: Context) {
         val docs = res.optJSONObject("response")?.optJSONArray("docs") ?: return true
         if (docs.length() == 0) return true
         (0 until docs.length()).map { docs.getJSONObject(it) }.groupBy { it.optString("account_s") }.forEach { (acc, list) ->
-            if (store.get(acc) != null) db.queueIndex(acc, list.map { it.optString("email_id_s") }, MailSync.OP_UPSERT)
+            localAccount(acc)?.let { a -> db.queueIndex(a.key, list.map { it.optString("email_id_s") }, MailSync.OP_UPSERT) }
         }
         return false
     }
@@ -292,8 +305,8 @@ class MailIndexer(private val context: Context) {
         val cal = Calendar.getInstance(TimeZone.getDefault()).apply { timeInMillis = m.received }
         val text = body.text.take(MAX_BODY)
         val o = JSONObject()
-            .put("id", docId(account.key, m.id))
-            .put("account_s", account.key)
+            .put("id", docId(account, m.id))
+            .put("account_s", indexKey(account))
             .put("account_email_s", account.username)
             .put("email_id_s", m.id)
             .put("thread_id_s", m.threadId)
@@ -361,14 +374,14 @@ class MailIndexer(private val context: Context) {
             if (docs.length() == 0) return true
             val byAcc = (0 until docs.length()).map { docs.getJSONObject(it) }.groupBy { it.optString("account_s") }
             for ((acc, list) in byAcc) {
-                val account = store.get(acc) ?: continue
+                val account = localAccount(acc) ?: continue
                 val ids = list.map { it.optString("email_id_s") }
                 val fresh = try {
                     readAttachments(account, name, ids)
                 } catch (e: com.opensolr.mail.net.EndpointMissingException) {
                     return true
                 }
-                val boxes = db.mailboxes(acc).associateBy { it.id }
+                val boxes = db.mailboxes(account.key).associateBy { it.id }
                 indexFull(Jmap(context, account), solr, name, account, fresh.keys.toList(), boxes, notesBox(boxes.values), fresh)
             }
         }
@@ -447,7 +460,7 @@ class MailIndexer(private val context: Context) {
 
     companion object {
         const val VECTOR = "embeddings_vec"
-        const val DOC_VERSION = 4
+        const val DOC_VERSION = 5
         private const val BATCH = 40
         private const val MAX_BODY = 30_000
         private const val MAX_ATTACHMENT_TEXT = 100_000
@@ -459,7 +472,17 @@ class MailIndexer(private val context: Context) {
         private val _status = MutableStateFlow(Status())
         val status: StateFlow<Status> = _status
 
-        fun docId(acc: String, emailId: String) = "$acc:$emailId"
+        /**
+         * The account as the shared index knows it: derived from the Fastmail address, so every phone
+         * of the same Opensolr account writes one copy of each message under the same id.
+         */
+        fun indexKey(account: MailAccount): String = indexKeyOf(account.username)
+
+        fun indexKeyOf(username: String): String =
+            java.security.MessageDigest.getInstance("SHA-256").digest(username.trim().lowercase().toByteArray())
+                .take(8).joinToString("") { "%02x".format(it) }
+
+        fun docId(account: MailAccount, emailId: String) = indexKey(account) + ":" + emailId
 
         fun embedText(m: Message, body: String, attachments: List<String> = emptyList()): String =
             embedTextOf(m.subject, m.sender?.let { (it.name + " " + it.email).trim() }.orEmpty(), m.to.joinToString(", ") { it.label }, body, attachments)
