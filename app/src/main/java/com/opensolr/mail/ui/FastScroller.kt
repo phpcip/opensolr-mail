@@ -204,14 +204,18 @@ fun BoxScope.FastScroller(state: LazyListState, index: ScrollIndex, minItems: In
         // Only the thumb takes the finger, and only while it shows: the rest of the right edge stays the rows',
         // so a swipe that starts at the edge of the screen reaches the row under it.
         val thumbTop = travelPx * fraction
+        // At the top of the list a pull down is also pull-to-refresh: there only the thumb itself takes the finger.
+        val atTop = !state.canScrollBackward
+        val grabW = if (atTop) TRACK else GRAB_W
+        val grabPad = if (atTop) 0.dp else GRAB_PAD
         val top by androidx.compose.runtime.rememberUpdatedState(thumbTop)
         if (alpha > 0.05f || dragging) Box(
-            Modifier.align(Alignment.TopEnd).offset { IntOffset(0, (thumbTop - GRAB_PAD.toPx()).roundToInt()) }.width(GRAB_W).height(THUMB + GRAB_PAD * 2).pointerInput(travelPx) {
+            Modifier.align(Alignment.TopEnd).offset { IntOffset(0, (thumbTop - grabPad.toPx()).roundToInt()) }.width(grabW).height(THUMB + grabPad * 2).pointerInput(travelPx, grabPad) {
                 detectVerticalDragGestures(
-                    onDragStart = { o -> dragging = true; aimed = -1; Haptics.tick(view, false); aimAt(top - GRAB_PAD.toPx() + o.y) },
+                    onDragStart = { o -> dragging = true; aimed = -1; Haptics.tick(view, false); aimAt(top - grabPad.toPx() + o.y) },
                     onDragEnd = { dragging = false; aimed = -1 },
                     onDragCancel = { dragging = false; aimed = -1 },
-                    onVerticalDrag = { change, _ -> change.consume(); aimAt(top - GRAB_PAD.toPx() + change.position.y) },
+                    onVerticalDrag = { change, _ -> change.consume(); aimAt(top - grabPad.toPx() + change.position.y) },
                 )
             },
         )
