@@ -111,6 +111,7 @@ private data class SearchSnapshot(
     val result: MailSearch.Result,
     val extraHits: List<MailSearch.Hit>,
     val extraGroups: List<MailSearch.Group>,
+    val fetchedMore: Int = 0,
 )
 
 /** Search and browse every account at once, the way Opensolr Photos and search.opensolr.com do it. */
@@ -133,14 +134,14 @@ fun SearchScreen(vm: AppViewModel, sheet: String?) {
     val snap = remember { vm.searchSnapshot as? SearchSnapshot }
     var query by rememberSaveable { mutableStateOf(snap?.query ?: vm.searchQuery) }
     var filters by remember { mutableStateOf(snap?.filters ?: vm.searchFilters) }
-    var groupBy by remember { mutableStateOf(snap?.groupBy ?: runCatching { MailSearch.GroupBy.valueOf(vm.prefs.groupBy) }.getOrDefault(MailSearch.GroupBy.NONE)) }
+    var groupBy by remember { mutableStateOf(snap?.groupBy ?: runCatching { MailSearch.GroupBy.valueOf(vm.prefs.groupBy) }.getOrDefault(MailSearch.GroupBy.BEST)) }
     var ai by remember { mutableStateOf(vm.prefs.aiSearch) }
     var fresh by remember { mutableStateOf(vm.prefs.freshSearch) }
     var result by remember { mutableStateOf(snap?.result) }
     var extraHits by remember { mutableStateOf(snap?.extraHits ?: emptyList()) }
     var extraGroups by remember { mutableStateOf(snap?.extraGroups ?: emptyList()) }
     // Messages read from the index by the pages after the first: pages go by messages, the list shows conversations.
-    var fetchedMore by remember { mutableIntStateOf(0) }
+    var fetchedMore by remember { mutableIntStateOf(snap?.fetchedMore ?: 0) }
     var skipFirst by remember { mutableStateOf(snap != null && snap.ai == ai && snap.fresh == fresh) }
     var loading by remember { mutableStateOf(false) }
     var loadingMore by remember { mutableStateOf(false) }
@@ -188,9 +189,9 @@ fun SearchScreen(vm: AppViewModel, sheet: String?) {
         if (query.isNotEmpty()) delay(350)
         run()
     }
-    LaunchedEffect(result, extraHits, extraGroups) {
+    LaunchedEffect(result, extraHits, extraGroups, fetchedMore) {
         val res = result ?: return@LaunchedEffect
-        vm.searchSnapshot = SearchSnapshot(query, filters, groupBy, ai, fresh, res, extraHits, extraGroups)
+        vm.searchSnapshot = SearchSnapshot(query, filters, groupBy, ai, fresh, res, extraHits, extraGroups, fetchedMore)
     }
 
     val r = result
@@ -202,6 +203,18 @@ fun SearchScreen(vm: AppViewModel, sheet: String?) {
             .distinctBy { it.messageId.ifEmpty { it.acc + ":" + it.emailId } }
     }
     val shownGroups = (r?.groups.orEmpty()) + extraGroups
+    // Best matches / Also similar, as in Opensolr Photos: the cut is made once, on the first page, where the
+    // score falls the most below the share of the best one; every later page is Also similar.
+    val bestKeys = remember(r, groupBy, query) {
+        val first = r?.hits.orEmpty()
+            .distinctBy { it.acc + ":" + it.threadId.ifEmpty { it.emailId } }
+            .distinctBy { it.messageId.ifEmpty { it.acc + ":" + it.emailId } }
+        if (groupBy != MailSearch.GroupBy.BEST || query.isBlank()) null
+        else scoreCut(first)?.let { cut -> first.take(cut).map { it.acc + ":" + it.emailId }.toSet() }
+    }
+    val openKeys = vm.keySet("search_open")
+    val bestFolded = vm.isFolded("search_folds", BEST_KEY)
+    val similarFolded = SIMILAR_KEY !in openKeys
     // The next page comes once the reader is a quarter of the way down what is loaded, well before the end,
     // so neither scrolling nor the fast scroller ever reaches a bottom that is not the real one.
     val atEnd by remember { derivedStateOf {
@@ -210,10 +223,12 @@ fun SearchScreen(vm: AppViewModel, sheet: String?) {
         val last = listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: -1
         total > 0 && (last >= total - 20 || (!listState.canScrollForward && listState.canScrollBackward))
     } }
-    LaunchedEffect(atEnd, shownHits.size, shownGroups.size, fetchedMore) {
+    LaunchedEffect(atEnd, shownHits.size, shownGroups.size, fetchedMore, similarFolded) {
         val res = result ?: return@LaunchedEffect
         if (!atEnd || loadingMore || loading) return@LaunchedEffect
-        val grouped = groupBy != MailSearch.GroupBy.NONE
+        // A folded Also similar shows none of the later pages: none is fetched until it is opened.
+        if (bestKeys != null && similarFolded) return@LaunchedEffect
+        val grouped = groupBy.field != null
         // Without grouping the next page starts after the messages already read, not after the conversations shown:
         // a page whose messages all belong to conversations on screen adds no line, and the next one is asked for.
         val read = res.fetched + fetchedMore
@@ -309,7 +324,7 @@ fun SearchScreen(vm: AppViewModel, sheet: String?) {
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Box {
-                IconAction(R.drawable.ic_group, active = groupBy != MailSearch.GroupBy.NONE) { showGroup = true }
+                IconAction(R.drawable.ic_group, active = groupBy.field != null) { showGroup = true }
                 DropdownMenu(expanded = showGroup, onDismissRequest = { showGroup = false }, containerColor = p.paper) {
                     Text(stringResource(R.string.group_by), style = MaterialTheme.typography.labelSmall, color = p.muted, modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
                     MailSearch.GroupBy.entries.forEach { how ->
@@ -322,9 +337,15 @@ fun SearchScreen(vm: AppViewModel, sheet: String?) {
                 }
             }
             IconAction(R.drawable.ic_filters, active = filters.count > 0, badge = filters.count) { showFilters = true }
-            if (groupBy != MailSearch.GroupBy.NONE) {
+            if (groupBy.field != null) {
                 val anyOpen = vm.anyUnfolded("search_folds", shownGroups.map { groupBy.name + ":" + it.value })
                 IconAction(if (anyOpen) R.drawable.ic_collapse_all else R.drawable.ic_expand_all, active = false) { vm.foldAll("search_folds", anyOpen) }
+            } else if (bestKeys != null) {
+                val anyOpen = !bestFolded || !similarFolded
+                IconAction(if (anyOpen) R.drawable.ic_collapse_all else R.drawable.ic_expand_all, active = false) {
+                    if (bestFolded == anyOpen) vm.toggleFold("search_folds", BEST_KEY)
+                    vm.setKeySet("search_open", if (anyOpen) openKeys - SIMILAR_KEY else openKeys + SIMILAR_KEY)
+                }
             }
             Spacer(Modifier.width(8.dp))
             Toggle(stringResource(R.string.ai), ai) { ai = it; vm.prefs.aiSearch = it }
@@ -349,15 +370,26 @@ fun SearchScreen(vm: AppViewModel, sheet: String?) {
         val searchFolds = vm.keySet("search_folds")
         val hasAnswerCard = r != null && query.isNotBlank() && shownHits.isNotEmpty() && limits?.aiUsable != false
         val hasEmpty = r != null && !loading && shownHits.isEmpty()
-        val scrollIndex = remember(shownHits, shownGroups, groupBy, groupLabels, searchFolds, hasAnswerCard, error != null, hasEmpty, loadingMore) {
+        // The rows the list shows, and the same rows for the fast scroller: one list, so both always agree.
+        val listed = shownHits.filter { vm.hiddenThreads[keyOf(it)] != true && gone[keyOf(it)] != true }
+        val best = if (bestKeys == null) emptyList() else listed.filter { (it.acc + ":" + it.emailId) in bestKeys }
+        val similar = if (bestKeys == null) emptyList() else listed.filter { (it.acc + ":" + it.emailId) !in bestKeys }
+        val bestLabel = stringResource(R.string.best_matches)
+        val similarLabel = stringResource(R.string.also_similar)
+        val scrollIndex = remember(listed, bestKeys, bestFolded, similarFolded, shownGroups, groupBy, groupLabels, searchFolds, hasAnswerCard, error != null, hasEmpty, loadingMore) {
             val dayLabel = SimpleDateFormat("EEE, MM/dd/yyyy", Locale.getDefault())
             com.opensolr.mail.ui.ScrollIndex().apply {
                 if (hasAnswerCard) row()
                 if (error != null) row()
                 if (hasEmpty) row()
-                if (groupBy == MailSearch.GroupBy.NONE) {
+                if (groupBy.field == null && bestKeys != null) {
+                    head(bestLabel)
+                    if (!bestFolded) best.forEach { h -> row(dayLabel.format(java.util.Date(h.received))) }
+                    head(similarLabel)
+                    if (!similarFolded) similar.forEach { h -> row(dayLabel.format(java.util.Date(h.received))) }
+                } else if (groupBy.field == null) {
                     // Ranked results carry no headings; the day of each hit is its title.
-                    shownHits.forEach { h -> row(dayLabel.format(java.util.Date(h.received))) }
+                    listed.forEach { h -> row(dayLabel.format(java.util.Date(h.received))) }
                 } else {
                     shownGroups.forEachIndexed { i, g ->
                         head(groupLabels[i])
@@ -379,7 +411,7 @@ fun SearchScreen(vm: AppViewModel, sheet: String?) {
                 AnswerCard(if (mine) vm.aiText else null, mine && vm.aiRunning) {
                     // The first rows of the list on screen, in their order, go to the answer: nothing else.
                     val res = r ?: return@AnswerCard
-                    val rows = if (groupBy != MailSearch.GroupBy.NONE) shownGroups.flatMap { it.hits } else shownHits
+                    val rows = if (groupBy.field != null) shownGroups.flatMap { it.hits } else shownHits
                     val byId = res.docs.associateBy { it.id }
                     val top = rows.distinctBy { it.acc + ":" + it.threadId.ifEmpty { it.emailId } }
                         .mapNotNull { byId[it.docId] }.take(com.opensolr.mail.search.AiPrompt.TOP_N)
@@ -390,8 +422,19 @@ fun SearchScreen(vm: AppViewModel, sheet: String?) {
             if (r != null && !loading && shownHits.isEmpty()) item(key = "empty") {
                 Text(stringResource(R.string.empty_view), style = MaterialTheme.typography.bodyMedium, color = p.muted, modifier = Modifier.padding(24.dp))
             }
-            if (groupBy == MailSearch.GroupBy.NONE) {
-                items(shownHits.filter { vm.hiddenThreads[keyOf(it)] != true && gone[keyOf(it)] != true }, key = { "h:" + it.acc + ":" + it.emailId }) { h -> Box(itemMotion()) { ActionHit(h) } }
+            if (groupBy.field == null && bestKeys != null) {
+                item(key = "g:best") { Box(itemMotion()) { GroupHeader(bestLabel, best.size.toLong(), !bestFolded) { vm.toggleFold("search_folds", BEST_KEY) } } }
+                if (!bestFolded) items(best, key = { "h:" + it.acc + ":" + it.emailId }) { h -> Box(itemMotion()) { ActionHit(h) } }
+                item(key = "g:similar") {
+                    Box(itemMotion()) {
+                        GroupHeader(similarLabel, similar.size.toLong(), !similarFolded) {
+                            vm.setKeySet("search_open", if (similarFolded) openKeys + SIMILAR_KEY else openKeys - SIMILAR_KEY)
+                        }
+                    }
+                }
+                if (!similarFolded) items(similar, key = { "h:" + it.acc + ":" + it.emailId }) { h -> Box(itemMotion()) { ActionHit(h) } }
+            } else if (groupBy.field == null) {
+                items(listed, key = { "h:" + it.acc + ":" + it.emailId }) { h -> Box(itemMotion()) { ActionHit(h) } }
             } else {
                 shownGroups.forEach { g ->
                     val key = groupBy.name + ":" + g.value
@@ -410,7 +453,7 @@ fun SearchScreen(vm: AppViewModel, sheet: String?) {
                                     val field = groupBy.field ?: return@clickable
                                     filters = if (field == "month_s" || field == "day_s") filters.copy(dates = rangeOf(field, g.value))
                                     else filters.toggled(groupFacet(field), g.value)
-                                    groupBy = MailSearch.GroupBy.NONE
+                                    groupBy = MailSearch.GroupBy.BEST
                                     vm.prefs.groupBy = groupBy.name
                                 }.padding(horizontal = 16.dp, vertical = 10.dp),
                             )
@@ -421,7 +464,7 @@ fun SearchScreen(vm: AppViewModel, sheet: String?) {
             if (loadingMore) item(key = "loading") { LinearProgressIndicator(Modifier.fillMaxWidth().height(2.dp), color = p.accent, trackColor = p.hairline) }
             item(key = "end") { Spacer(Modifier.height(bottomInset())) }
         }
-        FastScroller(listState, scrollIndex)
+        FastScroller(listState, scrollIndex, minItems = 10)
         }
         if (selectedRows.isNotEmpty()) {
             val anyUnread = selectedRows.any { it.unread }
@@ -489,7 +532,31 @@ fun SearchScreen(vm: AppViewModel, sheet: String?) {
     }
 }
 
+private const val BEST_KEY = "BEST:best"
+private const val SIMILAR_KEY = "similar"
+private const val MIN_HITS_TO_CUT = 8
+private const val MIN_BEST_MATCHES = 3
+private const val ALSO_SIMILAR_SHARE = 0.6
+
+/** Where Best matches end, as in Opensolr Photos: the biggest fall in score below [ALSO_SIMILAR_SHARE] of the best; none for a short list. */
+private fun scoreCut(hits: List<MailSearch.Hit>): Int? {
+    if (hits.size < MIN_HITS_TO_CUT) return null
+    val top = hits.first().score
+    if (top <= 0.0) return null
+    var cut = -1
+    var biggest = 0.0
+    for (i in MIN_BEST_MATCHES until hits.size) {
+        val fall = hits[i - 1].score - hits[i].score
+        if (fall > biggest && hits[i].score < top * ALSO_SIMILAR_SHARE) {
+            biggest = fall
+            cut = i
+        }
+    }
+    return cut.takeIf { it > 0 }
+}
+
 private fun groupLabel(g: MailSearch.GroupBy): Int = when (g) {
+    MailSearch.GroupBy.BEST -> R.string.best_matches
     MailSearch.GroupBy.NONE -> R.string.group_none
     MailSearch.GroupBy.DATE -> R.string.group_month
     MailSearch.GroupBy.DAY -> R.string.group_day

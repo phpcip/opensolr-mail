@@ -80,8 +80,9 @@ class MailSearch(private val context: Context) {
         }
     }
 
+    /** BEST is the ranked list cut into Best matches and Also similar, as in Opensolr Photos; NONE the plain ranked list. */
     enum class GroupBy(val field: String?) {
-        NONE(null), DATE("month_s"), DAY("day_s"), SENDER("from_s"), COMPANY("from_domain_s"), ACCOUNT("account_email_s"),
+        BEST(null), NONE(null), DATE("month_s"), DAY("day_s"), SENDER("from_s"), COMPANY("from_domain_s"), ACCOUNT("account_email_s"),
     }
 
     data class Facet(val value: String, val count: Int)
@@ -309,32 +310,29 @@ class MailSearch(private val context: Context) {
         return Result(threadHits, threadGroups, total, smart, facets, names.mapValues { it.value.first }, aiDocs, hlMap, fetched = hits.size)
     }
 
-    /** Streams the AI answer to [question] over the top results of the search that was just run. */
     /**
      * The AI answer from exactly the results the reader sees: [top] are the first rows of the list on
-     * screen, in that order. No other search is made.
+     * screen, in that order. Those under half the best score stay out; a result that is a conversation
+     * goes whole, each message a document of its own with only the words its writer added. No other search is made.
      */
     suspend fun answer(question: String, top: List<AiPrompt.Doc>, highlights: Map<String, Map<String, List<String>>>, onChunk: (String) -> Unit) {
-        if (top.isEmpty()) return
+        val best = top.take(AiPrompt.TOP_N).mapNotNull { it.score }.maxOrNull() ?: 0.0
+        val chosen = top.take(AiPrompt.TOP_N).filter { best <= 0 || it.score == null || it.score >= best * 0.5 }
+        if (chosen.isEmpty()) return
         val connection = MailIndex(context).ensure()
         val solr = SolrClient(connection)
-        fun textOf(d: JSONObject): String {
-            val att = flatten(d.optString("attachment_text_t"))
-            return (flatten(freshPart(d.optString("body_t"))) + if (att.isNotEmpty()) "\nAttachment text: $att" else "").trim()
-        }
-        // The results themselves, with the conversation each belongs to.
         val r = solr.select(
             listOf(
                 "q" to "*:*",
                 "fq" to "{!terms f=id v=\$ids}",
-                "ids" to top.joinToString(",") { it.id },
-                "fl" to "id,account_s,thread_id_s,body_t,attachment_text_t",
-                "rows" to top.size.toString(),
+                "ids" to chosen.joinToString(",") { it.id },
+                "fl" to "id,account_s,email_id_s,thread_id_s,body_t,attachment_text_t",
+                "rows" to chosen.size.toString(),
             )
         )
         val docs = r.optJSONObject("response")?.optJSONArray("docs") ?: JSONArray()
         val own = (0 until docs.length()).map { docs.getJSONObject(it) }.associateBy { it.optString("id") }
-        // A result that is a conversation goes whole: every message of it, oldest first, in one query for all of them.
+        // Every message of every conversation among the results, oldest first, in one query.
         val threads = own.values.mapNotNull { d -> d.optString("thread_id_s").takeIf { it.isNotBlank() }?.let { d.optString("account_s") to it } }.distinct()
         val whole = HashMap<Pair<String, String>, List<JSONObject>>()
         if (threads.isNotEmpty()) {
@@ -345,8 +343,8 @@ class MailSearch(private val context: Context) {
                     "tids" to threads.joinToString(",") { it.second },
                     "fq" to "{!terms f=account_s v=\$accs}",
                     "accs" to threads.map { it.first }.distinct().joinToString(","),
-                    "fl" to "id,account_s,thread_id_s,from_t,received_dt,body_t,attachment_text_t",
-                    "sort" to "received_dt asc",
+                    "fl" to "id,account_s,email_id_s,thread_id_s,subject_t,from_t,to_tm,received_dt,body_t,attachment_text_t",
+                    "sort" to "received_dt asc, id asc",
                     "rows" to "300",
                 )
             )
@@ -355,29 +353,100 @@ class MailSearch(private val context: Context) {
                 .groupBy { it.optString("account_s") to it.optString("thread_id_s") }
                 .forEach { (k, v) -> whole[k] = v }
         }
-        val bodies = HashMap<String, String>()
-        own.forEach { (id, d) ->
-            val conversation = whole[d.optString("account_s") to d.optString("thread_id_s")].orEmpty()
-            bodies[id] = if (conversation.size > 1) conversation.joinToString("\n\n") { m ->
-                "From: " + m.optString("from_t") + " | Date: " + localDate(m.optString("received_dt")) + "\n" + textOf(m)
-            } else textOf(d)
+        val localKey = store.all().associate { MailIndexer.indexKey(it) to it.key }
+        // The bodies this phone holds, one read per account: their HTML shows where each quote starts.
+        val held = HashMap<String, com.opensolr.mail.data.Message>()
+        (own.values + whole.values.flatten()).groupBy { localKey[it.optString("account_s")] }.forEach { (acc, ms) ->
+            if (acc == null) return@forEach
+            runCatching { db.messages(acc, ms.map { it.optString("email_id_s") }.distinct()) }.getOrDefault(emptyList()).forEach { held[acc + ":" + it.id] = it }
         }
-        val ctx = AiPrompt.context(top.map { it.copy(text = bodies[it.id].orEmpty()) }, highlights)
+        fun heldOf(m: JSONObject) = localKey[m.optString("account_s")]?.let { held[it + ":" + m.optString("email_id_s")] }
+        val out = ArrayList<AiPrompt.Doc>()
+        val used = HashSet<String>()
+        var left = AI_WORDS
+        fun add(doc: AiPrompt.Doc) {
+            if (left <= 0 || !used.add(doc.id)) return
+            val text = cutWords(doc.text, minOf(AI_DOC_WORDS, left))
+            left -= words(text)
+            out += doc.copy(text = text, score = null)
+        }
+        for (d in chosen) {
+            val hit = own[d.id]
+            val conversation = hit?.let { whole[it.optString("account_s") to it.optString("thread_id_s")] }.orEmpty()
+            if (hit == null) continue
+            if (conversation.size <= 1) {
+                add(d.copy(text = messageText(hit, heldOf(hit), emptyList())))
+                continue
+            }
+            // The conversation in its order; each message loses the lines it repeats from those before it.
+            val earlier = ArrayList<String>()
+            conversation.forEach { m ->
+                val to = m.optJSONArray("to_tm")?.let { a -> (0 until a.length()).joinToString(", ") { a.getString(it) } }.orEmpty()
+                val id = m.optString("id")
+                val text = messageText(m, heldOf(m), earlier)
+                earlier += m.optString("body_t")
+                // A message that only repeats what came before adds nothing to read.
+                if (text.isBlank() && id != d.id) return@forEach
+                add(
+                    AiPrompt.Doc(
+                        id = id, score = null, title = m.optString("subject_t").ifBlank { d.title },
+                        description = "From: ${m.optString("from_t")} | To: $to | Date: ${localDate(m.optString("received_dt"))}",
+                        text = text,
+                    )
+                )
+            }
+        }
+        val ctx = AiPrompt.context(out, highlights, topN = out.size, maxWords = AI_DOC_WORDS)
         if (ctx.isEmpty()) return
         api.aiAnswer(connection.indexName, AiPrompt.instruction(ctx, question), onChunk)
     }
 
-    /** The message's own words: quoted history and forwarded originals below it are cut off. */
+    /**
+     * What the writer of one message added: the quote cut where the mail program marked it (from the
+     * HTML this phone holds), else at an "On ... wrote:" / Original Message / Outlook header line, then
+     * every line already written in [earlier] messages of the conversation dropped.
+     */
+    private fun messageText(d: JSONObject, local: com.opensolr.mail.data.Message?, earlier: List<String>): String {
+        val html = local?.bodyHtml.orEmpty()
+        val fresh = if (html.isNotBlank()) freshPart(com.opensolr.mail.jmap.Html.withoutQuotes(html))
+        else freshPart(local?.bodyText?.takeIf { it.isNotBlank() } ?: d.optString("body_t"))
+        val body = flatten(notRepeated(fresh, earlier))
+        val att = flatten(d.optString("attachment_text_t"))
+        return (body + if (att.isNotEmpty()) "\nAttachment text: $att" else "").trim()
+    }
+
+    /** Lines of [text] already present in an earlier message are a quote that escaped the marks: they go. */
+    private fun notRepeated(text: String, earlier: List<String>): String {
+        if (earlier.isEmpty()) return text
+        fun norm(l: String) = l.trim().trimStart('>', ' ').replace(SPACES, " ").lowercase()
+        val seen = HashSet<String>()
+        earlier.forEach { e -> e.lines().forEach { l -> val n = norm(l); if (n.length >= MIN_REPEAT_CHARS) seen += n } }
+        return text.lines().filterNot { l -> norm(l).let { it.length >= MIN_REPEAT_CHARS && it in seen } }.joinToString("\n")
+    }
+
+    private fun words(text: String): Int = WORD.findAll(text).count()
+
+    private fun cutWords(text: String, max: Int): String {
+        if (max <= 0) return ""
+        val m = WORD.findAll(text).elementAtOrNull(max - 1) ?: return text
+        return text.substring(0, m.range.last + 1)
+    }
+
+    /** The message's own words: quoted history below it is cut off, a forwarded original stays. */
     private fun freshPart(body: String): String {
         val lines = body.replace("\r", "").lines()
         val out = ArrayList<String>()
-        for (line in lines) {
+        var written = false
+        for ((i, line) in lines.withIndex()) {
             val t = line.trim()
-            if (t.startsWith("-----Original Message") || Regex("^On .{4,160} wrote:$").matches(t) || Regex("^(From|De la|Von|De): .+").matches(t) && out.size > 3) break
+            if (FORWARD_LINE.containsMatchIn(t)) return (out + lines.drop(i)).joinToString("\n").trim()
+            val outlook = OUTLOOK_FROM.matches(t) && lines.subList(i + 1, minOf(lines.size, i + 5)).any { OUTLOOK_SENT.matches(it.trim()) }
+            if (written && (QUOTE_HEAD.matches(t) || outlook)) break
             if (t.startsWith(">")) continue
+            if (t.isNotEmpty()) written = true
             out += line
         }
-        return out.joinToString("\n")
+        return out.joinToString("\n").trim()
     }
 
     /**
@@ -430,6 +499,17 @@ class MailSearch(private val context: Context) {
         private const val TOP_K = 790
         private const val GROUP_LIMIT = 5
         private const val GROUP_ROWS = 20
+        /** Words one message may give the AI answer, and all of them together: what fits the model with room to answer. */
+        private const val AI_DOC_WORDS = 10_000
+        private const val AI_WORDS = 20_000
+        /** A repeated line this long is a quote; shorter ones ("Thanks,", "Hi John") can be written again. */
+        private const val MIN_REPEAT_CHARS = 16
+        private val FORWARD_LINE = Regex("(?i)-{2,}\\s*Forwarded message|^Begin forwarded message")
+        private val OUTLOOK_FROM = Regex("^(From|De la|Von|De|Van|Da):\\s.+")
+        private val OUTLOOK_SENT = Regex("^(Sent|Date|Trimis|Gesendet|Envoy\u00e9|Data|Verzonden):\\s.+")
+        private val WORD = Regex("\\S+")
+        private val SPACES = Regex("\\s+")
+        private val QUOTE_HEAD = Regex("(?i)^(On .{4,200}wrote:|Le .{4,200}a \u00e9crit\\s?:|Am .{4,200}schrieb .{1,120}:|\u00cen .{4,200}a scris:|-{2,}\\s*(Original Message|Mesaj original|Urspr\u00fcngliche Nachricht)\\s*-{2,}|_{10,})$")
 
         /** Fresh: 1.0 today, 0.5 at a month, 0.33 at two — a strong pull towards recent mail. */
         private const val FRESH_BIAS = "recip(max(0,ms(NOW,received_dt)),3.86e-10,1,1)"

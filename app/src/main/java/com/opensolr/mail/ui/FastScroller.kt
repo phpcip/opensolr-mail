@@ -118,7 +118,8 @@ fun BoxScope.FastScroller(state: LazyListState, index: ScrollIndex, minItems: In
         animationSpec = tween(durationMillis = if (dragging) 0 else 450),
         label = "fastScrollerAlpha",
     )
-    if (n < minItems) return
+    // A list that fits the screen has nothing to scroll to.
+    if (n < minItems || !(state.canScrollForward || state.canScrollBackward)) return
 
     // Heights stay frozen while dragging so the thumb never jumps under the finger.
     var heights by remember { mutableStateOf<Map<Boolean, Float>>(emptyMap()) }

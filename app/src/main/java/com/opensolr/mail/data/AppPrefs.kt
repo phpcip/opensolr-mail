@@ -109,8 +109,8 @@ class AppPrefs(context: Context) {
         set(v) = sp.edit().putFloat("lexical_weight", v.coerceIn(0f, 1f)).apply()
 
     var groupBy: String
-        get() = sp.getString("group_by", "NONE") ?: "NONE"
-        set(v) = sp.edit().putString("group_by", v).apply()
+        get() = sp.getString("search_group", "BEST") ?: "BEST"
+        set(v) = sp.edit().putString("search_group", v).apply()
 
     /** Sections of the mailbox list the reader opened; every section starts folded. */
     var openSections: Set<String>

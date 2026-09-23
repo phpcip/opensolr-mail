@@ -244,17 +244,19 @@ fun SettingsScreen(vm: AppViewModel) {
                 Column {
                     var lw by remember { mutableStateOf(vm.prefs.lexicalWeight) }
                     Text(stringResource(R.string.alpha_title), style = MaterialTheme.typography.titleSmall, color = p.ink)
-                    Text(stringResource(R.string.alpha_value, ((1f - lw) * 100).toInt()), style = MaterialTheme.typography.bodySmall, color = p.muted)
-                    androidx.compose.material3.Slider(
-                        value = 1f - lw,
-                        onValueChange = { v -> val next = (1f - v).coerceIn(0f, 1f); if ((next * 20).toInt() != (lw * 20).toInt()) Haptics.tick(view, false); lw = next },
-                        onValueChangeFinished = { vm.prefs.lexicalWeight = lw },
-                        steps = 19,
-                        colors = androidx.compose.material3.SliderDefaults.colors(thumbColor = p.accentFill, activeTrackColor = p.accentFill, inactiveTrackColor = p.hairline),
-                    )
-                    Row {
-                        Text(stringResource(R.string.alpha_words), style = MaterialTheme.typography.bodySmall, color = p.muted, modifier = Modifier.weight(1f))
+                    // Semantic on the left, lexical on the right, as in every Opensolr app: to the right means more words.
+                    Text(stringResource(R.string.alpha_value, ((1f - lw) * 100).roundToInt(), (lw * 100).roundToInt()), style = MaterialTheme.typography.bodySmall, color = p.muted)
+                    Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(stringResource(R.string.alpha_meaning), style = MaterialTheme.typography.bodySmall, color = p.muted)
+                        androidx.compose.material3.Slider(
+                            value = lw,
+                            onValueChange = { v -> val next = (Math.round(v * 20) / 20f).coerceIn(0f, 1f); if (next != lw) Haptics.tick(view, false); lw = next },
+                            onValueChangeFinished = { vm.prefs.lexicalWeight = lw },
+                            steps = 19,
+                            colors = androidx.compose.material3.SliderDefaults.colors(thumbColor = p.accentFill, activeTrackColor = p.accentFill, inactiveTrackColor = p.hairline),
+                            modifier = Modifier.weight(1f).padding(horizontal = 8.dp),
+                        )
+                        Text(stringResource(R.string.alpha_words), style = MaterialTheme.typography.bodySmall, color = p.muted)
                     }
                 }
                 }

@@ -39,6 +39,7 @@ object Html {
         "div.gmail_quote", "div.gmail_quote_container", "blockquote.gmail_quote", "blockquote[type=cite]",
         "div#divRplyFwdMsg", "div#appendonsend", "div.moz-cite-prefix", "div#qt", "div.yahoo_quoted", "div.OutlookMessageHeader",
     ).joinToString(", ")
+    private val FORWARDED = Regex("(?i)-{2,}\\s*Forwarded message|Begin forwarded message|Mesaj redirec")
     private val WROTE = Regex("(?i)^(On .{4,200}wrote:|-{2,}\\s*Original Message\\s*-{2,}|-{2,}\\s*Forwarded message\\s*-{2,})$")
     private val QUOTE_LINE = Regex("(?im)^\\s*(On .{4,200}wrote:|-{2,}\\s*Original Message\\s*-{2,}|-{2,}\\s*Forwarded message\\s*-{2,}|From:\\s.+)\\s*$")
 
@@ -85,6 +86,15 @@ object Html {
         move.forEach { details.appendChild(it) }
         body.html()
     }.getOrDefault(html)
+
+    /** The message's own words as plain text: the quote found by [foldQuotes] is dropped; a forward stays whole. */
+    fun withoutQuotes(html: String): String = runCatching {
+        val body = org.jsoup.Jsoup.parseBodyFragment(foldQuotes(html, "", "")).body()
+        // A forward's original is what was sent along, not a quote of this conversation: it stays.
+        if (body.select("details.osq").text().take(300).contains(FORWARDED)) return@runCatching plain(html)
+        body.select("details.osq").remove()
+        plain(body.html())
+    }.getOrDefault(plain(html))
 
     /** Plain text shown as HTML, the quoted history below the first quote line folded under [label]. */
     fun fromTextFolded(text: String, label: String, hide: String): String {
