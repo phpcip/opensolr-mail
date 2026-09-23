@@ -17,8 +17,16 @@ import com.opensolr.mail.net.OpensolrApi
 import com.opensolr.mail.net.QuotaExceededException
 import com.opensolr.mail.net.SignInRequiredException
 import com.opensolr.mail.net.VectorNotAllowedException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.joinAll
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import org.json.JSONArray
@@ -42,6 +50,9 @@ class MailIndexer(private val context: Context) {
     private val prefs = AppPrefs(context)
     private val api = OpensolrApi(prefs)
     private val store = AccountStore.get(context)
+
+    /** A batch that failed in this run: the run asks to be tried again instead of chaining straight on. */
+    @Volatile private var batchFailed = false
 
     suspend fun run(deadline: Long): Outcome = runLock.withLock {
         if (prefs.indexStopped) return@withLock Outcome.DONE
@@ -73,15 +84,15 @@ class MailIndexer(private val context: Context) {
                 sp.edit().putInt("doc_version", DOC_VERSION).putBoolean("reindex_all", false).commit()
             }
 
-            var more = false
-            for (account in store.all()) {
-                if (System.currentTimeMillis() > runUntil) { more = true; break }
-                if (!indexAccount(account, solr, name)) more = true
-            }
+            var more = !indexMail(solr, name)
             if (!more && System.currentTimeMillis() < runUntil) more = !vectorBackfill(solr, name)
             if (!more && System.currentTimeMillis() < runUntil && unmetered()) more = !attachmentPass(solr, name)
             _status.value = _status.value.copy(error = null)
-            if (more) Outcome.MORE else Outcome.DONE
+            when {
+                batchFailed -> Outcome.RETRY
+                more -> Outcome.MORE
+                else -> Outcome.DONE
+            }
         } catch (e: kotlinx.coroutines.CancellationException) {
             // Stopped by the system: not an error, the next run carries on where this one left off.
             _status.value = _status.value.copy(running = false, phase = Phase.IDLE, at = System.currentTimeMillis())
@@ -239,40 +250,206 @@ class MailIndexer(private val context: Context) {
         }
     }
 
-    /** True when the account has nothing left to do. */
-    private suspend fun indexAccount(account: MailAccount, solr: SolrClient, name: String): Boolean {
-        val acc = account.key
-        val jmap = Jmap(context, account)
-        val boxes = db.mailboxes(acc).associateBy { it.id }
-        val notes = notesBox(boxes.values)
+    /** A batch read from Fastmail and ready to be given a vector. */
+    private class Prepared(
+        val source: Source?,
+        val account: MailAccount,
+        val ids: List<String>,
+        val entries: List<Pair<Message, MailSync.Body>>,
+        val texts: List<String>,
+        val attText: Map<String, String>,
+        val attDone: Set<String>,
+        val gone: List<String>,
+        val boxes: Map<String, Mailbox>,
+        val commitWithinMs: Int,
+    )
 
-        while (System.currentTimeMillis() < runUntil) {
-            val deletes = db.indexBatch(acc, MailSync.OP_DELETE, 500)
-            if (deletes.isNotEmpty()) {
-                solr.deleteIds(deletes.map { docId(account, it) })
-                db.indexDone(acc, deletes)
-                continue
+    /** A batch with its documents built: all that is left is the write. */
+    private class Written(
+        val source: Source?,
+        val account: MailAccount,
+        val ids: List<String>,
+        val docs: JSONArray,
+        val gone: List<String>,
+        val commitWithinMs: Int,
+    )
+
+    /**
+     * The queue of one account, handed out in batches. Everything that touches the queue, the
+     * deletions, the flag changes and the walk through the history happens here, one lane at a time,
+     * so several lanes can read from Fastmail at once without ever being given the same message twice.
+     */
+    private inner class Source(val account: MailAccount, val jmap: Jmap, val solr: SolrClient, val notes: Mailbox?) {
+        private val gate = Mutex()
+        private val buffer = ArrayDeque<String>()
+        private val inFlight = java.util.Collections.synchronizedSet(HashSet<String>())
+        private val failed = java.util.Collections.synchronizedSet(HashSet<String>())
+
+        /** The next batch, or null when this account has nothing left at all. */
+        suspend fun next(): List<String>? = gate.withLock {
+            while (System.currentTimeMillis() < runUntil) {
+                if (buffer.isNotEmpty()) {
+                    val take = ArrayList<String>(batchSize())
+                    while (buffer.isNotEmpty() && take.size < batchSize()) take += buffer.removeFirst()
+                    inFlight += take
+                    if (_status.value.phase != Phase.MAIL) _status.update { it.copy(phase = Phase.MAIL, pending = db.indexPending()) }
+                    return@withLock take
+                }
+                val acc = account.key
+                val deletes = db.indexBatch(acc, MailSync.OP_DELETE, 500)
+                if (deletes.isNotEmpty()) {
+                    solr.deleteIds(deletes.map { docId(account, it) })
+                    db.indexDone(acc, deletes)
+                    continue
+                }
+                val meta = db.indexBatch(acc, MailSync.OP_META, 200)
+                if (meta.isNotEmpty()) {
+                    applyMeta(acc, meta)
+                    continue
+                }
+                // Rows written off in this run are read past, never around: the ask grows by as many.
+                val queued = db.indexBatch(acc, MailSync.OP_UPSERT, REFILL + failed.size).filterNot { it in inFlight || it in failed }
+                if (queued.isNotEmpty()) {
+                    buffer += queued
+                    continue
+                }
+                if (inFlight.isNotEmpty()) {
+                    // Another lane holds the tail of the queue: the history is walked only once it is written,
+                    // so a message in flight is never read a second time.
+                    kotlinx.coroutines.delay(200)
+                    continue
+                }
+                // Nothing queued and nothing in flight: the history is walked one page further.
+                if (_status.value.phase != Phase.HISTORY) _status.update { it.copy(phase = Phase.HISTORY) }
+                if (!backfillPage(jmap, acc, notes)) return@withLock null
             }
-            val meta = db.indexBatch(acc, MailSync.OP_META, 200)
-            if (meta.isNotEmpty()) {
-                applyMeta(acc, meta)
-                continue
-            }
-            val ups = db.indexBatch(acc, MailSync.OP_UPSERT, BATCH)
-            if (ups.isNotEmpty()) {
-                if (_status.value.phase != Phase.MAIL) _status.value = _status.value.copy(phase = Phase.MAIL, pending = db.indexPending())
-                indexFull(jmap, solr, name, account, ups, boxes, notes)
-                val s = _status.value
-                _status.value = s.copy(pending = db.indexPending())
-                // A rewrite does not add a document, so the searchable count is read from the index, once a minute.
-                if (System.currentTimeMillis() - countedAt > 60_000L) { countedAt = System.currentTimeMillis(); refreshCounts(solr) }
-                continue
-            }
-            if (_status.value.phase != Phase.HISTORY) _status.value = _status.value.copy(phase = Phase.HISTORY)
-            if (!backfillPage(jmap, acc, notes)) return true
+            null
         }
-        return false
+
+        /** The batch is in the index: its rows leave the queue. */
+        fun done(ids: List<String>) {
+            inFlight -= ids.toSet()
+            db.indexDone(account.key, ids)
+        }
+
+        /** The batch goes back: its rows are handed out again, in this run. */
+        fun release(ids: List<String>) {
+            inFlight -= ids.toSet()
+        }
+
+        /** The batch failed: the rows stay queued for the next run, and are not tried again in this one. */
+        fun giveUp(ids: List<String>) {
+            inFlight -= ids.toSet()
+            failed += ids
+        }
     }
+
+    /**
+     * Indexes the mail of every account as a chain of three stages that run at the same time: lanes
+     * that read from Fastmail, one that asks for the vectors (a single GPU answers, so asking for
+     * more at once only queues there) and one that writes. A batch is never waited for twice.
+     * True when every account has nothing left to do.
+     */
+    private suspend fun indexMail(solr: SolrClient, name: String): Boolean {
+        val accounts = store.all()
+        if (accounts.isEmpty()) return true
+        val leftOver = java.util.concurrent.atomic.AtomicBoolean(false)
+        val failures = java.util.concurrent.atomic.AtomicInteger(0)
+
+        coroutineScope {
+            val prepared = Channel<Prepared>(PIPELINE_DEPTH)
+            val writes = Channel<Written>(PIPELINE_DEPTH)
+
+            val writer = launch {
+                for (w in writes) {
+                    try {
+                        writeBatch(solr, w)
+                        w.source?.done(w.ids)
+                        _status.update { it.copy(pending = db.indexPending()) }
+                        // A rewrite does not add a document, so the searchable count is read from the index, once a minute.
+                        if (System.currentTimeMillis() - countedAt > 60_000L) { countedAt = System.currentTimeMillis(); refreshCounts(solr) }
+                    } catch (e: kotlinx.coroutines.CancellationException) {
+                        throw e
+                    } catch (e: Exception) {
+                        android.util.Log.w("MailIndexer", "write failed", e)
+                        w.source?.giveUp(w.ids)
+                        leftOver.set(true)
+                        batchFailed = true
+                        failures.incrementAndGet()
+                    }
+                }
+            }
+
+            val embedder = launch {
+                for (p in prepared) {
+                    try {
+                        writes.send(embedBatch(name, p))
+                    } catch (e: kotlinx.coroutines.CancellationException) {
+                        throw e
+                    } catch (e: Exception) {
+                        android.util.Log.w("MailIndexer", "vectors failed", e)
+                        p.source?.giveUp(p.ids)
+                        leftOver.set(true)
+                        batchFailed = true
+                        failures.incrementAndGet()
+                    }
+                }
+                writes.close()
+            }
+
+            accounts.map { account ->
+                launch {
+                    val boxes = db.mailboxes(account.key).associateBy { it.id }
+                    val source = Source(account, Jmap(context, account), solr, notesBox(boxes.values))
+                    coroutineScope {
+                        repeat(FETCH_LANES) {
+                            launch {
+                                while (true) {
+                                    // Nothing answers any more (no network, the index is gone): the run stops here
+                                    // instead of hammering until the deadline, and the system tries it again later.
+                                    if (failures.get() >= MAX_FAILURES) { leftOver.set(true); return@launch }
+                                    // Null is both "this account is done" and "the run is out of time": the clock says which.
+                                    val ids = source.next()
+                                    if (ids == null) {
+                                        if (System.currentTimeMillis() >= runUntil) leftOver.set(true)
+                                        return@launch
+                                    }
+                                    try {
+                                        prepared.send(prepareBatch(source.jmap, solr, account, ids, boxes, source.notes, source = source))
+                                    } catch (e: kotlinx.coroutines.CancellationException) {
+                                        throw e
+                                    } catch (e: com.opensolr.mail.net.RateLimitedException) {
+                                        // Fastmail asked for a pause: the batch goes back to the queue and this lane waits it out.
+                                        source.release(ids)
+                                        kotlinx.coroutines.delay(e.retryAfterSeconds.coerceIn(1, 60) * 1000L)
+                                    } catch (e: Exception) {
+                                        android.util.Log.w("MailIndexer", "reading mail failed", e)
+                                        source.giveUp(ids)
+                                        leftOver.set(true)
+                                        batchFailed = true
+                                        failures.incrementAndGet()
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }.joinAll()
+
+            prepared.close()
+            embedder.join()
+            writer.join()
+        }
+        // Work handed back after a failure, or a lane that stopped on the deadline, is done by the next run.
+        return !leftOver.get() && db.indexPending() == 0
+    }
+
+    /** How many messages one batch carries: without vectors to ask for, the reading is the only cost. */
+    private fun batchSize(): Int = if (embeddingOff()) WORDS_BATCH else BATCH
+
+    /** True when no vector can be asked for right now: plan, monthly quota, or the embedder is down. */
+    private fun embeddingOff(): Boolean =
+        !prefs.vectorAllowed || prefs.embedPausedUntil > System.currentTimeMillis() || embedDownUntil > System.currentTimeMillis()
 
     /** Queues the next page of the whole mailbox history. False when the history has been walked to the end. */
     private suspend fun backfillPage(jmap: Jmap, acc: String, notes: Mailbox?): Boolean {
@@ -304,34 +481,53 @@ class MailIndexer(private val context: Context) {
 
     /** Full documents for [ids]: headers and text from Fastmail, vectors from Opensolr, one write. */
     private suspend fun indexFull(jmap: Jmap, solr: SolrClient, name: String, account: MailAccount, ids: List<String>, boxes: Map<String, Mailbox>, notes: Mailbox?, fresh: Map<String, String> = emptyMap()) {
+        val prepared = prepareBatch(jmap, solr, account, ids, boxes, notes, fresh)
+        writeBatch(solr, embedBatch(name, prepared))
+        db.indexDone(account.key, ids)
+    }
+
+    /**
+     * Stage one: what the index already holds about these messages and what Fastmail says about them,
+     * both asked for at the same time. Nothing is written here.
+     */
+    private suspend fun prepareBatch(
+        jmap: Jmap, solr: SolrClient, account: MailAccount, ids: List<String>,
+        boxes: Map<String, Mailbox>, notes: Mailbox?, fresh: Map<String, String> = emptyMap(), source: Source? = null,
+    ): Prepared = coroutineScope {
         val acc = account.key
+        // Without a vector to ask for, the body is read only as far as the document keeps it.
+        val bodyBytes = if (embeddingOff()) WORDS_BODY_BYTES else FULL_BODY_BYTES
         // What the attachment pass already read survives a rewrite of the document.
-        val kept = HashMap<String, String>()
-        val readBefore = HashSet<String>()
-        runCatching {
-            val r0 = solr.select(listOf(
-                "q" to "*:*", "fq" to "{!terms f=id v=\$ids}", "ids" to ids.joinToString(",") { docId(account, it) },
-                "fl" to "email_id_s,attachment_text_t,att_todo_b", "rows" to ids.size.toString(),
-            ))
-            val arr = r0.optJSONObject("response")?.optJSONArray("docs") ?: JSONArray()
-            for (i in 0 until arr.length()) {
-                val d = arr.getJSONObject(i)
-                val id = d.optString("email_id_s")
-                if (d.has("att_todo_b") && !d.optBoolean("att_todo_b")) readBefore += id
-                d.optString("attachment_text_t").takeIf { it.isNotBlank() }?.let { kept[id] = it }
+        val keeping = async(Dispatchers.IO) {
+            val kept = HashMap<String, String>()
+            val readBefore = HashSet<String>()
+            runCatching {
+                val r0 = solr.select(listOf(
+                    "q" to "*:*", "fq" to "{!terms f=id v=\$ids}", "ids" to ids.joinToString(",") { docId(account, it) },
+                    "fl" to "email_id_s,attachment_text_t,att_todo_b", "rows" to ids.size.toString(),
+                ))
+                val arr = r0.optJSONObject("response")?.optJSONArray("docs") ?: JSONArray()
+                for (i in 0 until arr.length()) {
+                    val d = arr.getJSONObject(i)
+                    val id = d.optString("email_id_s")
+                    if (d.has("att_todo_b") && !d.optBoolean("att_todo_b")) readBefore += id
+                    d.optString("attachment_text_t").takeIf { it.isNotBlank() }?.let { kept[id] = it }
+                }
             }
+            kept to readBefore
         }
-        val attText = kept + fresh
-        val attDone = readBefore + fresh.keys
-        val r = jmap.call(
-            "Email/get",
-            JSONObject().put("ids", JSONArray(ids))
-                .put("properties", JSONArray(Jmap.HEADER_PROPS.strings() + listOf("textBody", "htmlBody", "attachments", "bodyValues")))
-                .put("fetchTextBodyValues", true)
-                .put("fetchHTMLBodyValues", true)
-                .put("maxBodyValueBytes", 120_000),
-        )
-        val list = r.getJSONArray("list")
+        val reading = async(Dispatchers.IO) {
+            jmap.call(
+                "Email/get",
+                JSONObject().put("ids", JSONArray(ids))
+                    .put("properties", JSONArray(Jmap.HEADER_PROPS.strings() + listOf("textBody", "htmlBody", "attachments", "bodyValues")))
+                    .put("fetchTextBodyValues", true)
+                    .put("fetchHTMLBodyValues", true)
+                    .put("maxBodyValueBytes", bodyBytes),
+            )
+        }
+        val (kept, readBefore) = keeping.await()
+        val list = reading.await().getJSONArray("list")
         val found = HashSet<String>()
         val entries = ArrayList<Pair<Message, MailSync.Body>>()
         for (i in 0 until list.length()) {
@@ -341,28 +537,50 @@ class MailIndexer(private val context: Context) {
             if (notes != null && m.mailboxIds.all { it == notes.id }) continue
             entries += m to MailSync.parseBody(o)
         }
-        val gone = ids.filterNot { it in found }
-        if (gone.isNotEmpty()) solr.deleteIds(gone.map { docId(account, it) })
-
         // Only messages with a subject or a body get a vector; an empty one is sent nothing, not a placeholder.
-        // A text is never cut: one longer than the embedding endpoint takes stays without a vector.
-        val texts = entries.map { (m, b) -> embedTextOf(m.subject, b.text) }
-        val sendable = texts.indices.filter { texts[it].trim().toByteArray().size >= 2 && texts[it].toByteArray().size <= MAX_EMBED_BYTES }
-        val got = embed(name, sendable.map { texts[it] })
+        // A long one is cut down to what the embedding endpoint takes, so it still gets a vector.
+        val texts = entries.map { (m, b) -> fitToEmbed(embedTextOf(m.subject, b.text)) }
+        // A prepared batch waits in memory for its turn at the vectors, so it holds only what the
+        // document keeps and nothing of the message as it arrived.
+        Prepared(
+            source = source,
+            account = account,
+            ids = ids,
+            entries = entries.map { (m, b) -> m to b.copy(text = b.text.take(MAX_BODY), html = "") },
+            texts = texts,
+            attText = kept + fresh,
+            attDone = readBefore + fresh.keys,
+            gone = ids.filterNot { it in found },
+            boxes = boxes,
+            // While the history is still being walked, the index is told to commit far less often:
+            // a message read from years ago is in no hurry to be searchable.
+            commitWithinMs = if (db.state(acc, MailSync.STATE_BACKFILL).let { it != null && it != "done" }) HISTORY_COMMIT_MS else LIVE_COMMIT_MS,
+        )
+    }
+
+    /** Stage two: the vectors of a prepared batch, and the documents built around them. */
+    private suspend fun embedBatch(name: String, p: Prepared): Written {
+        val sendable = p.texts.indices.filter { p.texts[it].trim().toByteArray().size >= 2 }
+        val got = embed(name, sendable.map { p.texts[it] })
         val vectors = HashMap<Int, FloatArray>()
-        val skip = texts.indices.filter { it !in sendable }.toMutableSet()
+        val skip = p.texts.indices.filter { it !in sendable }.toMutableSet()
         if (got != null) sendable.forEachIndexed { j, i -> got[j]?.let { vectors[i] = it } ?: skip.add(i) }
         val docs = JSONArray()
-        entries.forEachIndexed { i, (m, b) ->
-            val o = doc(account, m, b, boxes, vectors[i])
+        p.entries.forEachIndexed { i, (m, b) ->
+            val o = doc(p.account, m, b, p.boxes, vectors[i])
             // Not asked again by the vector backfill: there is nothing to embed, or the embedder cannot take it.
             if (i in skip) o.put("vec_skip_b", true)
-            attText[m.id]?.let { o.put("attachment_text_t", it.take(MAX_ATTACHMENT_TEXT)) }
-            if (m.id in attDone) o.put("att_todo_b", false)
+            p.attText[m.id]?.let { o.put("attachment_text_t", it.take(MAX_ATTACHMENT_TEXT)) }
+            if (m.id in p.attDone) o.put("att_todo_b", false)
             docs.put(o)
         }
-        if (docs.length() > 0) solr.add(docs)
-        db.indexDone(acc, ids)
+        return Written(p.source, p.account, p.ids, docs, p.gone, p.commitWithinMs)
+    }
+
+    /** Stage three: the one write of a batch, and the messages that are no longer at Fastmail. */
+    private suspend fun writeBatch(solr: SolrClient, w: Written) {
+        if (w.gone.isNotEmpty()) solr.deleteIds(w.gone.map { docId(w.account, it) })
+        if (w.docs.length() > 0) solr.add(w.docs, w.commitWithinMs)
     }
 
     /** Vectors for [texts], or null when the plan or the monthly quota says no; the documents then go in with words only. */
@@ -528,7 +746,8 @@ class MailIndexer(private val context: Context) {
         // A picture never leaves the phone as it is: only a 1024 px JPEG copy is read, for what it
         // shows (caption and labels) and for the text printed in it, 10 to a call.
         images.chunked(10).forEach { chunk ->
-            val copies = chunk.map { (_, a) -> download(a)?.let { f -> shrink(f).also { f.delete() } } }
+            // The ten downloads of a chunk go at once: each one is a wait on Fastmail, not work for the phone.
+            val copies = coroutineScope { chunk.map { (_, a) -> async(Dispatchers.IO) { download(a)?.let { f -> shrink(f).also { f.delete() } } } }.awaitAll() }
             val sendable = chunk.indices.filter { copies[it] != null }
             if (sendable.isEmpty()) return@forEach
             val read = runCatching { api.imageToText(index, sendable.map { copies[it]!! }) }.getOrDefault(emptyList())
@@ -543,7 +762,7 @@ class MailIndexer(private val context: Context) {
             used += d.second.size
         }
         batches.forEach { chunk ->
-            val files = chunk.map { (_, a) -> download(a) }
+            val files = coroutineScope { chunk.map { (_, a) -> async(Dispatchers.IO) { download(a) } }.awaitAll() }
             val sendable = chunk.indices.filter { files[it] != null }
             if (sendable.isNotEmpty()) {
                 fun payload(i: Int) = chunk[i].second.name.ifBlank { "document" } to files[i]!!.readBytes()
@@ -614,9 +833,40 @@ class MailIndexer(private val context: Context) {
     companion object {
         const val VECTOR = "embeddings_vec"
         const val DOC_VERSION = 7
-        /** The most one text may weigh at batch_embed. */
-        private const val MAX_EMBED_BYTES = 50_000
+        /** The most one text may weigh at batch_embed; a longer one is cut to it. */
+        private const val MAX_EMBED_BYTES = 40_000
+
+        /** [text] at its first [MAX_EMBED_BYTES] bytes, cut between characters, never inside one. */
+        fun fitToEmbed(text: String): String {
+            val bytes = text.toByteArray()
+            if (bytes.size <= MAX_EMBED_BYTES) return text
+            var end = MAX_EMBED_BYTES
+            while (end > 0 && (bytes[end].toInt() and 0xC0) == 0x80) end--
+            return String(bytes, 0, end, Charsets.UTF_8)
+        }
         private const val BATCH = 40
+
+        /** Without vectors a batch is only a read, so it carries more messages and less of each body. */
+        private const val WORDS_BATCH = 100
+        private const val FULL_BODY_BYTES = 120_000
+        private const val WORDS_BODY_BYTES = 60_000
+
+        /** Lanes reading from Fastmail at the same time, per account; the vectors and the write have one each. */
+        private const val FETCH_LANES = 2
+
+        /** Batches waiting between two stages: enough to keep them busy, few enough to stay small in memory. */
+        private const val PIPELINE_DEPTH = 1
+
+        /** Rows taken out of the queue into memory in one go, then handed to the lanes in batches. */
+        private const val REFILL = 500
+
+        /** Failed batches after which a run gives up and lets the system start it again later. */
+        private const val MAX_FAILURES = 5
+
+        /** How long the index may wait before a write becomes searchable: a walk through old mail is in no hurry. */
+        private const val LIVE_COMMIT_MS = 5_000
+        private const val HISTORY_COMMIT_MS = 60_000
+
         private const val MAX_BODY = 30_000
         private const val MAX_ATTACHMENT_TEXT = 100_000
 

@@ -30,7 +30,8 @@ class SolrClient(private val c: IndexConnection) {
         }
     }
 
-    suspend fun add(docs: JSONArray) = update(docs.toString())
+    /** [commitWithinMs] is how long the index may wait before the write becomes searchable. */
+    suspend fun add(docs: JSONArray, commitWithinMs: Int = DEFAULT_COMMIT_MS) = update(docs.toString(), commitWithinMs)
 
     suspend fun deleteIds(ids: Collection<String>) {
         if (ids.isEmpty()) return
@@ -46,8 +47,8 @@ class SolrClient(private val c: IndexConnection) {
         Http.client.newCall(req).execute().use { r -> check(r.code, r.body?.string().orEmpty()) }
     }
 
-    private suspend fun update(body: String) = withContext(Dispatchers.IO) {
-        val req = Request.Builder().url("$base/update?commitWithin=5000&wt=json").header("Authorization", auth)
+    private suspend fun update(body: String, commitWithinMs: Int = DEFAULT_COMMIT_MS) = withContext(Dispatchers.IO) {
+        val req = Request.Builder().url("$base/update?commitWithin=$commitWithinMs&wt=json").header("Authorization", auth)
             .post(body.toRequestBody(JSON)).build()
         Http.client.newCall(req).execute().use { r -> check(r.code, r.body?.string().orEmpty()) }
     }
@@ -73,5 +74,6 @@ class SolrClient(private val c: IndexConnection) {
 
     companion object {
         private val JSON = "application/json; charset=utf-8".toMediaType()
+        private const val DEFAULT_COMMIT_MS = 5_000
     }
 }
