@@ -508,10 +508,10 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     /** A confirmed swipe delete: hidden at once, sent only when the undo bar is gone. */
-    fun deleteWithUndo(row: ThreadRow, view: View?) {
+    fun deleteWithUndo(row: ThreadRow, view: View?, onUndone: () -> Unit = {}) {
         val key = row.acc + ":" + row.threadId
         hiddenThreads[key] = true
-        offerUndo(ctx.getString(R.string.deleted_one), onUndo = { hiddenThreads.remove(key) }) {
+        offerUndo(ctx.getString(R.string.deleted_one), onUndo = { hiddenThreads.remove(key); onUndone() }) {
             val ids = deleteIds(row, view)
             withContext(Dispatchers.IO) { actions.delete(row.acc, ids) }
             delay(1500)
@@ -579,7 +579,13 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     suspend fun threadIds(row: ThreadRow, view: View? = null): kotlin.collections.List<String> = withContext(Dispatchers.IO) {
-        val msgs = db.thread(row.acc, row.threadId)
+        // A search result can be a conversation this phone does not hold yet: it is fetched first, so the
+        // action reaches every message of it instead of none.
+        var msgs = db.thread(row.acc, row.threadId)
+        if (msgs.isEmpty() && row.threadId.isNotEmpty()) {
+            store.get(row.acc)?.let { a -> runCatching { sync.fetchThread(a, row.threadId) } }
+            msgs = db.thread(row.acc, row.threadId)
+        }
         when (view) {
             null -> msgs
             is View.Box -> msgs.filter { view.mailboxId in it.mailboxIds }

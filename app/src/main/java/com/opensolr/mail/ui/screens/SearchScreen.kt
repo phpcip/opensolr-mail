@@ -215,6 +215,8 @@ fun SearchScreen(vm: AppViewModel, sheet: String?) {
     var selectedKeys by remember { mutableStateOf<Set<String>>(emptySet()) }
     val flagNow = remember { androidx.compose.runtime.mutableStateMapOf<String, Boolean>() }
     val seenNow = remember { androidx.compose.runtime.mutableStateMapOf<String, Boolean>() }
+    // Conversations deleted or archived from here stay out of the results until the index catches up.
+    val gone = remember { androidx.compose.runtime.mutableStateMapOf<String, Boolean>() }
     var confirmDelete by remember { mutableStateOf<com.opensolr.mail.data.ThreadRow?>(null) }
     fun keyOf(h: MailSearch.Hit) = h.acc + ":" + h.threadId
     fun rowOf(h: MailSearch.Hit) = com.opensolr.mail.data.ThreadRow(
@@ -233,7 +235,7 @@ fun SearchScreen(vm: AppViewModel, sheet: String?) {
         val row = rowOf(h)
         SwipeRow(
             key = row,
-            onDelete = { if (vm.prefs.confirmSwipeDelete) confirmDelete = row else vm.deleteWithUndo(row, null) },
+            onDelete = { if (vm.prefs.confirmSwipeDelete) confirmDelete = row else { gone[k] = true; vm.deleteWithUndo(row, null) { gone.remove(k) } } },
             onFlag = { flagNow[k] = !row.flagged; vm.toggleFlagWithUndo(row) },
             enabled = selectedKeys.isEmpty() && h.threadId.isNotEmpty(),
         ) {
@@ -352,7 +354,7 @@ fun SearchScreen(vm: AppViewModel, sheet: String?) {
                 Text(stringResource(R.string.empty_view), style = MaterialTheme.typography.bodyMedium, color = p.muted, modifier = Modifier.padding(24.dp))
             }
             if (groupBy == MailSearch.GroupBy.NONE) {
-                items(shownHits.filter { vm.hiddenThreads[keyOf(it)] != true }, key = { "h:" + it.acc + ":" + it.emailId }) { h -> Box(itemMotion()) { ActionHit(h) } }
+                items(shownHits.filter { vm.hiddenThreads[keyOf(it)] != true && gone[keyOf(it)] != true }, key = { "h:" + it.acc + ":" + it.emailId }) { h -> Box(itemMotion()) { ActionHit(h) } }
             } else {
                 shownGroups.forEach { g ->
                     val key = groupBy.name + ":" + g.value
@@ -361,7 +363,7 @@ fun SearchScreen(vm: AppViewModel, sheet: String?) {
                         Box(itemMotion()) { GroupHeader(groupValueLabel(groupBy, g.value, accounts), g.total, !folded) { vm.toggleFold("search_folds", key) } }
                     }
                     if (!folded) {
-                        items(g.hits.filter { vm.hiddenThreads[keyOf(it)] != true }, key = { "gh:$key:" + it.acc + ":" + it.emailId }) { h -> Box(itemMotion()) { ActionHit(h) } }
+                        items(g.hits.filter { vm.hiddenThreads[keyOf(it)] != true && gone[keyOf(it)] != true }, key = { "gh:$key:" + it.acc + ":" + it.emailId }) { h -> Box(itemMotion()) { ActionHit(h) } }
                         if (g.total > g.hits.size) item(key = "more:$key") {
                             Text(
                                 stringResource(R.string.show_all_n, String.format(Locale.US, "%,d", g.total)),
@@ -396,10 +398,10 @@ fun SearchScreen(vm: AppViewModel, sheet: String?) {
                 readIcon = if (anyUnread) R.drawable.ic_check else R.drawable.ic_unread,
                 readLabel = if (anyUnread) R.string.tool_read else R.string.tool_unread,
                 onFlag = { selectedRows.forEach { flagNow[it.acc + ":" + it.threadId] = anyUnflagged }; each { acc, ids -> vm.setFlagged(acc, ids, anyUnflagged) }; selectedKeys = emptySet() },
-                onArchive = { selectedRows.forEach { vm.hiddenThreads[it.acc + ":" + it.threadId] = true }; each { acc, ids -> vm.archive(acc, ids) }; selectedKeys = emptySet() },
+                onArchive = { selectedRows.forEach { gone[it.acc + ":" + it.threadId] = true }; each { acc, ids -> vm.archive(acc, ids) }; selectedKeys = emptySet() },
                 onDelete = {
                     val rows = selectedRows
-                    rows.forEach { vm.hiddenThreads[it.acc + ":" + it.threadId] = true }
+                    rows.forEach { gone[it.acc + ":" + it.threadId] = true }
                     vm.viewModelScopeLaunch { rows.groupBy { it.acc }.forEach { (acc, rs) -> vm.delete(acc, rs.flatMap { vm.deleteIds(it, null) }) } }
                     selectedKeys = emptySet()
                 },
@@ -415,7 +417,12 @@ fun SearchScreen(vm: AppViewModel, sheet: String?) {
             title = { Text(stringResource(R.string.confirm_delete_title)) },
             text = { Text(stringResource(R.string.confirm_delete_trash)) },
             confirmButton = {
-                androidx.compose.material3.TextButton(onClick = { Haptics.heavy(view); confirmDelete = null; vm.deleteWithUndo(row, null) }) {
+                androidx.compose.material3.TextButton(onClick = {
+                    Haptics.heavy(view); confirmDelete = null
+                    val k = row.acc + ":" + row.threadId
+                    gone[k] = true
+                    vm.deleteWithUndo(row, null) { gone.remove(k) }
+                }) {
                     Text(stringResource(R.string.delete), color = p.accent, fontWeight = FontWeight.Bold)
                 }
             },
