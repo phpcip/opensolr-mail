@@ -78,6 +78,7 @@ fun ThreadScreen(vm: AppViewModel, acc: String, threadId: String) {
     val scope = rememberCoroutineScope()
     val version by vm.db.version.collectAsState()
     var messages by remember { mutableStateOf<List<Message>>(emptyList()) }
+    var arrivedNew by remember(threadId) { mutableStateOf<Set<String>?>(null) }
     val bodies = remember { mutableStateMapOf<String, Message>() }
     val expanded = remember { mutableStateMapOf<String, Boolean>() }
     val images = remember { mutableStateMapOf<String, Boolean>() }
@@ -114,6 +115,8 @@ fun ThreadScreen(vm: AppViewModel, acc: String, threadId: String) {
     LaunchedEffect(threadId, version) {
         // Newest message on top, like the list the conversation was opened from.
         val list = vm.openThread(acc, threadId).sortedByDescending { it.received }
+        // The messages that were new when the conversation opened stay marked as new while it is open.
+        if (arrivedNew == null) arrivedNew = list.filter { !it.seen }.map { it.id }.toSet()
         messages = list
         loadedOnce = true
         if (list.isNotEmpty() && expanded.isEmpty()) {
@@ -192,7 +195,7 @@ fun ThreadScreen(vm: AppViewModel, acc: String, threadId: String) {
                 val open = expanded[m.id] == true
                 val sender = m.from.firstOrNull()?.label.orEmpty()
                 Box(Modifier.scrollMark(threadMarks, m.id, sender + "\n" + fmtDate(m.received)).padding(top = 8.dp)) {
-                    MessageHeader(m, open, onCopy = { copy(it) }) { expanded[m.id] = !open }
+                    MessageHeader(m, open, isNew = arrivedNew?.contains(m.id) == true, onCopy = { copy(it) }) { expanded[m.id] = !open }
                 }
                 androidx.compose.animation.AnimatedVisibility(
                     visible = open,
@@ -307,22 +310,25 @@ fun ThreadScreen(vm: AppViewModel, acc: String, threadId: String) {
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun MessageHeader(m: Message, open: Boolean, onCopy: (String) -> Unit, onClick: () -> Unit) {
+private fun MessageHeader(m: Message, open: Boolean, isNew: Boolean, onCopy: (String) -> Unit, onClick: () -> Unit) {
     val p = LocalPalette.current
     // Each message opens on its own tinted band with an edge, the accent one when it is open, so where one
-    // message ends and the next begins reads at a glance in both themes.
-    val rim = if (open) p.accent else p.headRim
+    // message ends and the next begins reads at a glance in both themes. A message that was new gets the
+    // accent wash, a dot, a bold sender and the date in the accent.
+    val rim = if (open || isNew) p.accent else p.headRim
     Column(
-        Modifier.fillMaxWidth().background(p.headFill)
+        Modifier.fillMaxWidth().background(if (isNew) com.opensolr.mail.ui.unreadFill() else p.headFill)
             .drawBehind { drawRect(rim, size = androidx.compose.ui.geometry.Size(4.dp.toPx(), size.height)) }
             .clickable(onClick = onClick).padding(start = 18.dp, end = 16.dp, top = 12.dp, bottom = 12.dp)
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
+            if (isNew) { com.opensolr.mail.ui.UnreadDot(); Spacer(Modifier.width(8.dp)) }
             Text(
                 m.sender?.label ?: stringResource(R.string.no_sender), style = MaterialTheme.typography.titleSmall, color = p.ink,
+                fontWeight = if (isNew) FontWeight.ExtraBold else null,
                 maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f),
             )
-            Text(fmtDate(m.received), style = MaterialTheme.typography.bodySmall, color = p.muted)
+            Text(fmtDate(m.received), style = MaterialTheme.typography.bodySmall, color = if (isNew) p.accent else p.muted, fontWeight = if (isNew) FontWeight.Bold else null)
         }
         if (open) {
             Spacer(Modifier.height(6.dp))

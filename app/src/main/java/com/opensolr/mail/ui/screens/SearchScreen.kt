@@ -630,7 +630,7 @@ private fun GroupHeader(label: String, total: Long, open: Boolean, onToggle: () 
 private fun HitRow(vm: AppViewModel, h: MailSearch.Hit, multi: Boolean, color: Int?, selected: Boolean, onClick: () -> Unit, onLongClick: () -> Unit) {
     val p = LocalPalette.current
     val view = LocalView.current
-    Column(Modifier.fillMaxWidth().background(if (selected) p.chip else if (h.flagged) p.flagFill else p.paper)) {
+    Column(Modifier.fillMaxWidth().background(if (selected) p.chip else if (h.flagged) p.flagFill else if (!h.seen) com.opensolr.mail.ui.unreadFill() else p.paper)) {
     Row(
         Modifier.fillMaxWidth().combinedClickable(onClick = onClick, onLongClick = { Haptics.tick(view, true); onLongClick() }),
         verticalAlignment = Alignment.CenterVertically,
@@ -642,15 +642,16 @@ private fun HitRow(vm: AppViewModel, h: MailSearch.Hit, multi: Boolean, color: I
         } else Avatar(if (h.from == h.fromEmail) "" else h.from, h.fromEmail)
         Column(Modifier.weight(1f).padding(start = 10.dp, end = 12.dp, top = 6.dp, bottom = 6.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
+                if (!h.seen) { com.opensolr.mail.ui.UnreadDot(); Spacer(Modifier.width(6.dp)) }
                 Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
                     Text(h.from, style = MaterialTheme.typography.bodyMedium, fontWeight = if (h.seen) FontWeight.Medium else FontWeight.Bold, color = p.ink, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
                     com.opensolr.mail.ui.CountBadge(h.threadCount)
                 }
                 Spacer(Modifier.width(6.dp))
-                Text(fmtDate(h.received), style = MaterialTheme.typography.bodySmall, color = p.muted)
+                Text(fmtDate(h.received), style = MaterialTheme.typography.bodySmall, color = if (h.seen) p.muted else p.accent, fontWeight = if (h.seen) null else FontWeight.Bold)
             }
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(h.subject.ifBlank { stringResource(R.string.no_subject) }, style = MaterialTheme.typography.bodyMedium, color = p.ink, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+                Text(h.subject.ifBlank { stringResource(R.string.no_subject) }, style = MaterialTheme.typography.bodyMedium, fontWeight = if (h.seen) null else FontWeight.Bold, color = p.ink, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
                 if (h.hasAttachment) com.opensolr.mail.ui.AttachBadge()
                 if (h.flagged) com.opensolr.mail.ui.FlagBadge()
             }

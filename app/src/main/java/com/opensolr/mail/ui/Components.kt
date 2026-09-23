@@ -28,6 +28,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
@@ -426,3 +427,13 @@ fun ConfirmDialog(title: String, text: String, action: String, onDismiss: () -> 
         textContentColor = p.muted,
     )
 }
+
+/** The mark of an unread message: a filled accent dot. */
+@Composable
+fun UnreadDot(size: androidx.compose.ui.unit.Dp = 10.dp) {
+    Box(Modifier.size(size).background(LocalPalette.current.accent, androidx.compose.foundation.shape.CircleShape))
+}
+
+/** The background of an unread row: a clear accent wash over the page, in both themes. */
+@Composable
+fun unreadFill(): Color = LocalPalette.current.accent.copy(alpha = 0.10f).compositeOver(LocalPalette.current.paper)

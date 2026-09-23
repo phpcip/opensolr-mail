@@ -363,7 +363,8 @@ internal fun SelectionBar(onRead: () -> Unit, readIcon: Int, readLabel: Int, onF
 private fun ThreadRowView(r: ThreadRow, stripe: Color?, selected: Boolean, onClick: () -> Unit, onLongClick: () -> Unit) {
     val p = LocalPalette.current
     val view = LocalView.current
-    val bg = if (selected) p.accent.copy(alpha = 0.16f).compositeOver(p.paper) else if (r.flagged) p.flagFill else p.paper
+    // Unread stands out plainly: an accent wash behind the row, a large dot, bold sender and subject, the date in the accent.
+    val bg = if (selected) p.accent.copy(alpha = 0.16f).compositeOver(p.paper) else if (r.flagged) p.flagFill else if (r.unread) com.opensolr.mail.ui.unreadFill() else p.paper
     // A conversation of several messages carries the edges of the cards under it, like a stack.
     Column(Modifier.fillMaxWidth().background(bg)) {
     Row(
@@ -384,8 +385,8 @@ private fun ThreadRowView(r: ThreadRow, stripe: Color?, selected: Boolean, onCli
         Column(Modifier.weight(1f).padding(start = 10.dp, end = 12.dp, top = 6.dp, bottom = 6.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 if (r.unread) {
-                    Box(Modifier.size(7.dp).background(p.accent, androidx.compose.foundation.shape.CircleShape))
-                    Spacer(Modifier.width(5.dp))
+                    com.opensolr.mail.ui.UnreadDot()
+                    Spacer(Modifier.width(6.dp))
                 }
                 Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
                     Text(
@@ -396,7 +397,7 @@ private fun ThreadRowView(r: ThreadRow, stripe: Color?, selected: Boolean, onCli
                     com.opensolr.mail.ui.CountBadge(r.count)
                 }
                 Spacer(Modifier.width(6.dp))
-                Text(fmtDate(r.received), style = MaterialTheme.typography.bodySmall, color = p.muted, maxLines = 1)
+                Text(fmtDate(r.received), style = MaterialTheme.typography.bodySmall, color = if (r.unread) p.accent else p.muted, fontWeight = if (r.unread) FontWeight.Bold else null, maxLines = 1)
             }
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
@@ -407,7 +408,7 @@ private fun ThreadRowView(r: ThreadRow, stripe: Color?, selected: Boolean, onCli
                 if (r.hasAttachment) com.opensolr.mail.ui.AttachBadge()
                 if (r.flagged) com.opensolr.mail.ui.FlagBadge()
             }
-            Text(r.preview, style = MaterialTheme.typography.bodySmall, color = p.muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(r.preview, style = MaterialTheme.typography.bodySmall, color = if (r.unread) p.ink else p.muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
     }
     com.opensolr.mail.ui.StackEdges(r.count)
