@@ -98,6 +98,8 @@ class MailSearch(private val context: Context) {
         val names: Map<String, String>,
         val docs: List<AiPrompt.Doc>,
         val highlights: Map<String, Map<String, List<String>>>,
+        /** How many messages this page read from the index, before they were folded into conversations: where the next page starts. */
+        val fetched: Int = 0,
     )
 
 
@@ -304,7 +306,7 @@ class MailSearch(private val context: Context) {
             val best = names[email]
             if (best == null || f.count > best.second) names[email] = m.groupValues[1] to f.count
         }
-        return Result(threadHits, threadGroups, total, smart, facets, names.mapValues { it.value.first }, aiDocs, hlMap)
+        return Result(threadHits, threadGroups, total, smart, facets, names.mapValues { it.value.first }, aiDocs, hlMap, fetched = hits.size)
     }
 
     /** Streams the AI answer to [question] over the top results of the search that was just run. */

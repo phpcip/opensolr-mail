@@ -71,6 +71,7 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.opensolr.mail.R
+import androidx.compose.runtime.mutableIntStateOf
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.Dispatchers
 import com.opensolr.mail.data.View
@@ -138,6 +139,8 @@ fun SearchScreen(vm: AppViewModel, sheet: String?) {
     var result by remember { mutableStateOf(snap?.result) }
     var extraHits by remember { mutableStateOf(snap?.extraHits ?: emptyList()) }
     var extraGroups by remember { mutableStateOf(snap?.extraGroups ?: emptyList()) }
+    // Messages read from the index by the pages after the first: pages go by messages, the list shows conversations.
+    var fetchedMore by remember { mutableIntStateOf(0) }
     var skipFirst by remember { mutableStateOf(snap != null && snap.ai == ai && snap.fresh == fresh) }
     var loading by remember { mutableStateOf(false) }
     var loadingMore by remember { mutableStateOf(false) }
@@ -157,6 +160,7 @@ fun SearchScreen(vm: AppViewModel, sheet: String?) {
             try {
                 result = vm.search.search(query, filters, groupBy)
                 extraHits = emptyList()
+                fetchedMore = 0
                 extraGroups = emptyList()
                 // A new result always opens at its top: the list would otherwise stay anchored on
                 // whatever row it showed before (the empty list's last row) and land mid-way down.
@@ -206,15 +210,18 @@ fun SearchScreen(vm: AppViewModel, sheet: String?) {
         val last = listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: -1
         total > 0 && (last >= total - 20 || (!listState.canScrollForward && listState.canScrollBackward))
     } }
-    LaunchedEffect(atEnd, shownHits.size, shownGroups.size) {
+    LaunchedEffect(atEnd, shownHits.size, shownGroups.size, fetchedMore) {
         val res = result ?: return@LaunchedEffect
         if (!atEnd || loadingMore || loading) return@LaunchedEffect
         val grouped = groupBy != MailSearch.GroupBy.NONE
-        val more = if (grouped) shownGroups.size < res.total && shownGroups.size % 20 == 0 && shownGroups.isNotEmpty() else shownHits.size < res.total
+        // Without grouping the next page starts after the messages already read, not after the conversations shown:
+        // a page whose messages all belong to conversations on screen adds no line, and the next one is asked for.
+        val read = res.fetched + fetchedMore
+        val more = if (grouped) shownGroups.size < res.total && shownGroups.size % 20 == 0 && shownGroups.isNotEmpty() else read < res.total
         if (!more) return@LaunchedEffect
         loadingMore = true
-        runCatching { vm.search.search(query, filters, groupBy, start = if (grouped) shownGroups.size else shownHits.size) }.onSuccess { next ->
-            if (grouped) extraGroups = extraGroups + next.groups else extraHits = extraHits + next.hits
+        runCatching { vm.search.search(query, filters, groupBy, start = if (grouped) shownGroups.size else read) }.onSuccess { next ->
+            if (grouped) extraGroups = extraGroups + next.groups else { extraHits = extraHits + next.hits; fetchedMore += next.fetched.coerceAtLeast(1) }
         }
         loadingMore = false
     }
