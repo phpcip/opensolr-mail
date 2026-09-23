@@ -495,8 +495,6 @@ class MailIndexer(private val context: Context) {
         boxes: Map<String, Mailbox>, notes: Mailbox?, fresh: Map<String, String> = emptyMap(), source: Source? = null,
     ): Prepared = coroutineScope {
         val acc = account.key
-        // Without a vector to ask for, the body is read only as far as the document keeps it.
-        val bodyBytes = if (embeddingOff()) WORDS_BODY_BYTES else FULL_BODY_BYTES
         // What the attachment pass already read survives a rewrite of the document.
         val keeping = async(Dispatchers.IO) {
             val kept = HashMap<String, String>()
@@ -523,7 +521,7 @@ class MailIndexer(private val context: Context) {
                     .put("properties", JSONArray(Jmap.HEADER_PROPS.strings() + listOf("textBody", "htmlBody", "attachments", "bodyValues")))
                     .put("fetchTextBodyValues", true)
                     .put("fetchHTMLBodyValues", true)
-                    .put("maxBodyValueBytes", bodyBytes),
+                    .put("maxBodyValueBytes", FULL_BODY_BYTES),
             )
         }
         val (kept, readBefore) = keeping.await()
@@ -848,10 +846,10 @@ class MailIndexer(private val context: Context) {
         }
         private const val BATCH = 40
 
-        /** Without vectors a batch is only a read, so it carries more messages and less of each body. */
+        /** Without vectors to wait for, a batch carries more messages; the body asked for never changes,
+         *  so the same text is written to the index either way. */
         private const val WORDS_BATCH = 100
         private const val FULL_BODY_BYTES = 120_000
-        private const val WORDS_BODY_BYTES = 60_000
 
         /** Lanes reading from Fastmail at the same time, per account; the vectors and the write have one each. */
         private const val FETCH_LANES = 2
