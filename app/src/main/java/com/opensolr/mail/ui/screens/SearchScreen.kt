@@ -137,9 +137,6 @@ fun SearchScreen(vm: AppViewModel, sheet: String?) {
     var loading by remember { mutableStateOf(false) }
     var loadingMore by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
-    var answer by remember { mutableStateOf<String?>(null) }
-    var answering by remember { mutableStateOf(false) }
-    var aiJob by remember { mutableStateOf<Job?>(null) }
     var showFilters by remember { mutableStateOf(sheet == "filters") }
     var showGroup by remember { mutableStateOf(sheet == "group") }
     val zonesOpen = vm.keySet("filter_zones")
@@ -148,8 +145,6 @@ fun SearchScreen(vm: AppViewModel, sheet: String?) {
     val listState = com.opensolr.mail.ui.rememberListMemory("search", result != null, { vm.positions["search"] ?: (0 to 0) }, { i, o -> vm.positions["search"] = i to o })
 
     fun run() {
-        aiJob?.cancel()
-        answer = null
         vm.searchFilters = filters
         scope.launch {
             loading = true
@@ -290,21 +285,9 @@ fun SearchScreen(vm: AppViewModel, sheet: String?) {
         com.opensolr.mail.ui.RefreshBox(refreshing = loading, onRefresh = { run() }, modifier = Modifier.weight(1f)) {
         LazyColumn(Modifier.fillMaxSize(), state = listState) {
             if (hasAnswerCard) item(key = "ai") {
-                AnswerCard(answer, answering) {
-                    answer = ""
-                    answering = true
-                    aiJob = scope.launch {
-                        try {
-                            vm.search.answer(query, filters) { chunk -> answer = (answer ?: "") + chunk }
-                        } catch (e: CancellationException) {
-                            throw e
-                        } catch (e: Exception) {
-                            answer = e.message ?: vm.text(R.string.err_generic)
-                        } finally {
-                            answering = false
-                        }
-                    }
-                }
+                // The answer shown belongs to the question typed now; another question offers a new one.
+                val mine = vm.aiQuestion == query
+                AnswerCard(if (mine) vm.aiText else null, mine && vm.aiRunning) { vm.askAi(query, filters) }
             }
             error?.let { e -> item(key = "err") { Text(e, style = MaterialTheme.typography.bodyMedium, color = p.accent, modifier = Modifier.padding(16.dp)) } }
             if (r != null && !loading && shownHits.isEmpty()) item(key = "empty") {
@@ -545,7 +528,7 @@ private fun AnswerCard(answer: String?, answering: Boolean, onAsk: () -> Unit) {
             Text(stringResource(R.string.answer).uppercase(), style = MaterialTheme.typography.labelMedium, color = p.muted)
             Spacer(Modifier.height(6.dp))
             if (answer.isNullOrBlank()) Text(stringResource(R.string.thinking), style = MaterialTheme.typography.bodyMedium, color = p.muted)
-            else Markdown(answer)
+            else androidx.compose.foundation.text.selection.SelectionContainer { Markdown(answer) }
         }
     }
 }

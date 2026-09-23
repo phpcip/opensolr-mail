@@ -402,6 +402,36 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     fun restoreToInbox(acc: String, ids: kotlin.collections.List<String>, notJunk: Boolean) = io { actions.restoreToInbox(acc, ids, notJunk) }
 
+    /**
+     * The AI answer, kept here and not in the screen: it runs to the end whatever the screen does
+     * (a refresh, opening a result, turning the phone) and is only replaced by a new question.
+     */
+    var aiQuestion by mutableStateOf<String?>(null)
+        private set
+    var aiText by mutableStateOf<String?>(null)
+        private set
+    var aiRunning by mutableStateOf(false)
+        private set
+    private var aiJob: Job? = null
+
+    fun askAi(question: String, filters: com.opensolr.mail.search.MailSearch.Filters) {
+        aiJob?.cancel()
+        aiQuestion = question
+        aiText = ""
+        aiRunning = true
+        aiJob = viewModelScope.launch {
+            try {
+                search.answer(question, filters) { chunk -> aiText = (aiText ?: "") + chunk }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                aiText = e.message ?: ctx.getString(R.string.err_generic)
+            } finally {
+                aiRunning = false
+            }
+        }
+    }
+
     /** The last swipe, still undoable: a delete waits here unsent until the bar goes, a flag is undone by flagging back. */
     data class Undo(val id: Long, val text: String, val undo: () -> Unit, val commit: suspend () -> Unit)
 
