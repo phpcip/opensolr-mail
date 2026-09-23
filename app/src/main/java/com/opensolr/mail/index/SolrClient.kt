@@ -33,12 +33,12 @@ class SolrClient(private val c: IndexConnection) {
     /** [commitWithinMs] is how long the index may wait before the write becomes searchable. */
     suspend fun add(docs: JSONArray, commitWithinMs: Int = DEFAULT_COMMIT_MS) = update(docs.toString(), commitWithinMs)
 
-    suspend fun deleteIds(ids: Collection<String>) {
+    suspend fun deleteIds(ids: Collection<String>, commitWithinMs: Int = DEFAULT_COMMIT_MS) {
         if (ids.isEmpty()) return
-        update(JSONObject().put("delete", JSONArray(ids)).toString())
+        update(JSONObject().put("delete", JSONArray(ids)).toString(), commitWithinMs)
     }
 
-    suspend fun deleteQuery(q: String) = update(JSONObject().put("delete", JSONObject().put("query", q)).toString())
+    suspend fun deleteQuery(q: String, commitWithinMs: Int = DEFAULT_COMMIT_MS) = update(JSONObject().put("delete", JSONObject().put("query", q)).toString(), commitWithinMs)
 
     /** Empties the index and commits at once. */
     suspend fun resetAll() = withContext(Dispatchers.IO) {

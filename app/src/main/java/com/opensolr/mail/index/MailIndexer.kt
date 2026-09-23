@@ -575,6 +575,35 @@ class MailIndexer(private val context: Context) {
         return Written(p.source, p.account, p.ids, docs, p.gone, p.commitWithinMs)
     }
 
+    /**
+     * What the reader just did, written to the index at once: the messages are read back from Fastmail
+     * as they are now and their documents rewritten (or removed, when they are gone for good), searchable
+     * within a second. The queued rewrite of the same messages is dropped, so nothing is done twice.
+     */
+    suspend fun applyNow(account: MailAccount, ids: List<String>, gone: Boolean) {
+        if (ids.isEmpty() || !prefs.signedIn) return
+        val connection = MailIndex(context).ensure()
+        val solr = SolrClient(connection)
+        if (gone) {
+            solr.deleteIds(ids.map { docId(account, it) }, LIVE_ACTION_MS)
+        } else {
+            val boxes = db.mailboxes(account.key).associateBy { it.id }
+            ids.chunked(BATCH).forEach { chunk ->
+                val p = prepareBatch(Jmap(context, account), solr, account, chunk, boxes, notesBox(boxes.values))
+                val w = embedBatch(connection.indexName, p)
+                writeBatch(solr, Written(w.source, w.account, w.ids, w.docs, w.gone, LIVE_ACTION_MS))
+            }
+        }
+        db.indexDone(account.key, ids)
+    }
+
+    /** A whole mailbox emptied for good: its documents leave the index at once. */
+    suspend fun emptyBoxNow(account: MailAccount, boxId: String) {
+        if (!prefs.signedIn) return
+        val solr = SolrClient(MailIndex(context).ensure())
+        solr.deleteQuery("account_s:" + indexKey(account) + " AND mailbox_ss:\"" + boxId.replace("\\", "\\\\").replace("\"", "\\\"") + "\"", LIVE_ACTION_MS)
+    }
+
     /** Stage three: the one write of a batch, and the messages that are no longer at Fastmail. */
     private suspend fun writeBatch(solr: SolrClient, w: Written) {
         if (w.gone.isNotEmpty()) solr.deleteIds(w.gone.map { docId(w.account, it) })
@@ -830,6 +859,8 @@ class MailIndexer(private val context: Context) {
 
     companion object {
         const val VECTOR = "embeddings_vec"
+        /** How soon a write made for an action of the reader is searchable. */
+        private const val LIVE_ACTION_MS = 500
         const val DOC_VERSION = 8
         /** The most one text may weigh at batch_embed; a longer one is cut to it. Three to five times
          *  the embedder's own window of 512 tokens, so the vector is the same one it would have made

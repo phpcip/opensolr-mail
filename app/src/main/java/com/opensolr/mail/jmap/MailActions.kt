@@ -125,6 +125,11 @@ class MailActions(private val context: Context) {
         val store = AccountStore.get(context)
         var ok = true
         val touched = LinkedHashSet<String>()
+        // What each applied change touched, to be written to the index right after it: ids per account,
+        // those gone for good apart, and mailboxes emptied.
+        val changed = HashMap<String, LinkedHashSet<String>>()
+        val destroyed = HashMap<String, LinkedHashSet<String>>()
+        val emptied = ArrayList<Pair<String, String>>()
         // Consecutive changes of the same kind on the same account go out as one Email/set.
         val ops = db.ops()
         var i = 0
@@ -149,6 +154,12 @@ class MailActions(private val context: Context) {
             try {
                 apply(jmap, op.kind, payload)
                 merged.forEach { db.opDone(it.id) }
+                val ids = payload.optJSONArray("ids")?.strings().orEmpty()
+                when (op.kind) {
+                    "seen", "flag", "move", "restore" -> changed.getOrPut(op.acc) { LinkedHashSet() } += ids
+                    "destroy" -> destroyed.getOrPut(op.acc) { LinkedHashSet() } += ids
+                    "empty_box" -> emptied += op.acc to payload.optString("box")
+                }
             } catch (e: Jmap.JmapError) {
                 merged.forEach { db.opDone(it.id) }
                 if (op.kind == "send") Notifier.sendFailed(context, e.message.orEmpty())
@@ -165,6 +176,15 @@ class MailActions(private val context: Context) {
         val sync = MailSync(context)
         touched.forEach { key -> store.get(key)?.let { a -> runCatching { sync.sync(a) } } }
         db.touch()
+        // The index follows at once, not at the next indexing pass.
+        if (com.opensolr.mail.data.AppPrefs(context).signedIn) {
+            val indexer = com.opensolr.mail.index.MailIndexer(context)
+            destroyed.forEach { (acc, ids) -> store.get(acc)?.let { a -> runCatching { indexer.applyNow(a, ids.toList(), gone = true) } } }
+            changed.forEach { (acc, ids) ->
+                store.get(acc)?.let { a -> runCatching { indexer.applyNow(a, (ids - destroyed[acc].orEmpty()).toList(), gone = false) } }
+            }
+            emptied.forEach { (acc, box) -> store.get(acc)?.let { a -> runCatching { indexer.emptyBoxNow(a, box) } } }
+        }
         if (touched.isNotEmpty() && com.opensolr.mail.data.AppPrefs(context).signedIn) Work.indexNow(context)
         return ok
     }
