@@ -286,4 +286,6 @@
     <string name="att_downloading">Descargando %1$s…</string>
     <string name="tool_junk">Spam</string>
     <string name="reported_junk">Marcado como spam: movido a No deseado, y lo que envíe este remitente irá también a No deseado</string>
+    <string name="reorder_folders">Reordenar carpetas</string>
+    <string name="reorder_done">Listo</string>
 </resources>

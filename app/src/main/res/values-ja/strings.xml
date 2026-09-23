@@ -286,4 +286,6 @@
     <string name="att_downloading">%1$s をダウンロード中…</string>
     <string name="tool_junk">迷惑</string>
     <string name="reported_junk">迷惑メールとして報告: 迷惑メールへ移動し、この差出人からの今後のメールも迷惑メールに入ります</string>
+    <string name="reorder_folders">フォルダを並べ替え</string>
+    <string name="reorder_done">完了</string>
 </resources>

@@ -100,12 +100,23 @@ fun MailboxesScreen(vm: AppViewModel) {
             IconBtn(R.drawable.ic_search, { vm.go(Screen.Search()) })
             IconBtn(R.drawable.ic_compose, { vm.go(Screen.Compose(ComposeInit())) })
         }
+        // Folders under All accounts: the saved order, anything new or unknown after it.
+        val allKeys = Role.entries.map { it.jmap } + "flagged"
+        var unifiedOrder by remember { mutableStateOf(vm.prefs.unifiedOrder.filter { it in allKeys }.distinct().let { it + (allKeys - it.toSet()) }) }
+        var reordering by remember { mutableStateOf(false) }
+        fun moveUnified(from: Int, to: Int) {
+            if (from !in unifiedOrder.indices || to !in unifiedOrder.indices) return
+            val list = unifiedOrder.toMutableList()
+            list.add(to, list.removeAt(from))
+            unifiedOrder = list
+            vm.prefs.unifiedOrder = list
+        }
         val listState = com.opensolr.mail.ui.rememberListMemory(vm.prefs, "mailboxes", boxes.isNotEmpty())
         val allLabel = stringResource(R.string.all_accounts)
         val scrollIndex = remember(boxes, accounts, open, allLabel) {
             com.opensolr.mail.ui.ScrollIndex().apply {
                 head(allLabel)
-                if ("unified" in open) rows(Role.entries.size + 1)
+                if ("unified" in open) rows(Role.entries.size + 2)
                 accounts.forEach { a ->
                     head(a.username)
                     if (a.key in open) {
@@ -120,21 +131,43 @@ fun MailboxesScreen(vm: AppViewModel) {
         LazyColumn(Modifier.fillMaxSize(), state = listState) {
             item(key = "h:unified") { SectionHeader(stringResource(R.string.all_accounts), null, unread["inbox"] ?: 0, "unified" in open) { toggle("unified") } }
             if ("unified" in open) {
-                items(Role.entries.toList(), key = { "u:" + it.jmap }) { role ->
-                    val v = View.Unified(role)
-                    Box(itemMotion()) { BoxRow(
-                        icon = roleIcon(role.jmap), label = stringResource(roleLabel(role)),
-                        count = if (role == Role.INBOX || role == Role.JUNK) unread[role.jmap] ?: 0 else 0,
-                        indent = 0, color = null,
-                        menu = BoxMenu(
-                            total = boxes.filter { it.role == role.jmap }.sumOf { it.total },
-                            canEmpty = role == Role.TRASH || role == Role.JUNK,
-                            onRead = { vm.readAll(v) }, onEmpty = { vm.empty(v) },
-                        ),
-                    ) { vm.home(Screen.List(v)) } }
+                // The folders in the order the reader set; in reorder mode each has arrows to move it up or down.
+                items(unifiedOrder, key = { "u:$it" }) { key ->
+                    val role = Role.entries.firstOrNull { it.jmap == key }
+                    Row(itemMotion().fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Box(Modifier.weight(1f)) {
+                            if (role == null) {
+                                BoxRow(R.drawable.ic_flag, stringResource(R.string.flagged), 0, 0, null) { if (!reordering) vm.home(Screen.List(View.Flagged)) }
+                            } else {
+                                val v = View.Unified(role)
+                                BoxRow(
+                                    icon = roleIcon(role.jmap), label = stringResource(roleLabel(role)),
+                                    count = if (role == Role.INBOX || role == Role.JUNK) unread[role.jmap] ?: 0 else 0,
+                                    indent = 0, color = null,
+                                    menu = if (reordering) null else BoxMenu(
+                                        total = boxes.filter { it.role == role.jmap }.sumOf { it.total },
+                                        canEmpty = role == Role.TRASH || role == Role.JUNK,
+                                        onRead = { vm.readAll(v) }, onEmpty = { vm.empty(v) },
+                                    ),
+                                ) { if (!reordering) vm.home(Screen.List(v)) }
+                            }
+                        }
+                        if (reordering) {
+                            val at = unifiedOrder.indexOf(key)
+                            IconBtn(R.drawable.ic_move_up, { moveUnified(at, at - 1) }, enabled = at > 0)
+                            IconBtn(R.drawable.ic_move_down, { moveUnified(at, at + 1) }, enabled = at < unifiedOrder.lastIndex)
+                        }
+                    }
                 }
-                item(key = "u:flagged") {
-                    Box(itemMotion()) { BoxRow(R.drawable.ic_flag, stringResource(R.string.flagged), 0, 0, null) { vm.home(Screen.List(View.Flagged)) } }
+                item(key = "u:reorder") {
+                    Row(
+                        Modifier.fillMaxWidth().hapticClickable { reordering = !reordering }.padding(horizontal = 16.dp, vertical = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Icon(painterResource(R.drawable.ic_reorder), null, tint = LocalPalette.current.accent, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(10.dp))
+                        Text(stringResource(if (reordering) R.string.reorder_done else R.string.reorder_folders), style = MaterialTheme.typography.labelLarge, color = LocalPalette.current.accent)
+                    }
                 }
             }
             accounts.forEach { a ->

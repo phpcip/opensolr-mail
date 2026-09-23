@@ -286,4 +286,6 @@
     <string name="att_downloading">%1$s wird heruntergeladen…</string>
     <string name="tool_junk">Spam</string>
     <string name="reported_junk">Als Spam gemeldet: in Junk verschoben, und was dieser Absender weiter schickt, landet auch in Junk</string>
+    <string name="reorder_folders">Ordner anordnen</string>
+    <string name="reorder_done">Fertig</string>
 </resources>
