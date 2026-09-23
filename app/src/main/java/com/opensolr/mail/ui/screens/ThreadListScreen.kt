@@ -41,6 +41,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.platform.LocalView
@@ -467,9 +468,15 @@ internal fun SwipeRow(key: Any, onDelete: () -> Unit, onFlag: () -> Unit, enable
     val deleteNow by androidx.compose.runtime.rememberUpdatedState(onDelete)
     val flagNow by androidx.compose.runtime.rememberUpdatedState(onFlag)
     // The swipe acts on release and never settles open, so the row springs back at once and the next swipe always counts.
+    // It counts only for a deliberate sideways drag: the row pulled at least 40% of its width. A quick flick, or a
+    // scroll that drifts sideways, springs back and does nothing.
+    val holder = remember { arrayOfNulls<androidx.compose.material3.SwipeToDismissBoxState>(1) }
+    var widthPx by remember { androidx.compose.runtime.mutableFloatStateOf(0f) }
     val state = rememberSwipeToDismissBoxState(
-        positionalThreshold = { it * 0.35f },
+        positionalThreshold = { it * 0.40f },
         confirmValueChange = { v ->
+            val pulled = runCatching { kotlin.math.abs(holder[0]!!.requireOffset()) }.getOrDefault(0f)
+            if (v != SwipeToDismissBoxValue.Settled && (widthPx <= 0f || pulled < widthPx * 0.40f)) return@rememberSwipeToDismissBoxState false
             when (v) {
                 SwipeToDismissBoxValue.EndToStart -> { Haptics.heavy(view); deleteNow() }
                 SwipeToDismissBoxValue.StartToEnd -> { Haptics.heavy(view); flagNow() }
@@ -479,7 +486,9 @@ internal fun SwipeRow(key: Any, onDelete: () -> Unit, onFlag: () -> Unit, enable
         },
     )
     run {
+        holder[0] = state
         SwipeToDismissBox(
+            modifier = Modifier.onSizeChanged { widthPx = it.width.toFloat() },
             state = state,
             enableDismissFromStartToEnd = enabled,
             enableDismissFromEndToStart = enabled,
