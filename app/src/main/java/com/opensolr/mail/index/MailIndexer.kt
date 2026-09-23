@@ -537,7 +537,7 @@ class MailIndexer(private val context: Context) {
         }
         // Only messages with a subject or a body get a vector; an empty one is sent nothing, not a placeholder.
         // A long one is cut down to what the embedding endpoint takes, so it still gets a vector.
-        val texts = entries.map { (m, b) -> fitToEmbed(embedTextOf(m.subject, b.text)) }
+        val texts = entries.map { (m, b) -> fitToEmbed(embedTextOf(m.received, m.subject, b.text)) }
         // A prepared batch waits in memory for its turn at the vectors, so it holds only what the
         // document keeps and nothing of the message as it arrived.
         Prepared(
@@ -830,7 +830,7 @@ class MailIndexer(private val context: Context) {
 
     companion object {
         const val VECTOR = "embeddings_vec"
-        const val DOC_VERSION = 7
+        const val DOC_VERSION = 8
         /** The most one text may weigh at batch_embed; a longer one is cut to it. Three to five times
          *  the embedder's own window of 512 tokens, so the vector is the same one it would have made
          *  of the whole text, in any language, without carrying the rest over the wire. */
@@ -966,14 +966,23 @@ class MailIndexer(private val context: Context) {
         }.getOrNull()
 
         /** What the vector is made of: the subject and the whole body, both plain text; empty when the message has neither. */
-        fun embedTextOf(subject: String, body: String): String {
+        /**
+         * What the vector is made of: the date the message came, as "August 05 2026" in the phone's own
+         * time, then the subject and the whole body, all plain text. Empty when the message has neither
+         * subject nor body: a date alone is never sent.
+         */
+        fun embedTextOf(received: Long, subject: String, body: String): String {
             val sub = Html.plain(subject)
             val text = Html.plain(body)
-            return when {
+            val content = when {
                 sub.isEmpty() -> text
                 text.isEmpty() -> sub
                 else -> sub + "\n\n" + text
             }
+            if (content.isEmpty()) return ""
+            if (received <= 0L) return content
+            val date = java.text.SimpleDateFormat("MMMM dd yyyy", Locale.US).apply { timeZone = TimeZone.getDefault() }.format(received)
+            return date + "\n\n" + content
         }
     }
 }
