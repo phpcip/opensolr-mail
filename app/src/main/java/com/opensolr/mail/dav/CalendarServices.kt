@@ -25,8 +25,10 @@ class CalendarSyncAdapter(context: Context) : AbstractThreadedSyncAdapter(contex
         } catch (e: AccountSignInException) {
             result.stats.numAuthExceptions++
         } catch (e: IOException) {
+            android.util.Log.w("CalendarSync", "sync failed", e)
             result.stats.numIoExceptions++
         } catch (e: Exception) {
+            android.util.Log.w("CalendarSync", "sync failed", e)
             result.stats.numParseExceptions++
         }
     }

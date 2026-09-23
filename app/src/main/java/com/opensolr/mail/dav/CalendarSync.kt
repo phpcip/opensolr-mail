@@ -47,7 +47,7 @@ class CalendarSync(private val context: Context, private val account: MailAccoun
     data class RemoteCalendar(val href: String, val name: String, val color: Int?, val ctag: String, val writable: Boolean)
 
     private suspend fun discover(): List<RemoteCalendar> {
-        val root = "https://caldav.fastmail.com/"
+        val root = "https://caldav.fastmail.com/dav/"
         val principal = dav.propfind(root, 0, PROPFIND_PRINCIPAL).firstOrNull()?.props?.get("current-user-principal")
             ?: throw IllegalStateException("No CalDAV principal")
         val principalUrl = dav.resolve(root, principal)

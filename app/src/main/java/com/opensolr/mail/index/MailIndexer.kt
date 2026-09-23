@@ -388,20 +388,37 @@ class MailIndexer(private val context: Context) {
         val texts = HashMap<String, StringBuilder>()
         emailIds.forEach { texts[it] = StringBuilder() }
         val all = perMessage.flatMap { (id, atts) -> atts.map { id to it } }
-        suspend fun bytes(a: com.opensolr.mail.data.Attachment): ByteArray {
-            val f = java.io.File(dir, a.blobId.filter { it.isLetterOrDigit() || it == '-' || it == '_' })
-            jmap.download(a.blobId, a.name, a.type, f)
-            return f.readBytes().also { f.delete() }
+        suspend fun download(a: com.opensolr.mail.data.Attachment): java.io.File? {
+            val f = java.io.File(dir, a.blobId.filter { it.isLetterOrDigit() || it == '-' || it == '_' }.take(120))
+            return runCatching { jmap.download(a.blobId, a.name, a.type, f) }.map { f.takeIf { it.length() in 1..MAX_ATTACHMENT_BYTES } }
+                .getOrNull().also { if (it == null) f.delete() }
         }
-        val images = all.filter { it.second.type.lowercase().startsWith("image/") }
+        val images = all.filter { isImage(it.second) }
         val documents = all - images.toSet()
+        // A picture never leaves the phone as it is: only a 1024 px JPEG copy goes to OCR.
         images.chunked(5).forEach { chunk ->
-            val read = runCatching { api.imageOcr(index, chunk.map { bytes(it.second) }) }.getOrDefault(emptyList())
-            chunk.forEachIndexed { i, (id, a) -> read.getOrNull(i)?.let { texts[id]?.append(a.name)?.append(":\n")?.append(it)?.append("\n\n") } }
+            val copies = chunk.map { (_, a) -> download(a)?.let { f -> shrink(f).also { f.delete() } } }
+            val sendable = chunk.indices.filter { copies[it] != null }
+            if (sendable.isEmpty()) return@forEach
+            val read = runCatching { api.imageOcr(index, sendable.map { copies[it]!! }) }.getOrDefault(emptyList())
+            sendable.forEachIndexed { j, i -> val (id, a) = chunk[i]; read.getOrNull(j)?.let { texts[id]?.append(a.name)?.append(":\n")?.append(it)?.append("\n\n") } }
         }
-        documents.chunked(5).forEach { chunk ->
-            val read = api.docToText(index, chunk.map { (_, a) -> a.name.ifBlank { "document" } to bytes(a) })
-            chunk.forEachIndexed { i, (id, a) -> read.getOrNull(i)?.let { texts[id]?.append(a.name)?.append(":\n")?.append(it)?.append("\n\n") } }
+        // Documents go at most 5 and 25 MB to a call.
+        val batches = ArrayList<MutableList<Pair<String, com.opensolr.mail.data.Attachment>>>()
+        var used = 0L
+        documents.forEach { d ->
+            if (batches.isEmpty() || batches.last().size >= 5 || used + d.second.size > 25L * 1024 * 1024) { batches.add(ArrayList()); used = 0 }
+            batches.last() += d
+            used += d.second.size
+        }
+        batches.forEach { chunk ->
+            val files = chunk.map { (_, a) -> download(a) }
+            val sendable = chunk.indices.filter { files[it] != null }
+            if (sendable.isNotEmpty()) {
+                val read = api.docToText(index, sendable.map { i -> chunk[i].second.name.ifBlank { "document" } to files[i]!!.readBytes() })
+                sendable.forEachIndexed { j, i -> val (id, a) = chunk[i]; read.getOrNull(j)?.let { texts[id]?.append(a.name)?.append(":\n")?.append(it)?.append("\n\n") } }
+            }
+            files.forEach { it?.delete() }
         }
         return texts.mapValues { it.value.toString().trim() }
     }
@@ -457,22 +474,64 @@ class MailIndexer(private val context: Context) {
         fun domainOf(email: String): String? = email.substringAfter('@', "").lowercase().trim().takeIf { it.contains('.') }
 
         /** What the attachment pass can read: pictures (OCR) and documents (text), never archives. */
+        /**
+         * What the attachment pass reads, and nothing else: pictures (any format the phone decodes,
+         * sent as a 1024 px copy) and text documents (PDF, Word, RTF, OpenDocument text, plain text,
+         * HTML), 20 MB at most. Archives, spreadsheets, presentations and anything unknown are never read.
+         */
         fun readable(a: com.opensolr.mail.data.Attachment): Boolean {
-            val type = a.type.lowercase()
+            if (a.inline || a.size <= 0 || a.size > MAX_ATTACHMENT_BYTES) return false
+            val type = a.type.lowercase().substringBefore(';').trim()
             val ext = a.name.substringAfterLast('.', "").lowercase()
-            if (a.size <= 0 || a.size > 10L * 1024 * 1024) return false
-            if (type.startsWith("image/")) return !a.inline && (type.contains("jpeg") || type.contains("png") || ext in setOf("jpg", "jpeg", "png"))
+            if (isImage(a)) return true
+            if (type.isNotEmpty() && type != "application/octet-stream" && type !in DOC_TYPES) return false
             return ext in DOC_EXT || type in DOC_TYPES
         }
 
-        private val DOC_EXT = setOf("pdf", "doc", "docx", "xls", "xlsx", "ppt", "pptx", "odt", "ods", "odp", "txt", "csv", "html", "htm", "rtf")
+        fun isImage(a: com.opensolr.mail.data.Attachment): Boolean {
+            val type = a.type.lowercase().substringBefore(';').trim()
+            val ext = a.name.substringAfterLast('.', "").lowercase()
+            return (type.startsWith("image/") && type != "image/svg+xml") || (type == "application/octet-stream" && ext in IMAGE_EXT)
+        }
+
+        private const val MAX_ATTACHMENT_BYTES = 20L * 1024 * 1024
+        private const val OCR_EDGE_PX = 1024
+        private const val MAX_SOURCE_PIXELS = 200_000_000L
+        private val IMAGE_EXT = setOf("jpg", "jpeg", "png", "webp", "heic", "heif", "gif", "bmp", "avif")
+        private val DOC_EXT = setOf("pdf", "doc", "docx", "rtf", "odt", "txt", "html", "htm")
         private val DOC_TYPES = setOf(
             "application/pdf", "application/msword", "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-            "application/vnd.ms-excel", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            "application/vnd.ms-powerpoint", "application/vnd.openxmlformats-officedocument.presentationml.presentation",
-            "application/vnd.oasis.opendocument.text", "application/vnd.oasis.opendocument.spreadsheet",
-            "application/vnd.oasis.opendocument.presentation", "text/plain", "text/csv", "text/html",
+            "application/rtf", "text/rtf", "application/vnd.oasis.opendocument.text", "text/plain", "text/html",
         )
+
+        /**
+         * A 1024 px JPEG of a picture file, turned upright from its EXIF, decoded at the smallest
+         * sample size that still covers 1024 px so a huge picture never fills the memory. Null for
+         * anything the phone cannot decode or that claims more pixels than a real photo has.
+         */
+        fun shrink(file: java.io.File): ByteArray? = runCatching {
+            val bounds = android.graphics.BitmapFactory.Options().apply { inJustDecodeBounds = true }
+            android.graphics.BitmapFactory.decodeFile(file.path, bounds)
+            val w = bounds.outWidth
+            val h = bounds.outHeight
+            if (w <= 0 || h <= 0 || w.toLong() * h > MAX_SOURCE_PIXELS) return null
+            var sample = 1
+            while (maxOf(w, h) / (sample * 2) >= OCR_EDGE_PX) sample *= 2
+            val decoded = android.graphics.BitmapFactory.decodeFile(file.path, android.graphics.BitmapFactory.Options().apply { inSampleSize = sample }) ?: return null
+            val rotation = runCatching { androidx.exifinterface.media.ExifInterface(file.path).rotationDegrees }.getOrDefault(0)
+            val longEdge = maxOf(decoded.width, decoded.height)
+            val scale = if (longEdge > OCR_EDGE_PX) OCR_EDGE_PX.toFloat() / longEdge else 1f
+            val matrix = android.graphics.Matrix().apply {
+                if (scale != 1f) postScale(scale, scale)
+                if (rotation != 0) postRotate(rotation.toFloat())
+            }
+            val upright = if (matrix.isIdentity) decoded else android.graphics.Bitmap.createBitmap(decoded, 0, 0, decoded.width, decoded.height, matrix, true)
+            val out = java.io.ByteArrayOutputStream()
+            upright.compress(android.graphics.Bitmap.CompressFormat.JPEG, 85, out)
+            if (upright !== decoded) upright.recycle()
+            decoded.recycle()
+            out.toByteArray()
+        }.getOrNull()
 
         /** What the vector is made of: who, to whom, about what, and the new words of the message, without quoted history or signature. */
         fun embedTextOf(subject: String, from: String, to: String, body: String, attachments: List<String> = emptyList(), attachmentText: String = ""): String {

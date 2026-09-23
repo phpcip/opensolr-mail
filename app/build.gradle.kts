@@ -116,6 +116,7 @@ dependencies {
     implementation(libs.androidx.browser)
     implementation(libs.androidx.work.runtime.ktx)
     implementation(libs.okhttp)
+    implementation(libs.androidx.exifinterface)
     implementation(platform(libs.firebase.bom))
     implementation(libs.firebase.messaging)
     implementation(libs.androidx.fragment)
