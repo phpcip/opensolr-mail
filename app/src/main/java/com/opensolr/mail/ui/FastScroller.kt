@@ -56,6 +56,9 @@ private val Corner = RoundedCornerShape(2.dp)
 private val THUMB = 72.dp
 private val LABEL_LIFT = 64.dp
 private val TRACK = 36.dp
+/** The area that takes the finger around the thumb: wider and taller than the thumb, so it is easy to catch. */
+private val GRAB_W = 56.dp
+private val GRAB_PAD = 28.dp
 private val LABEL_ROOM = 260.dp
 private const val SNAP_ITEMS = 4
 
@@ -115,7 +118,7 @@ fun BoxScope.FastScroller(state: LazyListState, index: ScrollIndex, minItems: In
     val n = index.labels.size
     val alpha by animateFloatAsState(
         targetValue = if (dragging || state.isScrollInProgress) 1f else 0f,
-        animationSpec = tween(durationMillis = if (dragging) 0 else 450),
+        animationSpec = tween(durationMillis = if (dragging) 0 else 450, delayMillis = if (dragging || state.isScrollInProgress) 0 else 1500),
         label = "fastScrollerAlpha",
     )
     if (n < minItems) return
@@ -203,12 +206,12 @@ fun BoxScope.FastScroller(state: LazyListState, index: ScrollIndex, minItems: In
         val thumbTop = travelPx * fraction
         val top by androidx.compose.runtime.rememberUpdatedState(thumbTop)
         if (alpha > 0.05f || dragging) Box(
-            Modifier.align(Alignment.TopEnd).offset { IntOffset(0, thumbTop.roundToInt()) }.width(TRACK).height(THUMB).pointerInput(travelPx) {
+            Modifier.align(Alignment.TopEnd).offset { IntOffset(0, (thumbTop - GRAB_PAD.toPx()).roundToInt()) }.width(GRAB_W).height(THUMB + GRAB_PAD * 2).pointerInput(travelPx) {
                 detectVerticalDragGestures(
-                    onDragStart = { o -> dragging = true; aimed = -1; Haptics.tick(view, false); aimAt(top + o.y) },
+                    onDragStart = { o -> dragging = true; aimed = -1; Haptics.tick(view, false); aimAt(top - GRAB_PAD.toPx() + o.y) },
                     onDragEnd = { dragging = false; aimed = -1 },
                     onDragCancel = { dragging = false; aimed = -1 },
-                    onVerticalDrag = { change, _ -> change.consume(); aimAt(top + change.position.y) },
+                    onVerticalDrag = { change, _ -> change.consume(); aimAt(top - GRAB_PAD.toPx() + change.position.y) },
                 )
             },
         )
@@ -240,7 +243,7 @@ fun BoxScope.FastScroller(state: ScrollState, marks: ScrollMarks, minScreens: Fl
     var aimedPx by remember { mutableIntStateOf(-1) }
     val alpha by animateFloatAsState(
         targetValue = if (dragging || state.isScrollInProgress) 1f else 0f,
-        animationSpec = tween(durationMillis = if (dragging) 0 else 450),
+        animationSpec = tween(durationMillis = if (dragging) 0 else 450, delayMillis = if (dragging || state.isScrollInProgress) 0 else 1500),
         label = "columnScrollerAlpha",
     )
     val density = LocalDensity.current
@@ -275,12 +278,12 @@ fun BoxScope.FastScroller(state: ScrollState, marks: ScrollMarks, minScreens: Fl
         // Only the thumb takes the finger, and only while it shows.
         val top by androidx.compose.runtime.rememberUpdatedState(thumbY)
         if (alpha > 0.05f || dragging) Box(
-            Modifier.align(Alignment.TopEnd).offset { IntOffset(0, thumbY.roundToInt()) }.width(TRACK).height(THUMB).pointerInput(travelPx) {
+            Modifier.align(Alignment.TopEnd).offset { IntOffset(0, (thumbY - GRAB_PAD.toPx()).roundToInt()) }.width(GRAB_W).height(THUMB + GRAB_PAD * 2).pointerInput(travelPx) {
                 detectVerticalDragGestures(
-                    onDragStart = { o -> dragging = true; aimedPx = -1; Haptics.tick(view, false); aimAt(top + o.y) },
+                    onDragStart = { o -> dragging = true; aimedPx = -1; Haptics.tick(view, false); aimAt(top - GRAB_PAD.toPx() + o.y) },
                     onDragEnd = { dragging = false; aimedPx = -1 },
                     onDragCancel = { dragging = false; aimedPx = -1 },
-                    onVerticalDrag = { change, _ -> change.consume(); aimAt(top + change.position.y) },
+                    onVerticalDrag = { change, _ -> change.consume(); aimAt(top - GRAB_PAD.toPx() + change.position.y) },
                 )
             },
         )

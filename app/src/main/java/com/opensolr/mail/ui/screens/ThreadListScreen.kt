@@ -167,11 +167,13 @@ fun ThreadListScreen(vm: AppViewModel, view: View) {
     // so neither scrolling nor the fast scroller ever reaches a bottom that is not the real one.
     val atEnd by remember { derivedStateOf {
         val total = listState.layoutInfo.totalItemsCount
-        listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index?.let { it >= minOf(total / 4, total - 3) } == true
+        // Only once the reader has moved off the top: an untouched short list (folded groups) never pulls the history.
+        listState.canScrollBackward &&
+            listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index?.let { it >= minOf(total / 4, total - 3) } == true
     } }
     LaunchedEffect(atEnd, rows.size, olderTick) {
         // More is loaded only when the reader scrolled to the end, never on its own: with folded groups the list is short and would otherwise pull the whole history.
-        if (!atEnd || !loaded || loadingOlder || !listState.canScrollBackward) return@LaunchedEffect
+        if (!atEnd || !loaded || loadingOlder) return@LaunchedEffect
         if (rows.size >= limit) {
             limit += PAGE
         } else if (!exhausted) {
