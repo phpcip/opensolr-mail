@@ -245,4 +245,6 @@
     <string name="undo_after_swipe_flag">Undo bar after flagging with a swipe</string>
     <string name="thread_gone">This conversation is no longer in your mailbox.</string>
     <string name="notif_searchable">%1$s messages searchable</string>
+    <string name="show_all_people">Show all %1$d</string>
+    <string name="hide_all">Hide</string>
 </resources>

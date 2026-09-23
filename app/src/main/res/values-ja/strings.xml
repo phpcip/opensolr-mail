@@ -236,4 +236,6 @@
     <string name="undo_after_swipe_flag">スワイプでフラグを付けた後に元に戻すバーを表示</string>
     <string name="thread_gone">このスレッドはメールボックスにありません。</string>
     <string name="notif_searchable">%1$s 件検索可能</string>
+    <string name="show_all_people">%1$d 件すべて表示</string>
+    <string name="hide_all">隠す</string>
 </resources>

@@ -30,6 +30,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
@@ -107,7 +108,8 @@ fun ThreadScreen(vm: AppViewModel, acc: String, threadId: String) {
 
     var loadedOnce by remember(threadId) { mutableStateOf(false) }
     LaunchedEffect(threadId, version) {
-        val list = vm.openThread(acc, threadId)
+        // Newest message on top, like the list the conversation was opened from.
+        val list = vm.openThread(acc, threadId).sortedByDescending { it.received }
         messages = list
         loadedOnce = true
         if (list.isNotEmpty() && expanded.isEmpty()) {
@@ -115,7 +117,7 @@ fun ThreadScreen(vm: AppViewModel, acc: String, threadId: String) {
             if (remembered != null) remembered.forEach { expanded[it] = true }
             else {
                 list.forEach { m -> if (!m.seen) expanded[m.id] = true }
-                expanded[list.last().id] = true
+                expanded[list.first().id] = true
             }
         }
         val unread = list.filter { !it.seen }.map { it.id }
@@ -129,8 +131,8 @@ fun ThreadScreen(vm: AppViewModel, acc: String, threadId: String) {
         if (missing.isNotEmpty()) vm.bodies(missing).forEach { bodies[it.id] = it }
     }
 
-    val latest = messages.lastOrNull()
-    val subject = messages.firstOrNull()?.subject.orEmpty()
+    val latest = messages.firstOrNull()
+    val subject = messages.lastOrNull()?.subject.orEmpty()
 
     fun reply(kind: Replies.Kind, target: Message? = null) {
         val m = target ?: latest ?: return
@@ -301,12 +303,22 @@ private fun MessageHeader(m: Message, open: Boolean, onCopy: (String) -> Unit, o
 private fun AddressLine(label: String, list: List<com.opensolr.mail.data.Address>, onCopy: (String) -> Unit) {
     if (list.isEmpty()) return
     val p = LocalPalette.current
+    // Two people shown; the rest behind Show all, folded back with Hide.
+    var all by androidx.compose.runtime.saveable.rememberSaveable(label, list.size) { mutableStateOf(false) }
+    val shown = if (all || list.size <= 2) list else list.take(2)
     Row(Modifier.padding(top = 3.dp)) {
         Text(label, style = MaterialTheme.typography.bodySmall, color = p.muted, modifier = Modifier.width(44.dp).padding(top = 5.dp))
         FlowRow(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            list.forEach { a ->
+            shown.forEach { a ->
                 if (a.name.isNotBlank() && !a.name.trim().equals(a.email.trim(), true)) CopyPill(a.name, strong = true) { onCopy(a.name) }
                 CopyPill(a.email, strong = false) { onCopy(a.email) }
+            }
+            if (list.size > 2) {
+                Text(
+                    if (all) stringResource(R.string.hide_all) else stringResource(R.string.show_all_people, list.size),
+                    style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold, color = p.accent,
+                    modifier = Modifier.hapticClickable { all = !all }.padding(horizontal = 6.dp, vertical = 3.dp),
+                )
             }
         }
     }

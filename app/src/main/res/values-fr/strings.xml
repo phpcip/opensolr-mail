@@ -236,4 +236,6 @@
     <string name="undo_after_swipe_flag">Barre Annuler après un signalement par balayage</string>
     <string name="thread_gone">Cette conversation n\'est plus dans votre boîte.</string>
     <string name="notif_searchable">%1$s messages consultables</string>
+    <string name="show_all_people">Afficher les %1$d</string>
+    <string name="hide_all">Masquer</string>
 </resources>

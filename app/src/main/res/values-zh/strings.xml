@@ -236,4 +236,6 @@
     <string name="undo_after_swipe_flag">滑动加旗标后显示撤销栏</string>
     <string name="thread_gone">此会话已不在你的邮箱中。</string>
     <string name="notif_searchable">%1$s 封邮件可搜索</string>
+    <string name="show_all_people">显示全部 %1$d 个</string>
+    <string name="hide_all">收起</string>
 </resources>

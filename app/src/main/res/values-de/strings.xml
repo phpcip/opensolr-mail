@@ -236,4 +236,6 @@
     <string name="undo_after_swipe_flag">Rückgängig-Leiste nach Markieren per Wischen</string>
     <string name="thread_gone">Diese Unterhaltung ist nicht mehr in deinem Postfach.</string>
     <string name="notif_searchable">%1$s Nachrichten durchsuchbar</string>
+    <string name="show_all_people">Alle %1$d zeigen</string>
+    <string name="hide_all">Ausblenden</string>
 </resources>

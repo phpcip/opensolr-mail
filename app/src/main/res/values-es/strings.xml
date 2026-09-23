@@ -236,4 +236,6 @@
     <string name="undo_after_swipe_flag">Barra de deshacer tras marcar al deslizar</string>
     <string name="thread_gone">Esta conversación ya no está en tu buzón.</string>
     <string name="notif_searchable">%1$s mensajes buscables</string>
+    <string name="show_all_people">Mostrar los %1$d</string>
+    <string name="hide_all">Ocultar</string>
 </resources>

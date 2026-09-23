@@ -236,4 +236,6 @@
     <string name="undo_after_swipe_flag">Bară de Undo după flag cu swipe</string>
     <string name="thread_gone">Conversația nu mai e în căsuța ta.</string>
     <string name="notif_searchable">%1$s mesaje căutabile</string>
+    <string name="show_all_people">Arată toți %1$d</string>
+    <string name="hide_all">Ascunde</string>
 </resources>
