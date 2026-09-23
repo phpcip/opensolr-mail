@@ -10,6 +10,7 @@ import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.viewinterop.AndroidView
 import com.opensolr.mail.data.AccountStore
@@ -24,8 +25,11 @@ import java.io.File
 fun MailWebView(html: String, acc: String, attachments: List<Attachment>, remoteImages: Boolean, modifier: Modifier = Modifier) {
     val dark = androidx.compose.foundation.isSystemInDarkTheme()
     val paper = com.opensolr.mail.ui.theme.LocalPalette.current.paper
+    // A zoomed message moves freely: what the WebView cannot scroll itself (up and down, since it is as tall as its
+    // content) passes to the conversation's scroll through nested scrolling, sideways stays in the WebView.
+    val interop = androidx.compose.ui.platform.rememberNestedScrollInteropConnection()
     AndroidView(
-        modifier = modifier,
+        modifier = modifier.nestedScroll(interop),
         factory = { ctx ->
             WebView(ctx).apply {
                 setBackgroundColor(paper.toArgb())
@@ -42,6 +46,7 @@ fun MailWebView(html: String, acc: String, attachments: List<Attachment>, remote
                 settings.builtInZoomControls = true
                 settings.displayZoomControls = false
                 isVerticalScrollBarEnabled = false
+                isNestedScrollingEnabled = true
                 webViewClient = MailClient(ctx, acc, attachments)
             }
         },
@@ -69,6 +74,11 @@ fun MailWebView(html: String, acc: String, attachments: List<Attachment>, remote
 }
 
 private class MailClient(private val context: Context, private val acc: String, var attachments: List<Attachment>) : WebViewClient() {
+
+    /** After a zoom the WebView takes the height of its zoomed content, so the whole message can be reached. */
+    override fun onScaleChanged(view: WebView, oldScale: Float, newScale: Float) {
+        view.post { view.requestLayout() }
+    }
 
     override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
         val uri = request.url
