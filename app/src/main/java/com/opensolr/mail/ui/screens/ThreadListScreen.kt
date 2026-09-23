@@ -41,6 +41,12 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import kotlinx.coroutines.launch
+import androidx.compose.runtime.rememberCoroutineScope
+import kotlin.math.roundToInt
+import androidx.compose.foundation.layout.offset
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.compositeOver
@@ -465,47 +471,69 @@ internal fun SwipeRow(key: Any, onDelete: () -> Unit, onFlag: () -> Unit, enable
     androidx.compose.runtime.key(key) {
     val p = LocalPalette.current
     val view = LocalView.current
+    val density = androidx.compose.ui.platform.LocalDensity.current
     val deleteNow by androidx.compose.runtime.rememberUpdatedState(onDelete)
     val flagNow by androidx.compose.runtime.rememberUpdatedState(onFlag)
-    // The swipe acts on release and never settles open, so the row springs back at once and the next swipe always counts.
-    // It counts only for a deliberate sideways drag: the row pulled at least 40% of its width. A quick flick, or a
-    // scroll that drifts sideways, springs back and does nothing.
-    val holder = remember { arrayOfNulls<androidx.compose.material3.SwipeToDismissBoxState>(1) }
+    val scope = rememberCoroutineScope()
+    // The row stays put for the first stretch, then follows the finger. Two feedbacks on the way: a light one when
+    // the swipe is felt, a strong one when it is armed; only a release past the armed point acts, anything less
+    // springs back and does nothing.
+    val dead = with(density) { 28.dp.toPx() }
     var widthPx by remember { androidx.compose.runtime.mutableFloatStateOf(0f) }
-    val state = rememberSwipeToDismissBoxState(
-        positionalThreshold = { it * 0.40f },
-        confirmValueChange = { v ->
-            val pulled = runCatching { kotlin.math.abs(holder[0]!!.requireOffset()) }.getOrDefault(0f)
-            if (v != SwipeToDismissBoxValue.Settled && (widthPx <= 0f || pulled < widthPx * 0.40f)) return@rememberSwipeToDismissBoxState false
-            when (v) {
-                SwipeToDismissBoxValue.EndToStart -> { Haptics.heavy(view); deleteNow() }
-                SwipeToDismissBoxValue.StartToEnd -> { Haptics.heavy(view); flagNow() }
-                SwipeToDismissBoxValue.Settled -> Unit
+    var raw by remember { androidx.compose.runtime.mutableFloatStateOf(0f) }
+    var stage by remember { androidx.compose.runtime.mutableIntStateOf(0) }
+    val shown = remember { androidx.compose.animation.core.Animatable(0f) }
+    fun shownOf(r: Float): Float = kotlin.math.sign(r) * (kotlin.math.abs(r) - dead).coerceAtLeast(0f)
+    fun stageOf(x: Float): Int = when {
+        widthPx <= 0f -> 0
+        kotlin.math.abs(x) >= widthPx * 0.40f -> 2
+        kotlin.math.abs(x) >= widthPx * 0.20f -> 1
+        else -> 0
+    }
+    fun settle() { raw = 0f; stage = 0; scope.launch { shown.animateTo(0f, androidx.compose.animation.core.tween(180)) } }
+    Box(
+        Modifier.fillMaxWidth().onSizeChanged { widthPx = it.width.toFloat() }.then(
+            if (!enabled) Modifier else Modifier.pointerInput(Unit) {
+                detectHorizontalDragGestures(
+                    onDragStart = { raw = 0f; stage = 0 },
+                    onDragEnd = {
+                        val x = shown.value
+                        if (stageOf(x) == 2) { if (x < 0) deleteNow() else flagNow() }
+                        settle()
+                    },
+                    onDragCancel = { settle() },
+                    onHorizontalDrag = { change, dx ->
+                        change.consume()
+                        raw += dx
+                        val x = shownOf(raw)
+                        val next = stageOf(x)
+                        if (next != stage) {
+                            if (next == 2) Haptics.heavy(view) else if (next > stage) Haptics.tick(view, false) else Haptics.tick(view, false)
+                            stage = next
+                        }
+                        scope.launch { shown.snapTo(x) }
+                    },
+                )
             }
-            false
-        },
-    )
-    run {
-        holder[0] = state
-        SwipeToDismissBox(
-            modifier = Modifier.onSizeChanged { widthPx = it.width.toFloat() },
-            state = state,
-            enableDismissFromStartToEnd = enabled,
-            enableDismissFromEndToStart = enabled,
-            backgroundContent = {
-                val toLeft = state.dismissDirection == SwipeToDismissBoxValue.EndToStart
-                Box(
-                    Modifier.fillMaxSize().background(if (toLeft) p.accentFill else Color(0xFFF5C518)).padding(horizontal = 24.dp),
-                    contentAlignment = if (toLeft) Alignment.CenterEnd else Alignment.CenterStart,
-                ) {
-                    Icon(
-                        painterResource(if (toLeft) R.drawable.ic_delete else R.drawable.ic_flag), null,
-                        tint = if (toLeft) p.paper else Color(0xFF1A1A1A), modifier = Modifier.size(24.dp),
-                    )
-                }
-            },
-            content = { content() },
-        )
+        ),
+    ) {
+        val x = shown.value
+        if (x != 0f) {
+            val toLeft = x < 0
+            val armed = stageOf(x) == 2
+            val fill = if (toLeft) p.accentFill else Color(0xFFF5C518)
+            Box(
+                Modifier.matchParentSize().background(if (armed) fill else fill.copy(alpha = 0.35f)).padding(horizontal = 24.dp),
+                contentAlignment = if (toLeft) Alignment.CenterEnd else Alignment.CenterStart,
+            ) {
+                Icon(
+                    painterResource(if (toLeft) R.drawable.ic_delete else R.drawable.ic_flag), null,
+                    tint = if (toLeft) (if (armed) p.paper else p.ink) else Color(0xFF1A1A1A),
+                    modifier = Modifier.size(if (armed) 28.dp else 22.dp),
+                )
+            }
+        }
+        Box(Modifier.offset { androidx.compose.ui.unit.IntOffset(x.roundToInt(), 0) }) { content() }
     }
     }
 }
