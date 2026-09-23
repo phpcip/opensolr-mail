@@ -75,6 +75,8 @@ class MailIndexer(private val context: Context) {
                 prefs.limits = it
                 prefs.vectorAllowed = it.vectorAllowed
                 if (!it.aiFull && prefs.embedPausedUntil > System.currentTimeMillis()) prefs.embedPausedUntil = 0
+                // Allowance already spent: no batch is sent only to be refused.
+                if (it.vectorAllowed && it.aiFull) prefs.embedPausedUntil = nextMonth()
             }
             val sp = context.getSharedPreferences("index_status", Context.MODE_PRIVATE)
             if (sp.getInt("doc_version", 1) < DOC_VERSION || sp.getBoolean("reindex_all", false)) {
