@@ -941,6 +941,9 @@ private fun HitRow(vm: AppViewModel, h: MailSearch.Hit, folders: List<Pair<Strin
     }
 }
 
+/** The order of the filter zones in the sheet. */
+private val ZONE_ORDER = listOf("year_i", "dates", "mailbox_name_ss", "account_email_s", "attachment_ext_ss", "is", "from_s", "to_ss", "domains_ss", "weekday_i")
+
 /** Folder colours: the same for a role in every account, a steady one per name for the rest; all dark enough for white text. */
 private fun folderColor(role: String?, name: String): Color = when (role ?: name.lowercase().let { n ->
     when (n) { "inbox" -> "inbox"; "sent", "sent items", "sent mail" -> "sent"; "archive" -> "archive"; "drafts" -> "drafts"; "trash", "deleted items" -> "trash"; "spam", "junk", "junk mail" -> "junk"; else -> null }
@@ -1012,7 +1015,7 @@ private fun FilterSheet(
         Box(Modifier.fillMaxWidth()) {
             androidx.compose.runtime.CompositionLocalProvider(com.opensolr.mail.ui.LocalScrollMarks provides sheetMarks) {
             Column(Modifier.fillMaxWidth().verticalScroll(sheetScroll).padding(horizontal = 20.dp).navigationBarsPadding()) {
-            val allZones = listOf("dates", "is") + MailSearch.Filters.FACETS
+            val allZones = ZONE_ORDER
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(stringResource(R.string.filters), style = MaterialTheme.typography.headlineSmall, color = p.ink, modifier = Modifier.weight(1f))
                 val anyOpen = allZones.any { it in open }
@@ -1022,32 +1025,39 @@ private fun FilterSheet(
             SheetActions(total, onClear = { onChange(MailSearch.Filters()) }, onDone = onDismiss)
             Spacer(Modifier.height(8.dp))
 
-            Zone(stringResource(R.string.f_dates), if (current.dates != null) 1 else 0, "dates" in open, { onToggle("dates") }) {
-                FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    SheetChip(current.dates?.let { fmtDate(it.from).take(10) + " – " + fmtDate(it.to).take(10) } ?: stringResource(R.string.f_choose_dates), current.dates != null) { picking = true }
-                    if (current.dates != null) SheetChip(stringResource(R.string.f_any_date), false) { onChange(current.copy(dates = null)) }
-                }
-            }
-
-            val switchesOn = listOf(current.unread, current.flagged, current.answered, current.attachments, current.attachmentText, current.includeTrash).count { it }
-            Zone(stringResource(R.string.f_message_is), switchesOn, "is" in open, { onToggle("is") }) {
-                FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    SheetChip(stringResource(R.string.unread), current.unread) { onChange(current.copy(unread = !current.unread)) }
-                    SheetChip(stringResource(R.string.flagged), current.flagged) { onChange(current.copy(flagged = !current.flagged)) }
-                    SheetChip(stringResource(R.string.f_answered), current.answered) { onChange(current.copy(answered = !current.answered)) }
-                    SheetChip(stringResource(R.string.with_attachments), current.attachments) { onChange(current.copy(attachments = !current.attachments)) }
-                    SheetChip(stringResource(R.string.f_attachment_text), current.attachmentText) { onChange(current.copy(attachmentText = !current.attachmentText)) }
-                    SheetChip(stringResource(R.string.include_trash), current.includeTrash) { onChange(current.copy(includeTrash = !current.includeTrash)) }
-                }
-            }
-
-            MailSearch.Filters.FACETS.forEach { field ->
-                if (field == "account_email_s" && accounts.size < 2) return@forEach
-                val values = facets[field].orEmpty()
-                val chosen = current.values(field)
-                if (values.isEmpty() && chosen.isEmpty()) return@forEach
-                Zone(stringResource(facetTitle(field)), chosen.size, field in open, { onToggle(field) }) {
-                    FacetValues(field, values, chosen, colorOf) { v -> Haptics.tick(view, v !in chosen); onChange(current.toggled(field, v)) }
+            // Year, dates, folders, accounts and attachment types first; the rest after them.
+            ZONE_ORDER.forEach { field ->
+                when (field) {
+                    "dates" -> {
+                        Zone(stringResource(R.string.f_dates), if (current.dates != null) 1 else 0, "dates" in open, { onToggle("dates") }) {
+                            FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                SheetChip(current.dates?.let { fmtDate(it.from).take(10) + " – " + fmtDate(it.to).take(10) } ?: stringResource(R.string.f_choose_dates), current.dates != null) { picking = true }
+                                if (current.dates != null) SheetChip(stringResource(R.string.f_any_date), false) { onChange(current.copy(dates = null)) }
+                            }
+                        }
+                    }
+                    "is" -> {
+                        val switchesOn = listOf(current.unread, current.flagged, current.answered, current.attachments, current.attachmentText, current.includeTrash).count { it }
+                        Zone(stringResource(R.string.f_message_is), switchesOn, "is" in open, { onToggle("is") }) {
+                            FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                SheetChip(stringResource(R.string.unread), current.unread) { onChange(current.copy(unread = !current.unread)) }
+                                SheetChip(stringResource(R.string.flagged), current.flagged) { onChange(current.copy(flagged = !current.flagged)) }
+                                SheetChip(stringResource(R.string.f_answered), current.answered) { onChange(current.copy(answered = !current.answered)) }
+                                SheetChip(stringResource(R.string.with_attachments), current.attachments) { onChange(current.copy(attachments = !current.attachments)) }
+                                SheetChip(stringResource(R.string.f_attachment_text), current.attachmentText) { onChange(current.copy(attachmentText = !current.attachmentText)) }
+                                SheetChip(stringResource(R.string.include_trash), current.includeTrash) { onChange(current.copy(includeTrash = !current.includeTrash)) }
+                            }
+                        }
+                    }
+                    else -> {
+                        if (field == "account_email_s" && accounts.size < 2) return@forEach
+                        val values = facets[field].orEmpty()
+                        val chosen = current.values(field)
+                        if (values.isEmpty() && chosen.isEmpty()) return@forEach
+                        Zone(stringResource(facetTitle(field)), chosen.size, field in open, { onToggle(field) }) {
+                            FacetValues(field, values, chosen, colorOf) { v -> Haptics.tick(view, v !in chosen); onChange(current.toggled(field, v)) }
+                        }
+                    }
                 }
             }
             Hairline()
