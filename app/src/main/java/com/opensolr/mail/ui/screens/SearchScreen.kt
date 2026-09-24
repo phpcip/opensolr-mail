@@ -238,32 +238,42 @@ fun SearchScreen(vm: AppViewModel, sheet: String?, screen: Screen? = null) {
     } }
     // A page that failed is asked for again shortly; the list is never left without its next page.
     var pageRetry by remember { mutableIntStateOf(0) }
-    // Keyed on the result and on loading too: the first page lands while loading is still on, with the end already in view.
-    LaunchedEffect(result, loading, atEnd, shownHits.size, shownGroups.size, fetchedMore, similarFolded, pageRetry) {
-        val res = result ?: return@LaunchedEffect
-        if (!atEnd || loadingMore || loading) return@LaunchedEffect
-        // A folded Also similar shows none of the later pages: none is fetched until it is opened.
-        if (bestKeys != null && similarFolded) return@LaunchedEffect
-        val grouped = groupBy.field != null
-        // Without grouping the next page starts after the messages already read, not after the conversations shown:
-        // a page whose messages all belong to conversations on screen adds no line, and the next one is asked for.
-        val read = res.fetched + fetchedMore
-        val more = if (grouped) shownGroups.size < res.total && shownGroups.size % 20 == 0 && shownGroups.isNotEmpty() else read < res.total
-        if (!more) return@LaunchedEffect
-        loadingMore = true
-        try {
-            val next = vm.search.search(submitted, filters, groupBy, start = if (grouped) shownGroups.size else read)
-            // A new search started meanwhile: this page belongs to the old one.
-            if (result !== res) return@LaunchedEffect
-            if (grouped) extraGroups = extraGroups + next.groups else { extraHits = extraHits + next.hits; fetchedMore += next.fetched.coerceAtLeast(1) }
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            loadingMore = false
-            kotlinx.coroutines.delay(3_000L)
-            pageRetry++
-        } finally {
-            loadingMore = false
+    val bestNow by androidx.compose.runtime.rememberUpdatedState(bestKeys)
+    val similarFoldedNow by androidx.compose.runtime.rememberUpdatedState(similarFolded)
+    val hitsNow by androidx.compose.runtime.rememberUpdatedState(shownHits.size)
+    // One collector for the whole screen, one page at a time: a page is never cancelled half way by a fast scroll,
+    // and every change (end reached, page landed, search done, group opened) is looked at again once it is back.
+    LaunchedEffect(Unit) {
+        androidx.compose.runtime.snapshotFlow {
+            listOf<Any?>(result, loading, atEnd, hitsNow, extraGroups.size, fetchedMore, similarFoldedNow, bestNow == null, pageRetry)
+        }.collect {
+            val res = result ?: return@collect
+            if (!atEnd || loading) return@collect
+            // A folded Also similar shows none of the later pages: none is fetched until it is opened.
+            if (bestNow != null && similarFoldedNow) return@collect
+            val grouped = groupBy.field != null
+            // Pages go by what was read from the index, not by the lines shown: a page whose messages all belong to
+            // conversations on screen (or whose groups repeat) adds no line, and the next one is still asked for.
+            val read = res.fetched + fetchedMore
+            val groupsRead = res.groups.size + extraGroups.size
+            val more = if (grouped) groupsRead > 0 && groupsRead % 20 == 0 else read < res.total
+            if (!more) return@collect
+            loadingMore = true
+            try {
+                val next = vm.search.search(submitted, filters, groupBy, start = if (grouped) groupsRead else read)
+                // A new search started meanwhile: this page belongs to the old one.
+                if (result === res) {
+                    if (grouped) extraGroups = extraGroups + next.groups else { extraHits = extraHits + next.hits; fetchedMore += next.fetched.coerceAtLeast(1) }
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                loadingMore = false
+                kotlinx.coroutines.delay(3_000L)
+                pageRetry++
+            } finally {
+                loadingMore = false
+            }
         }
     }
 
