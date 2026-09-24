@@ -64,7 +64,7 @@ fun AppRoot(vm: AppViewModel) {
                     is Screen.List -> ThreadListScreen(vm, s.view)
                     is Screen.Thread -> ThreadScreen(vm, s.acc, s.threadId)
                     is Screen.Compose -> ComposeScreen(vm, s.init)
-                    is Screen.Search -> SearchScreen(vm, s.sheet)
+                    is Screen.Search -> SearchScreen(vm, s.sheet, s)
                     is Screen.Notes -> NotesScreen(vm, s.acc)
                     is Screen.NoteEdit -> NoteEditScreen(vm, s.acc, s.noteId)
                     Screen.Settings -> SettingsScreen(vm)

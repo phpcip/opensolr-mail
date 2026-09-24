@@ -220,6 +220,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     /** The last search with its results and paging, so coming back to it shows it unchanged. */
     var searchSnapshot: Any? = null
 
+    /** The search entry whose sheet was already opened: coming back to it does not open the sheet again. */
+    var searchSheetShown: Screen? = null
+
     /** The search filters, kept while the app is open. */
     var searchFilters = com.opensolr.mail.search.MailSearch.Filters()
 

@@ -117,7 +117,7 @@ private data class SearchSnapshot(
 /** Search and browse every account at once, the way Opensolr Photos and search.opensolr.com do it. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SearchScreen(vm: AppViewModel, sheet: String?) {
+fun SearchScreen(vm: AppViewModel, sheet: String?, screen: Screen? = null) {
     val p = LocalPalette.current
     if (!vm.signedIn) {
         Column(Modifier.fillMaxSize()) {
@@ -150,8 +150,10 @@ fun SearchScreen(vm: AppViewModel, sheet: String?) {
     var loading by remember { mutableStateOf(false) }
     var loadingMore by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
-    var showFilters by remember { mutableStateOf(sheet == "filters") }
-    var showGroup by remember { mutableStateOf(sheet == "group") }
+    // The sheet asked for opens once per entry, not again on the way back from a message.
+    val openSheet = remember { sheet.takeIf { screen == null || vm.searchSheetShown !== screen }.also { if (screen != null) vm.searchSheetShown = screen } }
+    var showFilters by remember { mutableStateOf(openSheet == "filters") }
+    var showGroup by remember { mutableStateOf(openSheet == "group") }
     var showOperators by remember { mutableStateOf(false) }
     var showInstructions by remember { mutableStateOf(false) }
     var instructions by remember { mutableStateOf(vm.prefs.aiInstructions) }
@@ -187,7 +189,7 @@ fun SearchScreen(vm: AppViewModel, sheet: String?) {
         }
     }
 
-    LaunchedEffect(Unit) { if (sheet == null && snap == null) focus.requestFocus() }
+    LaunchedEffect(Unit) { if (openSheet == null && snap == null) focus.requestFocus() }
     // Another question stops the answer to the previous one at once.
     LaunchedEffect(submitted) { if (vm.aiQuestion != null && vm.aiQuestion != submitted) vm.stopAi() }
     LaunchedEffect(submitted, filters) {
