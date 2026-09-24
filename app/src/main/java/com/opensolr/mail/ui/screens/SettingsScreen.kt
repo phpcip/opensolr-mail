@@ -100,7 +100,10 @@ fun SettingsScreen(vm: AppViewModel) {
             Column {
                 InfoRow(stringResource(R.string.app), BuildConfig.VERSION_NAME)
                 Spacer(Modifier.height(10.dp))
-                ToolRow(listOf(Tool(R.drawable.ic_idx_sync, stringResource(if (vm.updateChecking) R.string.acc_checking else R.string.tool_check), active = vm.updateChecking) { vm.checkForUpdateNow() }))
+                ToolRow(listOf(
+                    Tool(R.drawable.ic_idx_sync, stringResource(if (vm.updateChecking) R.string.acc_checking else R.string.tool_check), active = vm.updateChecking) { vm.checkForUpdateNow() },
+                    Tool(R.drawable.ic_tool_open, stringResource(R.string.tool_privacy)) { com.opensolr.mail.ui.PlanInfo.open(context, com.opensolr.mail.ui.PlanInfo.PRIVACY_URL) },
+                ))
                 vm.updateResult?.let {
                     Spacer(Modifier.height(12.dp))
                     Notice(it, title = stringResource(if (vm.update != null) R.string.acc_update_available else R.string.acc_version))

@@ -27,8 +27,9 @@ import com.opensolr.mail.ui.theme.LocalPalette
 import java.util.Locale
 
 object PlanInfo {
-    const val PRICING_URL = "https://opensolr.com/pricing"
     const val DASHBOARD_URL = "https://opensolr.com/admin/solr_manager/dashboard"
+    const val PRIVACY_URL = "https://opensolr.com/opensolr-mail-docs/privacy"
+    const val DELETE_ACCOUNT_URL = "https://opensolr.com/delete-account"
 
     fun indexPanelUrl(indexName: String): String = "https://opensolr.com/admin/solr_manager/tools/" + Uri.encode(indexName)
 
@@ -107,7 +108,7 @@ fun NeedsOpensolr(vm: AppViewModel) {
     }
 }
 
-/** Plan, usage bars, what each limit stops, and the way to a bigger plan. The same account zone as Opensolr Photos. */
+/** Plan, usage bars and what each limit stops. The same account zone as Opensolr Photos. */
 @Composable
 fun PlanDetails(vm: AppViewModel, onSignOut: () -> Unit) {
     val context = LocalContext.current
@@ -141,11 +142,11 @@ fun PlanDetails(vm: AppViewModel, onSignOut: () -> Unit) {
         }
         Spacer(Modifier.height(12.dp))
         ToolRow(listOfNotNull(
-            Tool(R.drawable.ic_tool_upgrade, stringResource(R.string.tool_upgrade), accent = true) { PlanInfo.open(context, PlanInfo.PRICING_URL) },
             Tool(R.drawable.ic_idx_reload, stringResource(if (vm.limitsLoading) R.string.acc_refreshing else R.string.acc_refresh), active = vm.limitsLoading) { vm.refreshLimits() },
             if (vm.prefs.indexName.isNotBlank()) Tool(R.drawable.ic_tool_open, stringResource(R.string.tool_index)) { PlanInfo.open(context, PlanInfo.indexPanelUrl(vm.prefs.indexName)) } else null,
             Tool(R.drawable.ic_tool_dashboard, stringResource(R.string.tool_dashboard)) { PlanInfo.open(context, PlanInfo.DASHBOARD_URL) },
             Tool(R.drawable.ic_tool_signout, stringResource(R.string.sign_out), onClick = onSignOut),
+            Tool(R.drawable.ic_trash, stringResource(R.string.tool_delete_account)) { PlanInfo.open(context, PlanInfo.DELETE_ACCOUNT_URL) },
         ))
     }
 }
