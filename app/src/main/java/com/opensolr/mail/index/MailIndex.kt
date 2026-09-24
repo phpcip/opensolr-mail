@@ -22,11 +22,7 @@ class MailIndex(private val context: Context) {
     private val api = OpensolrApi(prefs)
 
     /** The phone's own id, the same one Opensolr Photos uses: it survives a reinstall of the app. */
-    val deviceId: String
-        @android.annotation.SuppressLint("HardwareIds")
-        get() = android.provider.Settings.Secure.getString(context.contentResolver, android.provider.Settings.Secure.ANDROID_ID)
-            .orEmpty().lowercase().filter { it in 'a'..'z' || it in '0'..'9' }.take(32)
-            .ifEmpty { prefs.deviceId.lowercase().filter { it in 'a'..'f' || it in '0'..'9' }.take(32) }
+    val deviceId: String get() = prefs.indexId
 
     /** mail_<device id>__dense: this phone's own index. */
     val ownName: String get() = "mail_" + deviceId + "__dense"

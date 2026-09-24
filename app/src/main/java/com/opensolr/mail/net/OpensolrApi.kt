@@ -2,6 +2,7 @@ package com.opensolr.mail.net
 
 import com.opensolr.mail.data.AppPrefs
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import okhttp3.FormBody
 import okhttp3.HttpUrl.Companion.toHttpUrl
@@ -40,19 +41,30 @@ class OpensolrApi(private val prefs: AppPrefs) {
             .apply { if (pushToken != null) put("push_token", pushToken) },
     )
 
-    /** Trades the account key of an older sign-in for this phone's own key, revocable from Account > Devices. */
-    suspend fun upgradeToDeviceKey() = withContext(Dispatchers.IO) {
-        if (!prefs.signedIn || prefs.hasDeviceKey) return@withContext
-        val body = JSONObject().put("email", email).put("api_key", key).put("client_id", "opensolr-mail")
-            .put("device_id", prefs.deviceId).put("device_label", com.opensolr.mail.auth.Pkce.deviceLabel())
-            .put("app_version", com.opensolr.mail.BuildConfig.VERSION_NAME)
-        val req = Request.Builder().url("$SITE/app/api/device_key").post(body.toString().toRequestBody(JSON)).build()
-        Http.client.newCall(req).execute().use { r ->
-            val text = r.body?.string().orEmpty()
-            if (r.code == 401 || text.contains("ERROR_AUTHENTICATION_FAILED")) throw SignInRequiredException()
-            val msg = runCatching { JSONObject(text).optJSONObject("msg") }.getOrNull()
-            val newKey = msg?.optString("api_key")
-            if (msg?.optString("key_kind") == "device" && !newKey.isNullOrBlank() && Regex("^[0-9a-f]{32}$").matches(newKey)) prefs.saveSession(email, newKey, deviceKey = true)
+    /**
+     * Trades the account key of an older sign-in for this phone's own key, revocable from Account > Devices;
+     * a key issued under the old install id moves to [AppPrefs.deviceId]. True when the phone's id changed.
+     */
+    suspend fun upgradeToDeviceKey(): Boolean = withContext(Dispatchers.IO) {
+        upgradeLock.withLock {
+            if (!prefs.signedIn || (prefs.hasDeviceKey && prefs.deviceIdCurrent)) return@withLock false
+            val moving = prefs.hasDeviceKey
+            val body = JSONObject().put("email", email).put("api_key", key).put("client_id", "opensolr-mail")
+                .put("device_id", prefs.deviceId).put("device_label", com.opensolr.mail.auth.Pkce.deviceLabel())
+                .put("app_version", com.opensolr.mail.BuildConfig.VERSION_NAME)
+                .apply { if (moving) put("previous_device_id", prefs.installId) }
+            val req = Request.Builder().url("$SITE/app/api/device_key").post(body.toString().toRequestBody(JSON)).build()
+            Http.client.newCall(req).execute().use { r ->
+                val text = r.body?.string().orEmpty()
+                if (r.code == 401 || text.contains("ERROR_AUTHENTICATION_FAILED")) signedOut(body.optString("api_key"))
+                val msg = runCatching { JSONObject(text).optJSONObject("msg") }.getOrNull()
+                val newKey = msg?.optString("api_key")
+                if (msg?.optString("key_kind") == "device" && !newKey.isNullOrBlank() && Regex("^[0-9a-f]{32}$").matches(newKey)) {
+                    prefs.saveSession(email, newKey, deviceKey = true)
+                    return@withLock moving
+                }
+                false
+            }
         }
     }
 
@@ -71,7 +83,7 @@ class OpensolrApi(private val prefs: AppPrefs) {
         val req = Request.Builder().url("$SITE/app/mail/api/$method").post(body.toString().toRequestBody(JSON)).build()
         Http.client.newCall(req).execute().use { r ->
             val text = r.body?.string().orEmpty()
-            if (r.code == 401 || text.contains("ERROR_AUTHENTICATION_FAILED")) throw SignInRequiredException()
+            if (r.code == 401 || text.contains("ERROR_AUTHENTICATION_FAILED")) signedOut(body.optString("api_key"))
             if (r.code == 429) throw RateLimitedException(60)
             val json = runCatching { JSONObject(text) }.getOrElse { throw ServiceException("Opensolr answered HTTP ${r.code}") }
             if (!json.optBoolean("status")) throw ServiceException(json.optString("msg"))
@@ -251,9 +263,24 @@ class OpensolrApi(private val prefs: AppPrefs) {
 
     private fun execute(request: Request): String = Http.client.newCall(request).execute().use { r ->
         val text = r.body?.string().orEmpty()
+        if (text.contains("ERROR_AUTHENTICATION_FAILED")) signedOut(keyOf(request))
         classify(r.code, text, r.header("Retry-After"))
         if (r.code >= 500) throw ServiceException("Opensolr answered HTTP ${r.code}")
         text
+    }
+
+    /** The key was signed out on Opensolr: the session it belongs to ends, unless a newer key replaced it meanwhile. */
+    private fun signedOut(usedKey: String?): Nothing {
+        if (usedKey.isNullOrEmpty() || usedKey == prefs.apiKey) {
+            prefs.clearSession()
+            AppPrefs.sessionEnded.value = System.currentTimeMillis()
+        }
+        throw SignInRequiredException()
+    }
+
+    private fun keyOf(request: Request): String? {
+        val form = request.body as? FormBody ?: return null
+        return (0 until form.size).firstOrNull { form.name(it) == "api_key" }?.let { form.value(it) }
     }
 
     private fun classify(code: Int, text: String, retryAfter: String?) {
@@ -289,5 +316,8 @@ class OpensolrApi(private val prefs: AppPrefs) {
         const val MANAGEMENT = "https://opensolr.com/solr_manager/api/"
         const val AI = "https://api.opensolr.com/solr_manager/api/"
         private val JSON = "application/json; charset=utf-8".toMediaType()
+
+        /** One key trade at a time: a second one would present the key the first just retired. */
+        private val upgradeLock = kotlinx.coroutines.sync.Mutex()
     }
 }

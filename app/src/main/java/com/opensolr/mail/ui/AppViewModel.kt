@@ -692,6 +692,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     init {
         MailIndexer(app).restore()
+        viewModelScope.launch {
+            AppPrefs.sessionEnded.collect { if (it > 0 && !prefs.signedIn) { signedIn = false; limits = null } }
+        }
         if (prefs.signedIn && !prefs.hasDeviceKey) viewModelScope.launch(Guard) {
             try { com.opensolr.mail.net.OpensolrApi(prefs).upgradeToDeviceKey() } catch (e: CancellationException) { throw e } catch (e: Exception) { signInRequired(e) }
         }

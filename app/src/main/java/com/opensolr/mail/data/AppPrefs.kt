@@ -7,6 +7,7 @@ import java.security.SecureRandom
 /** The Opensolr side of the app: session, device id, the mail index, and small settings. */
 class AppPrefs(context: Context) {
 
+    private val app = context.applicationContext
     private val sp = context.applicationContext.getSharedPreferences("opensolr_mail", Context.MODE_PRIVATE)
 
     val signedIn: Boolean get() = email.isNotEmpty() && apiKey.isNotEmpty()
@@ -18,7 +19,8 @@ class AppPrefs(context: Context) {
 
     @SuppressLint("ApplySharedPref")
     fun saveSession(email: String, apiKey: String, deviceKey: Boolean) {
-        sp.edit().putString(K_EMAIL, email).putString(K_KEY, SecureStore.encrypt(apiKey)).putBoolean(K_DEVICE_KEY, deviceKey).commit()
+        sp.edit().putString(K_EMAIL, email).putString(K_KEY, SecureStore.encrypt(apiKey)).putBoolean(K_DEVICE_KEY, deviceKey)
+            .putBoolean(K_ID_CURRENT, true).commit()
     }
 
     /** True when the key held is this phone's own, revocable from Account > Devices; false for the account key of older sign-ins. */
@@ -29,8 +31,21 @@ class AppPrefs(context: Context) {
         sp.edit().remove(K_EMAIL).remove(K_KEY).remove(K_INDEX).remove(K_CONN).remove(K_VECTOR).remove(K_LIMITS).remove(K_DEVICE_KEY).commit()
     }
 
-    /** Random id this install minted for itself; the server knows the phone by it. */
-    val deviceId: String
+    /** How Account > Devices knows the phone: the id its mail index is named after, so signing it out reaches that index. */
+    val deviceId: String get() = "mail-$indexId"
+
+    /** Names this phone's mail index: its ANDROID_ID, or this install's own id on a phone without one. */
+    val indexId: String
+        @SuppressLint("HardwareIds")
+        get() = android.provider.Settings.Secure.getString(app.contentResolver, android.provider.Settings.Secure.ANDROID_ID)
+            .orEmpty().lowercase().filter { it in 'a'..'z' || it in '0'..'9' }.take(32)
+            .ifEmpty { installId.lowercase().filter { it in 'a'..'f' || it in '0'..'9' }.take(32) }
+
+    /** False while the session was issued under [installId], before the phone was known by [deviceId]. */
+    val deviceIdCurrent: Boolean get() = sp.getBoolean(K_ID_CURRENT, false)
+
+    /** Random id this install minted for itself; the id the server knew the phone by before [deviceId]. */
+    val installId: String
         @SuppressLint("ApplySharedPref")
         get() {
             sp.getString(K_DEVICE, null)?.let { return it }
@@ -170,6 +185,9 @@ class AppPrefs(context: Context) {
     }
 
     companion object {
+        /** Set when Opensolr refused the key: the screens drop the Opensolr session at once. */
+        val sessionEnded = kotlinx.coroutines.flow.MutableStateFlow(0L)
+
         private const val K_EMAIL = "email"
         private const val K_KEY = "api_key"
         private const val K_DEVICE = "device_id"
@@ -178,6 +196,7 @@ class AppPrefs(context: Context) {
         private const val K_VECTOR = "vector_allowed"
         private const val K_LIMITS = "account_limits"
         private const val K_DEVICE_KEY = "device_key"
+        private const val K_ID_CURRENT = "device_id_current"
         private const val K_EMBED_PAUSE = "embed_paused_until"
         private const val K_UPDATE = "last_update_check"
         private const val K_NOTIFY = "notify_new_mail"

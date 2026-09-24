@@ -46,6 +46,8 @@ class MainActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
         if (vm.store.all().isNotEmpty()) vm.refresh()
+        // Also learns at once when the phone was signed out from Account > Devices.
+        vm.refreshLimits(30_000)
     }
 
     /** Notifications, and the calendar store once an account syncs its calendars. */

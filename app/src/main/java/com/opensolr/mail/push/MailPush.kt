@@ -30,14 +30,25 @@ object MailPush {
     /** Registers the phone with opensolr.com and makes sure every account has a live subscription. */
     suspend fun ensure(context: Context, token: String? = null) {
         val prefs = AppPrefs(context)
-        if (!prefs.signedIn || com.google.firebase.FirebaseApp.getApps(context).isEmpty()) return
+        if (!prefs.signedIn) return
+        val store = AccountStore.get(context)
+        // A phone still known by its install id moves to its index id; the relay addresses of the old id are gone.
+        if (!prefs.deviceIdCurrent && OpensolrApi(prefs).upgradeToDeviceKey()) {
+            store.all().forEach { a -> store.update(a.key) { it.copy(pushExpires = 0, pushVerified = false) } }
+        }
+        if (com.google.firebase.FirebaseApp.getApps(context).isEmpty()) return
         val fcm = token ?: FirebaseMessaging.getInstance().token.await()
         val sp = context.getSharedPreferences("push", Context.MODE_PRIVATE)
-        val store = AccountStore.get(context)
         // Once, after this update: subscriptions made before may point at relay addresses removed by a sign-out.
         if (!sp.getBoolean("healed_1", false)) {
             store.all().forEach { a -> store.update(a.key) { it.copy(pushExpires = 0, pushVerified = false) } }
             sp.edit().putBoolean("healed_1", true).apply()
+        }
+        // A new Opensolr key means a new sign-in: the relay addresses of the one before were dropped with it.
+        val keySig = prefs.apiKey.hashCode().toString()
+        if (sp.getString("key_sig", null) != keySig) {
+            store.all().forEach { a -> store.update(a.key) { it.copy(pushExpires = 0, pushVerified = false) } }
+            sp.edit().putString("key_sig", keySig).apply()
         }
         val now = System.currentTimeMillis()
         val needs = store.all().filter {
