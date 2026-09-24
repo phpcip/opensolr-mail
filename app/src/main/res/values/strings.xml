@@ -378,4 +378,6 @@
     <string name="suggest_history_contacts">From your email history and contacts</string>
     <string name="suggest_contacts">From your contacts</string>
     <string name="suggest_allow_contacts">Allow access to contacts for more complete suggestions</string>
+    <string name="att_already_title">Already downloaded</string>
+    <string name="att_already_text">%1$s is already in Downloads. Tap to open it.</string>
 </resources>

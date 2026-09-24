@@ -370,4 +370,6 @@
     <string name="suggest_history_contacts">メール履歴と連絡先から</string>
     <string name="suggest_contacts">連絡先から</string>
     <string name="suggest_allow_contacts">より完全な候補のために連絡先へのアクセスを許可</string>
+    <string name="att_already_title">ダウンロード済み</string>
+    <string name="att_already_text">%1$s はすでにダウンロードにあります。タップして開きます。</string>
 </resources>

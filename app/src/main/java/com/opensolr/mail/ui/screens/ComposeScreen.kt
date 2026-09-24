@@ -117,7 +117,7 @@ fun ComposeScreen(vm: AppViewModel, init: ComposeInit) {
         when (active) { "to" -> to = value; "cc" -> cc = value; "bcc" -> bcc = value }
         suggestions = emptyList()
     }
-    val activity = context as? android.app.Activity
+    val activity = activityOf(context)
     val askContacts = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted -> contactsOk = granted }
     fun allowContacts() {
         // Asked once and refused for good: Android shows no dialog any more, so the app's settings open instead.

@@ -43,6 +43,11 @@ fun rememberListMemory(key: String, ready: Boolean, load: () -> Pair<Int, Int>, 
             .debounce(400)
             .collect { (i, o) -> save(i, o) }
     }
+    // Leaving the screen saves where it stands at once: a tap right after a scroll must not lose it to the debounce.
+    val latestSave by androidx.compose.runtime.rememberUpdatedState(save)
+    androidx.compose.runtime.DisposableEffect(key) {
+        onDispose { if (restored) latestSave(state.firstVisibleItemIndex, state.firstVisibleItemScrollOffset) }
+    }
     return state
 }
 
@@ -66,6 +71,10 @@ fun rememberScrollMemory(key: String, load: () -> Int, save: (Int) -> Unit): Scr
     LaunchedEffect(key, restored) {
         if (!restored) return@LaunchedEffect
         snapshotFlow { state.value }.debounce(400).collect { save(it) }
+    }
+    val latestSave by androidx.compose.runtime.rememberUpdatedState(save)
+    androidx.compose.runtime.DisposableEffect(key) {
+        onDispose { if (restored) latestSave(state.value) }
     }
     return state
 }

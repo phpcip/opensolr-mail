@@ -370,4 +370,6 @@
     <string name="suggest_history_contacts">De tu historial de correo y tus contactos</string>
     <string name="suggest_contacts">De tus contactos</string>
     <string name="suggest_allow_contacts">Permite el acceso a los contactos para sugerencias más completas</string>
+    <string name="att_already_title">Ya descargado</string>
+    <string name="att_already_text">%1$s ya está en Descargas. Toca para abrirlo.</string>
 </resources>

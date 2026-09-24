@@ -331,7 +331,7 @@ private fun Toggle(label: String, on: Boolean, onChange: (Boolean) -> Unit) {
     }
 }
 
-private fun activityOf(context: Context): Activity? {
+internal fun activityOf(context: Context): Activity? {
     var c: Context? = context
     while (c is ContextWrapper) {
         if (c is Activity) return c

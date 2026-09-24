@@ -148,6 +148,29 @@ object Notifier {
         dropSummaryIfEmpty(context, cancelled)
     }
 
+    /** The attachment was already in Downloads: nothing is downloaded again, a tap opens the file that is there. */
+    fun alreadyDownloaded(context: Context, name: String, uri: android.net.Uri, type: String) {
+        if (!allowed(context)) return
+        ensureChannels(context)
+        val words = AppLanguage.wrap(context)
+        val view = Intent(Intent.ACTION_VIEW).setDataAndType(uri, type).addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            .apply { clipData = android.content.ClipData.newRawUri(name, uri) }
+        // Through the chooser: with no app for the type, the phone says so instead of the tap doing nothing.
+        val chooser = Intent.createChooser(view, name).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        val open = PendingIntent.getActivity(context, ("dl:" + uri).hashCode(), chooser, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+        val n = NotificationCompat.Builder(context, CHANNEL_APP)
+            .setSmallIcon(R.drawable.ic_download)
+            .setContentTitle(words.getString(R.string.att_already_title))
+            .setContentText(words.getString(R.string.att_already_text, name))
+            .setContentIntent(open)
+            .setAutoCancel(true)
+            .build()
+        try {
+            NotificationManagerCompat.from(context).notify("already-downloaded", ("dl:" + uri).hashCode(), n)
+        } catch (_: SecurityException) {
+        }
+    }
+
     fun sendFailed(context: Context, reason: String) {
         if (!allowed(context)) return
         ensureChannels(context)

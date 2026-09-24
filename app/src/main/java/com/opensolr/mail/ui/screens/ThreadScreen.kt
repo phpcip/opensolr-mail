@@ -37,6 +37,7 @@ import androidx.compose.runtime.setValue
 import com.opensolr.mail.ui.Haptics
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.zIndex
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.graphics.graphicsLayer
@@ -118,7 +119,8 @@ fun ThreadScreen(vm: AppViewModel, acc: String, threadId: String) {
     var loadedOnce by remember(threadId) { mutableStateOf(false) }
     LaunchedEffect(threadId, version) { com.opensolr.mail.ui.guarded {
             // Newest message on top, like the list the conversation was opened from.
-            val list = vm.openThread(acc, threadId).sortedByDescending { it.received }
+            // A failed read still ends the loading state, so the screen never spins forever.
+            val list = try { vm.openThread(acc, threadId).sortedByDescending { it.received } } catch (e: kotlinx.coroutines.CancellationException) { throw e } catch (e: Exception) { loadedOnce = true; throw e }
             // The messages that were new when the conversation opened stay marked as new while it is open.
             if (arrivedNew == null) arrivedNew = list.filter { !it.seen }.map { it.id }.toSet()
             messages = list
@@ -177,7 +179,8 @@ fun ThreadScreen(vm: AppViewModel, acc: String, threadId: String) {
     }
 
     Column(Modifier.fillMaxSize()) {
-        TopBar(subject.ifBlank { stringResource(R.string.no_subject) }, onBack = { vm.back() }) {
+        // Until the conversation is read from the phone, the bar stays without a title rather than saying (No subject).
+        TopBar(if (!loadedOnce) "" else subject.ifBlank { stringResource(R.string.no_subject) }, onBack = { vm.back() }) {
             if (messages.size > 1) {
                 val anyClosed = messages.any { expanded[it.id] != true }
                 IconBtn(if (anyClosed) R.drawable.ic_expand_all else R.drawable.ic_collapse_all, {
@@ -188,6 +191,16 @@ fun ThreadScreen(vm: AppViewModel, acc: String, threadId: String) {
         val threadScroll = com.opensolr.mail.ui.rememberScrollMemory("thread_" + acc + "_" + threadId, { vm.positions["thread_" + acc + "_" + threadId]?.first ?: 0 }, { v -> vm.positions["thread_" + acc + "_" + threadId] = v to 0 })
         val threadMarks = remember { com.opensolr.mail.ui.ScrollMarks() }
         Box(Modifier.weight(1f)) {
+            // Opened from a notification while the app was asleep: a loading state until the conversation is there.
+            if (!loadedOnce) {
+                Box(Modifier.fillMaxSize().zIndex(1f).background(p.paper), contentAlignment = Alignment.Center) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        androidx.compose.material3.CircularProgressIndicator(Modifier.size(32.dp), color = p.accent, trackColor = p.hairline, strokeWidth = 2.dp)
+                        Spacer(Modifier.height(12.dp))
+                        Text(stringResource(R.string.loading), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium, color = p.muted)
+                    }
+                }
+            }
             androidx.compose.runtime.CompositionLocalProvider(com.opensolr.mail.ui.LocalScrollMarks provides threadMarks) {
             Column(Modifier.fillMaxSize().verticalScroll(threadScroll)) {
             if (account != null) {
@@ -268,8 +281,15 @@ fun ThreadScreen(vm: AppViewModel, acc: String, threadId: String) {
                             if (files.isNotEmpty()) Attachments(files, onSave = { a ->
                                 // Download only: the file goes to Downloads, the system notification opens it later.
                                 val a0 = vm.store.get(acc) ?: return@Attachments
-                                vm.toast(R.string.att_downloading, com.opensolr.mail.ui.AttachmentDownloads.fileName(a))
                                 scope.launch(com.opensolr.mail.ui.Guard) {
+                                    // Already in Downloads: not downloaded again; the notification opens the file that is there.
+                                    val there = com.opensolr.mail.ui.AttachmentDownloads.already(context, a0, a)
+                                    if (there != null) {
+                                        com.opensolr.mail.sync.Notifier.alreadyDownloaded(context, com.opensolr.mail.ui.AttachmentDownloads.fileName(a), there, com.opensolr.mail.ui.AttachmentDownloads.typeOf(a))
+                                        vm.toast(R.string.att_already_text, com.opensolr.mail.ui.AttachmentDownloads.fileName(a))
+                                        return@launch
+                                    }
+                                    vm.toast(R.string.att_downloading, com.opensolr.mail.ui.AttachmentDownloads.fileName(a))
                                     when (val r = com.opensolr.mail.ui.AttachmentDownloads.download(context, a0, a)) {
                                         is com.opensolr.mail.ui.AttachmentDownloads.Result.Done -> vm.toast(R.string.att_saved_downloads, com.opensolr.mail.ui.AttachmentDownloads.fileName(a))
                                         is com.opensolr.mail.ui.AttachmentDownloads.Result.Failed -> vm.message = r.reason
@@ -278,8 +298,14 @@ fun ThreadScreen(vm: AppViewModel, acc: String, threadId: String) {
                             }) { a ->
                                 // Open: the whole file is downloaded into Downloads first, then that file is opened.
                                 val a0 = vm.store.get(acc) ?: return@Attachments
-                                vm.toast(R.string.att_downloading, com.opensolr.mail.ui.AttachmentDownloads.fileName(a))
                                 scope.launch(com.opensolr.mail.ui.Guard) {
+                                    // A copy already in Downloads opens at once, without downloading it again.
+                                    val there = com.opensolr.mail.ui.AttachmentDownloads.already(context, a0, a)
+                                    if (there != null) {
+                                        if (!com.opensolr.mail.ui.AttachmentDownloads.open(context, there, com.opensolr.mail.ui.AttachmentDownloads.typeOf(a))) vm.toast(R.string.att_no_app_saved, com.opensolr.mail.ui.AttachmentDownloads.fileName(a))
+                                        return@launch
+                                    }
+                                    vm.toast(R.string.att_downloading, com.opensolr.mail.ui.AttachmentDownloads.fileName(a))
                                     when (val r = com.opensolr.mail.ui.AttachmentDownloads.download(context, a0, a)) {
                                         is com.opensolr.mail.ui.AttachmentDownloads.Result.Done -> {
                                             if (com.opensolr.mail.ui.AttachmentDownloads.open(context, r.uri, r.type)) vm.message = null
@@ -453,26 +479,27 @@ private fun CopyPill(text: String, strong: Boolean, onCopy: () -> Unit) {
 @Composable
 private fun Attachments(files: List<com.opensolr.mail.data.Attachment>, onSave: (com.opensolr.mail.data.Attachment) -> Unit, onOpen: (com.opensolr.mail.data.Attachment) -> Unit) {
     val p = LocalPalette.current
-    FlowRow(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    FlowRow(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
         files.forEach { a ->
             Row(
                 Modifier.background(p.pillFill, RoundedCornerShape(2.dp)).border(1.dp, p.headRim, RoundedCornerShape(2.dp))
-                    .hapticClickable { onOpen(a) }.padding(horizontal = 10.dp, vertical = 8.dp),
+                    .hapticClickable { onOpen(a) }.padding(start = 8.dp, end = 5.dp, top = 5.dp, bottom = 5.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Icon(painterResource(R.drawable.ic_attach), null, tint = p.ink, modifier = Modifier.size(16.dp))
-                Spacer(Modifier.width(6.dp))
-                Text(a.name.ifBlank { a.type }, style = MaterialTheme.typography.labelSmall, color = p.ink, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
+                com.opensolr.mail.ui.FileTypeIcon(a.name, a.type)
+                Spacer(Modifier.width(7.dp))
+                // Cut in the middle, so the end of the name and its extension always show.
+                com.opensolr.mail.ui.MiddleEllipsisName(a.name.ifBlank { a.type }, MaterialTheme.typography.labelSmall, p.ink, Modifier.weight(1f, fill = false))
                 Spacer(Modifier.width(6.dp))
                 Text(fmtSize(a.size), style = MaterialTheme.typography.labelSmall, color = p.muted)
                 Spacer(Modifier.width(4.dp))
                 // The download is a button of its own, bordered, next to the name that opens the file.
                 Box(
-                    Modifier.size(34.dp).background(p.buttonFill, RoundedCornerShape(2.dp)).border(1.dp, p.accent, RoundedCornerShape(2.dp))
+                    Modifier.size(28.dp).background(p.buttonFill, RoundedCornerShape(2.dp)).border(1.dp, p.headRim, RoundedCornerShape(2.dp))
                         .hapticClickable { onSave(a) },
                     contentAlignment = Alignment.Center,
                 ) {
-                    Icon(painterResource(R.drawable.ic_download), null, tint = p.accent, modifier = Modifier.size(18.dp))
+                    Icon(painterResource(R.drawable.ic_download), null, tint = p.accent, modifier = Modifier.size(15.dp))
                 }
             }
         }

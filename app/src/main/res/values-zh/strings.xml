@@ -370,4 +370,6 @@
     <string name="suggest_history_contacts">来自你的邮件历史和联系人</string>
     <string name="suggest_contacts">来自你的联系人</string>
     <string name="suggest_allow_contacts">允许访问联系人以获得更完整的建议</string>
+    <string name="att_already_title">已下载</string>
+    <string name="att_already_text">%1$s 已在下载中。点按即可打开。</string>
 </resources>

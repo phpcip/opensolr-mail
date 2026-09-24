@@ -39,6 +39,32 @@ object AttachmentDownloads {
         return if (declared.isEmpty() || declared == "application/octet-stream") byName ?: "application/octet-stream" else declared
     }
 
+    /**
+     * The same file already in Downloads: the same name and the same size, or a finished download of the same
+     * blob whose file is still there. Null when it has to be downloaded.
+     */
+    suspend fun already(context: Context, account: MailAccount, a: Attachment): Uri? = withContext(Dispatchers.IO) {
+        inDownloads(context, fileName(a), a.size)?.let { return@withContext it }
+        val dm = context.getSystemService(DownloadManager::class.java) ?: return@withContext null
+        existing(dm, Jmap(context, account).downloadUrlOf(a.blobId, a.name, a.type))?.takeIf { readable(context, it) }
+    }
+
+    /** One MediaStore query on Downloads by name and size (Android 10 and later). */
+    private fun inDownloads(context: Context, name: String, size: Long): Uri? {
+        if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.Q) return null
+        val base = android.provider.MediaStore.Downloads.EXTERNAL_CONTENT_URI
+        val sel = if (size > 0) "${android.provider.MediaStore.MediaColumns.DISPLAY_NAME} = ? AND ${android.provider.MediaStore.MediaColumns.SIZE} = ?" else "${android.provider.MediaStore.MediaColumns.DISPLAY_NAME} = ?"
+        val args = if (size > 0) arrayOf(name, size.toString()) else arrayOf(name)
+        return runCatching {
+            context.contentResolver.query(base, arrayOf(android.provider.MediaStore.MediaColumns._ID), sel, args, null)?.use { c ->
+                if (c.moveToFirst()) android.content.ContentUris.withAppendedId(base, c.getLong(0)) else null
+            }
+        }.getOrNull()
+    }
+
+    private fun readable(context: Context, uri: Uri): Boolean =
+        runCatching { context.contentResolver.openFileDescriptor(uri, "r")?.use { true } ?: false }.getOrDefault(false)
+
     /** Downloads [a] into Downloads and waits for it; a file already downloaded from the same blob is reused. */
     suspend fun download(context: Context, account: MailAccount, a: Attachment): Result = withContext(Dispatchers.IO) {
         val dm = context.getSystemService(DownloadManager::class.java) ?: return@withContext Result.Failed("Download Manager unavailable")

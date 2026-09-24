@@ -198,8 +198,14 @@ fun SearchScreen(vm: AppViewModel, sheet: String?, screen: Screen? = null) {
         vm.searchQuery = submitted
         vm.searchFilters = filters
     }
-    LaunchedEffect(submitted, filters, groupBy, ai, fresh, aiOk) {
-        if (skipFirst) { skipFirst = false; return@LaunchedEffect }
+    // Searched again only when something that shapes the result changed: coming back from a message with the same
+    // search keeps the list and its place, even when the plan's limits load a moment later.
+    var lastRun by remember { mutableStateOf(if (skipFirst) listOf<Any?>(submitted, filters, groupBy, ai, fresh) else null) }
+    LaunchedEffect(submitted, filters, groupBy, ai, fresh) {
+        val now = listOf<Any?>(submitted, filters, groupBy, ai, fresh)
+        if (skipFirst) { skipFirst = false; lastRun = now; return@LaunchedEffect }
+        if (now == lastRun) return@LaunchedEffect
+        lastRun = now
         run()
     }
     LaunchedEffect(result, extraHits, extraGroups, fetchedMore) {

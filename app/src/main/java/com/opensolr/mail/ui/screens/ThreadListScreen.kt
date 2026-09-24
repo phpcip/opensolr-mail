@@ -178,7 +178,9 @@ fun ThreadListScreen(vm: AppViewModel, view: View) {
     }
     // A conversation just flagged is pinned above everything: bring the top into view so it is seen going there.
     var pinnedSeen by remember(view) { mutableStateOf<Set<String>?>(null) }
-    LaunchedEffect(pinned) {
+    // Counted only once the list is read: the first load (coming back from a message too) is not a new flag.
+    LaunchedEffect(pinned, loaded) {
+        if (!loaded) return@LaunchedEffect
         val now = pinned.map { it.acc + ":" + it.threadId }.toSet()
         val before = pinnedSeen
         pinnedSeen = now
