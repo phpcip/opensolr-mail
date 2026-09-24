@@ -70,6 +70,30 @@ fun TopBar(title: String, onBack: (() -> Unit)? = null, actions: @Composable Row
     Box(Modifier.fillMaxWidth().height(1.dp).background(p.hairline))
 }
 
+/** Top bar while items are selected: a check and the count in the accent, as in Opensolr Photos; a tap on either clears the selection. */
+@Composable
+fun SelectionBar(count: Int, onClear: () -> Unit, actions: @Composable RowScope.() -> Unit = {}) {
+    val p = LocalPalette.current
+    val view = androidx.compose.ui.platform.LocalView.current
+    Row(
+        modifier = Modifier.fillMaxWidth().background(p.band).padding(horizontal = 6.dp).height(52.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
+            Row(
+                modifier = Modifier.clickable { Haptics.tick(view, false); onClear() }.padding(horizontal = 10.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(painterResource(com.opensolr.mail.R.drawable.ic_check), contentDescription = androidx.compose.ui.res.stringResource(com.opensolr.mail.R.string.cd_clear_selection), tint = p.accent, modifier = Modifier.size(22.dp))
+                Spacer(Modifier.width(8.dp))
+                Text(count.toString(), style = MaterialTheme.typography.titleMedium, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold, color = p.accent, maxLines = 1)
+            }
+        }
+        actions()
+    }
+    Box(Modifier.fillMaxWidth().height(1.dp).background(p.hairline))
+}
+
 /** A square tap target around a monochrome line icon. */
 @Composable
 fun IconBtn(@DrawableRes icon: Int, onClick: () -> Unit, tint: Color? = null, enabled: Boolean = true, strong: Boolean = false) {

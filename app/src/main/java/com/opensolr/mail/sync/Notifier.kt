@@ -109,8 +109,22 @@ object Notifier {
         return PendingIntent.getBroadcast(context, (kind + m.acc + m.id).hashCode(), i, flags)
     }
 
-    fun cancel(context: Context, acc: String, msgId: String) {
-        NotificationManagerCompat.from(context).cancel("mail:$acc", idOf(msgId))
+    fun cancel(context: Context, acc: String, msgId: String) = cancel(context, acc, listOf(msgId))
+
+    /** The notifications of these messages go away; the group header goes with the last of them. */
+    fun cancel(context: Context, acc: String, ids: Collection<String>) {
+        if (ids.isEmpty()) return
+        val nm = NotificationManagerCompat.from(context)
+        val gone = ids.map { "mail:$acc" to idOf(it) }.toSet()
+        gone.forEach { (tag, id) -> nm.cancel(tag, id) }
+        dropSummaryIfEmpty(context, gone)
+    }
+
+    /** The group header is removed once no mail notification is left under it, so it never stays behind empty. */
+    fun dropSummaryIfEmpty(context: Context, justCancelled: Set<Pair<String, Int>> = emptySet()) {
+        val nm = context.getSystemService(NotificationManager::class.java) ?: return
+        val left = nm.activeNotifications.any { it.tag?.startsWith("mail:") == true && (it.tag to it.id) !in justCancelled }
+        if (!left) nm.cancel("mail-summary", 0)
     }
 
     /** Messages that were read or removed elsewhere lose their notification. */
@@ -118,15 +132,20 @@ object Notifier {
         val nm = context.getSystemService(NotificationManager::class.java) ?: return
         val db = MailDb.get(context)
         val active = nm.activeNotifications.filter { it.tag?.startsWith("mail:") == true }
+        val cancelled = HashSet<Pair<String, Int>>()
         active.groupBy { it.tag.removePrefix("mail:") }.forEach { (acc, list) ->
             val ids = list.mapNotNull { it.notification.extras.getString(NotificationActions.EXTRA_MSG) }
             val held = db.messages(acc, ids).associateBy { it.id }
             list.forEach { sbn ->
                 val msgId = sbn.notification.extras.getString(NotificationActions.EXTRA_MSG) ?: return@forEach
                 val m = held[msgId]
-                if (m == null || m.seen) nm.cancel(sbn.tag, sbn.id)
+                if (m == null || m.seen || m.mailboxIds.isEmpty()) {
+                    nm.cancel(sbn.tag, sbn.id)
+                    cancelled += sbn.tag to sbn.id
+                }
             }
         }
+        dropSummaryIfEmpty(context, cancelled)
     }
 
     fun sendFailed(context: Context, reason: String) {

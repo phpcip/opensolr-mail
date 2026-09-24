@@ -21,16 +21,20 @@ class MailActions(private val context: Context) {
     private val db = MailDb.get(context)
 
     fun setSeen(acc: String, ids: List<String>, seen: Boolean) {
+        // Any action taken on a message ends its new-mail notification, here or from the notification itself.
+        Notifier.cancel(context, acc, ids)
         db.setFlags(acc, ids, seen = seen)
         enqueue(acc, "seen", JSONObject().put("ids", JSONArray(ids)).put("value", seen))
     }
 
     fun setFlagged(acc: String, ids: List<String>, flagged: Boolean) {
+        Notifier.cancel(context, acc, ids)
         db.setFlags(acc, ids, flagged = flagged)
         enqueue(acc, "flag", JSONObject().put("ids", JSONArray(ids)).put("value", flagged))
     }
 
     fun move(acc: String, ids: List<String>, to: String) {
+        Notifier.cancel(context, acc, ids)
         db.moveLocal(acc, ids, to)
         enqueue(acc, "move", JSONObject().put("ids", JSONArray(ids)).put("to", to))
     }
@@ -43,6 +47,7 @@ class MailActions(private val context: Context) {
         val toTrash = ids - permanent.toSet()
         if (toTrash.isNotEmpty() && trash != null) move(acc, toTrash, trash.id)
         if (permanent.isNotEmpty()) {
+            Notifier.cancel(context, acc, permanent)
             db.deleteMessages(acc, permanent)
             enqueue(acc, "destroy", JSONObject().put("ids", JSONArray(permanent)))
         }
@@ -60,12 +65,14 @@ class MailActions(private val context: Context) {
     /** Every message of a mailbox marked read, on Fastmail too, however many there are. */
     fun readAll(acc: String, box: String) {
         db.readAllLocal(acc, box)
+        runCatching { Notifier.cancelGone(context) }
         enqueue(acc, "read_box", JSONObject().put("box", box))
     }
 
     /** A mailbox (Trash, Junk) emptied for good: its messages are destroyed, not moved anywhere. */
     fun empty(acc: String, box: String) {
         db.emptyLocal(acc, box)
+        runCatching { Notifier.cancelGone(context) }
         enqueue(acc, "empty_box", JSONObject().put("box", box))
     }
 
@@ -80,6 +87,7 @@ class MailActions(private val context: Context) {
             val mine = db.identities(acc).map { it.email.lowercase() }.toSet()
             db.block(acc, db.messages(acc, ids).flatMap { m -> m.from.map { it.email.lowercase() } }.filter { it !in mine })
         }
+        Notifier.cancel(context, acc, ids)
         db.moveLocal(acc, ids, junk.id)
         enqueue(acc, "junk", JSONObject().put("ids", JSONArray(ids)).put("to", junk.id))
     }
@@ -114,7 +122,10 @@ class MailActions(private val context: Context) {
 
     data class OutFile(val path: String, val name: String, val type: String)
 
-    fun send(o: Outgoing) = enqueue(o.acc, "send", toJson(o))
+    fun send(o: Outgoing) {
+        o.answeredId?.let { Notifier.cancel(context, o.acc, listOf(it)) }
+        enqueue(o.acc, "send", toJson(o))
+    }
 
     fun saveDraft(o: Outgoing) = enqueue(o.acc, "draft", toJson(o))
 

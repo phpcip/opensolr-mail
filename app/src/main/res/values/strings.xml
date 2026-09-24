@@ -20,8 +20,7 @@
     <string name="flagged">Flagged</string>
     <string name="notes">Notes</string>
     <string name="settings">Settings</string>
-
-    <string name="selected_n">%1$d selected</string>
+    <string name="cd_clear_selection">Clear selection</string>
     <string name="loading">Loading…</string>
     <string name="empty_view">No messages.</string>
     <string name="no_subject">(no subject)</string>
@@ -373,4 +372,10 @@
     <string name="one_inbox_text">It leaves the Trash and goes back to the Inbox, on Fastmail too.</string>
     <string name="one_notjunk_title">Mark this conversation as not spam?</string>
     <string name="one_notjunk_text">It moves to the Inbox, Fastmail learns it is not spam, and its senders are no longer blocked on this phone.</string>
+    <string name="cd_show_details">Show details</string>
+    <string name="cd_hide_details">Hide details</string>
+    <string name="suggest_history">From your email history</string>
+    <string name="suggest_history_contacts">From your email history and contacts</string>
+    <string name="suggest_contacts">From your contacts</string>
+    <string name="suggest_allow_contacts">Allow access to contacts for more complete suggestions</string>
 </resources>

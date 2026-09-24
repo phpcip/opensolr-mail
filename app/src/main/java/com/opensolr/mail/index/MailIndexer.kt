@@ -87,6 +87,7 @@ class MailIndexer(private val context: Context) {
             }
 
             var more = !indexMail(solr, name)
+            if (!more && System.currentTimeMillis() < runUntil) more = !fullBodyBackfill(solr)
             if (!more && System.currentTimeMillis() < runUntil) more = !vectorBackfill(solr, name)
             if (!more && System.currentTimeMillis() < runUntil && unmetered()) more = !attachmentPass(solr, name)
             _status.value = _status.value.copy(error = null)
@@ -522,8 +523,7 @@ class MailIndexer(private val context: Context) {
                 JSONObject().put("ids", JSONArray(ids))
                     .put("properties", JSONArray(Jmap.HEADER_PROPS.strings() + listOf("textBody", "htmlBody", "attachments", "bodyValues")))
                     .put("fetchTextBodyValues", true)
-                    .put("fetchHTMLBodyValues", true)
-                    .put("maxBodyValueBytes", FULL_BODY_BYTES),
+                    .put("fetchHTMLBodyValues", true),
             )
         }
         val (kept, readBefore) = keeping.await()
@@ -546,7 +546,7 @@ class MailIndexer(private val context: Context) {
             source = source,
             account = account,
             ids = ids,
-            entries = entries.map { (m, b) -> m to b.copy(text = b.text.take(MAX_BODY), html = "") },
+            entries = entries.map { (m, b) -> m to b.copy(html = "") },
             texts = texts,
             attText = kept + fresh,
             attDone = readBefore + fresh.keys,
@@ -648,6 +648,18 @@ class MailIndexer(private val context: Context) {
         db.queueIndex(acc, ids, MailSync.OP_UPSERT)
     }
 
+    /** Documents written when the body was still cut are written again with the whole body. True when none are left. */
+    private suspend fun fullBodyBackfill(solr: SolrClient): Boolean {
+        val mine = localFilter() ?: return true
+        val res = solr.select(listOf("q" to "*:*", "fq" to "size_l:[$OLD_BODY_CAP TO *]", "fq" to "-body_full_b:true", "fq" to mine.first, "acc" to mine.second, "fl" to "account_s,email_id_s", "rows" to "200", "sort" to "received_dt desc"))
+        val docs = res.optJSONObject("response")?.optJSONArray("docs") ?: return true
+        if (docs.length() == 0) return true
+        (0 until docs.length()).map { docs.getJSONObject(it) }.groupBy { it.optString("account_s") }.forEach { (acc, list) ->
+            localAccount(acc)?.let { a -> db.queueIndex(a.key, list.map { it.optString("email_id_s") }, MailSync.OP_UPSERT) }
+        }
+        return false
+    }
+
     /** Documents written without a vector are written again once vectors can be made. True when none are left. */
     private suspend fun vectorBackfill(solr: SolrClient, name: String): Boolean {
         if (!prefs.vectorAllowed || prefs.embedPausedUntil > System.currentTimeMillis() || embedDownUntil > System.currentTimeMillis()) return true
@@ -664,7 +676,7 @@ class MailIndexer(private val context: Context) {
     private fun doc(account: MailAccount, m: Message, body: MailSync.Body, boxes: Map<String, Mailbox>, vector: FloatArray?): JSONObject {
         // Day, month, weekday and hour are the phone's own local time, so a message at 01:56 is filed under that day, not the UTC one.
         val cal = Calendar.getInstance(TimeZone.getDefault()).apply { timeInMillis = m.received }
-        val text = body.text.take(MAX_BODY)
+        val text = body.text
         val o = JSONObject()
             .put("id", docId(account, m.id))
             .put("account_s", indexKey(account))
@@ -686,6 +698,7 @@ class MailIndexer(private val context: Context) {
             .put("subject_t", m.subject)
             .put("preview_t", m.preview)
             .put("body_t", text)
+            .put("body_full_b", true)
             .put("indexed_at_dt", MailSync.iso(System.currentTimeMillis()))
         m.sender?.let {
             o.put("from_s", it.email.lowercase()).put("from_name_s", it.name).put("from_t", (it.name + " " + it.email).trim())
@@ -882,7 +895,6 @@ class MailIndexer(private val context: Context) {
         /** Without vectors to wait for, a batch carries more messages; the body asked for never changes,
          *  so the same text is written to the index either way. */
         private const val WORDS_BATCH = 100
-        private const val FULL_BODY_BYTES = 120_000
 
         /** Lanes reading from Fastmail at the same time, per account; the vectors and the write have one each. */
         private const val FETCH_LANES = 2
@@ -900,7 +912,8 @@ class MailIndexer(private val context: Context) {
         private const val LIVE_COMMIT_MS = 5_000
         private const val HISTORY_COMMIT_MS = 60_000
 
-        private const val MAX_BODY = 30_000
+        /** Older documents kept at most this many characters of the body; only a message at least this large could have been cut. */
+        private const val OLD_BODY_CAP = 30_000
         private const val MAX_ATTACHMENT_TEXT = 100_000
 
         private val runLock = Mutex()

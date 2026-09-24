@@ -39,6 +39,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
@@ -82,6 +83,8 @@ fun ThreadScreen(vm: AppViewModel, acc: String, threadId: String) {
     var arrivedNew by remember(threadId) { mutableStateOf<Set<String>?>(null) }
     val bodies = remember { mutableStateMapOf<String, Message>() }
     val expanded = remember { mutableStateMapOf<String, Boolean>() }
+    // Compact headers unless the reader unfolded them; the choice is kept for every message and every later visit.
+    var details by remember { mutableStateOf(vm.prefs.headerDetails) }
     val images = remember { mutableStateMapOf<String, Boolean>() }
     var moving by remember { mutableStateOf(false) }
     var saving by remember { mutableStateOf<com.opensolr.mail.data.Attachment?>(null) }
@@ -201,7 +204,7 @@ fun ThreadScreen(vm: AppViewModel, acc: String, threadId: String) {
                 val open = expanded[m.id] == true
                 val sender = m.from.firstOrNull()?.label.orEmpty()
                 Box(Modifier.scrollMark(threadMarks, m.id, sender + "\n" + fmtDate(m.received)).padding(top = 8.dp)) {
-                    MessageHeader(m, open, isNew = arrivedNew?.contains(m.id) == true, onCopy = { copy(it) }) { expanded[m.id] = !open }
+                    MessageHeader(m, open, details, isNew = arrivedNew?.contains(m.id) == true, onCopy = { copy(it) }, onDetails = { details = !details; vm.prefs.headerDetails = details }) { expanded[m.id] = !open }
                 }
                 androidx.compose.animation.AnimatedVisibility(
                     visible = open,
@@ -209,7 +212,7 @@ fun ThreadScreen(vm: AppViewModel, acc: String, threadId: String) {
                     exit = androidx.compose.animation.shrinkVertically(androidx.compose.animation.core.tween(200)) + androidx.compose.animation.fadeOut(androidx.compose.animation.core.tween(160)),
                 ) {
                     Column {
-                        Row(Modifier.fillMaxWidth().background(p.headFill).drawBehind { drawRect(p.accent, size = androidx.compose.ui.geometry.Size(4.dp.toPx(), size.height)) }.padding(horizontal = 8.dp), horizontalArrangement = Arrangement.End) {
+                        if (details) Row(Modifier.fillMaxWidth().background(p.headFill).drawBehind { drawRect(p.accent, size = androidx.compose.ui.geometry.Size(4.dp.toPx(), size.height)) }.padding(horizontal = 8.dp), horizontalArrangement = Arrangement.End) {
                             IconBtn(R.drawable.ic_reply, { reply(Replies.Kind.REPLY, m) })
                             IconBtn(R.drawable.ic_reply_all, { reply(Replies.Kind.REPLY_ALL, m) })
                             IconBtn(R.drawable.ic_forward, { reply(Replies.Kind.FORWARD, m) })
@@ -237,19 +240,15 @@ fun ThreadScreen(vm: AppViewModel, acc: String, threadId: String) {
                             val trusted = sender.isNotEmpty() && sender in vm.keySet(IMAGE_SENDERS)
                             val allow = vm.prefs.remoteImages || trusted || images[m.id] == true
                             if (hasRemote && !vm.prefs.remoteImages) {
-                                Row(Modifier.padding(horizontal = 16.dp, vertical = 6.dp), horizontalArrangement = Arrangement.spacedBy(20.dp)) {
-                                    if (!allow) Text(
-                                        stringResource(R.string.load_images), style = MaterialTheme.typography.labelSmall, color = p.accent,
-                                        modifier = Modifier.hapticClickable { images[m.id] = true },
-                                    )
-                                    if (sender.isNotEmpty()) Text(
+                                Row(Modifier.padding(horizontal = 12.dp, vertical = 6.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    if (!allow) ImagePill(R.drawable.ic_image, stringResource(R.string.load_images)) { images[m.id] = true }
+                                    if (sender.isNotEmpty()) ImagePill(
+                                        if (trusted) R.drawable.ic_eye_off else R.drawable.ic_eye,
                                         stringResource(if (trusted) R.string.stop_images_sender else R.string.always_images_sender),
-                                        style = MaterialTheme.typography.labelSmall, color = p.accent,
-                                        modifier = Modifier.hapticClickable {
-                                            if (trusted) images.remove(m.id)
-                                            vm.toggleKey(IMAGE_SENDERS, sender)
-                                        },
-                                    )
+                                    ) {
+                                        if (trusted) images.remove(m.id)
+                                        vm.toggleKey(IMAGE_SENDERS, sender)
+                                    }
                                 }
                             }
                             // At most a screen tall: inside it the message moves freely in every direction at once, as the
@@ -353,7 +352,7 @@ fun ThreadScreen(vm: AppViewModel, acc: String, threadId: String) {
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun MessageHeader(m: Message, open: Boolean, isNew: Boolean, onCopy: (String) -> Unit, onClick: () -> Unit) {
+private fun MessageHeader(m: Message, open: Boolean, details: Boolean, isNew: Boolean, onCopy: (String) -> Unit, onDetails: () -> Unit, onClick: () -> Unit) {
     val p = LocalPalette.current
     // Each message opens on its own tinted band with an edge, the accent one when it is open, so where one
     // message ends and the next begins reads at a glance in both themes. A message that was new gets the
@@ -372,13 +371,27 @@ private fun MessageHeader(m: Message, open: Boolean, isNew: Boolean, onCopy: (St
                 maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f),
             )
             Text(fmtDate(m.received), style = MaterialTheme.typography.bodySmall, color = if (isNew) p.accent else p.muted, fontWeight = if (isNew) FontWeight.Bold else null)
+            // An open message shows only the sender and the date; the chevron unfolds From, To and Cc.
+            if (open) {
+                val turn by androidx.compose.animation.core.animateFloatAsState(if (details) 180f else 0f, label = "details")
+                Box(
+                    Modifier.padding(start = 6.dp).size(32.dp).hapticClickable(onClick = onDetails),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        painterResource(R.drawable.ic_chevron_down),
+                        contentDescription = stringResource(if (details) R.string.cd_hide_details else R.string.cd_show_details),
+                        tint = p.muted, modifier = Modifier.size(18.dp).graphicsLayer { rotationZ = turn },
+                    )
+                }
+            }
         }
-        if (open) {
+        if (open && details) {
             Spacer(Modifier.height(6.dp))
             AddressLine(stringResource(R.string.from), m.from, onCopy)
             AddressLine(stringResource(R.string.to), m.to, onCopy)
             AddressLine(stringResource(R.string.cc), m.cc, onCopy)
-        } else {
+        } else if (!open) {
             Text(m.preview, style = MaterialTheme.typography.bodySmall, color = p.muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
     }
@@ -408,6 +421,21 @@ private fun AddressLine(label: String, list: List<com.opensolr.mail.data.Address
                 )
             }
         }
+    }
+}
+
+/** A small pill for the remote-picture choices: a line icon and a short label, in the accent. */
+@Composable
+private fun ImagePill(icon: Int, label: String, onClick: () -> Unit) {
+    val p = LocalPalette.current
+    Row(
+        Modifier.background(p.pillFill, RoundedCornerShape(2.dp)).border(1.dp, p.headRim, RoundedCornerShape(2.dp))
+            .hapticClickable(onClick = onClick).padding(horizontal = 7.dp, vertical = 3.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(painterResource(icon), contentDescription = null, tint = p.accent, modifier = Modifier.size(14.dp))
+        Spacer(Modifier.width(4.dp))
+        Text(label, style = MaterialTheme.typography.labelSmall, color = p.accent, maxLines = 1)
     }
 }
 

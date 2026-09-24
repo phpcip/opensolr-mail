@@ -17,7 +17,7 @@
     <string name="flagged">Marcados</string>
     <string name="notes">Notas</string>
     <string name="settings">Ajustes</string>
-    <string name="selected_n">%1$d seleccionados</string>
+    <string name="cd_clear_selection">Quitar selección</string>
     <string name="loading">Cargando…</string>
     <string name="empty_view">No hay mensajes.</string>
     <string name="no_subject">(sin asunto)</string>
@@ -364,4 +364,10 @@
     <string name="one_inbox_text">Sale de la Papelera y vuelve a la Bandeja de entrada, también en Fastmail.</string>
     <string name="one_notjunk_title">¿Marcar esta conversación como no spam?</string>
     <string name="one_notjunk_text">Pasa a la Bandeja de entrada, Fastmail aprende que no es spam y sus remitentes dejan de estar bloqueados en este teléfono.</string>
+    <string name="cd_show_details">Mostrar detalles</string>
+    <string name="cd_hide_details">Ocultar detalles</string>
+    <string name="suggest_history">De tu historial de correo</string>
+    <string name="suggest_history_contacts">De tu historial de correo y tus contactos</string>
+    <string name="suggest_contacts">De tus contactos</string>
+    <string name="suggest_allow_contacts">Permite el acceso a los contactos para sugerencias más completas</string>
 </resources>

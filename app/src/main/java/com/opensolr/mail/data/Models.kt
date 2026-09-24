@@ -26,13 +26,32 @@ data class Address(val name: String, val email: String) {
         fun listToJson(list: List<Address>): String = JSONArray(list.map { it.toJson() }).toString()
 
         /** Parses what a person types in a To/Cc field: comma or semicolon separated, with or without names. */
-        fun parseInput(text: String): List<Address> = text.split(',', ';', '\n').mapNotNull { part ->
+        fun parseInput(text: String): List<Address> = splitInput(text).mapNotNull { part ->
             val p = part.trim()
             if (p.isEmpty()) return@mapNotNull null
             val m = Regex("^\\s*\"?([^\"<]*?)\"?\\s*<([^>]+)>\\s*$").find(p)
             if (m != null) Address(m.groupValues[1].trim(), m.groupValues[2].trim())
             else Address("", p)
         }.filter { it.email.contains('@') }
+
+        /** Recipients split on , ; and new lines, except inside quotes or <>, so "Davison, Kevin" <k@x.com> stays whole. */
+        fun splitInput(text: String): List<String> {
+            val out = ArrayList<String>()
+            val cur = StringBuilder()
+            var quoted = false
+            var angle = false
+            text.forEach { ch ->
+                when {
+                    ch == '"' -> { quoted = !quoted; cur.append(ch) }
+                    ch == '<' && !quoted -> { angle = true; cur.append(ch) }
+                    ch == '>' && !quoted -> { angle = false; cur.append(ch) }
+                    (ch == ',' || ch == ';' || ch == '\n') && !quoted && !angle -> { out += cur.toString(); cur.clear() }
+                    else -> cur.append(ch)
+                }
+            }
+            out += cur.toString()
+            return out
+        }
     }
 }
 

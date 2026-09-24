@@ -362,7 +362,7 @@ fun SearchScreen(vm: AppViewModel, sheet: String?, screen: Screen? = null) {
     }
 
     Column(Modifier.fillMaxSize()) {
-        if (selectedKeys.isNotEmpty()) com.opensolr.mail.ui.TopBar(stringResource(R.string.selected_n, selectedKeys.size), onBack = { selectedKeys = emptySet() }) {}
+        if (selectedKeys.isNotEmpty()) com.opensolr.mail.ui.SelectionBar(selectedKeys.size, onClear = { selectedKeys = emptySet() })
         else Row(Modifier.fillMaxWidth().background(p.band).padding(horizontal = 6.dp).height(52.dp), verticalAlignment = Alignment.CenterVertically) {
             IconBtn(R.drawable.ic_back, { vm.back() })
             Box(Modifier.weight(1f).padding(horizontal = 4.dp)) {

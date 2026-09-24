@@ -79,15 +79,17 @@ fun MailboxesScreen(vm: AppViewModel) {
     val version by vm.db.version.collectAsState()
     var boxes by remember { mutableStateOf<List<Mailbox>>(emptyList()) }
     var unread by remember { mutableStateOf<Map<String, Int>>(emptyMap()) }
+    var flaggedUnread by remember { mutableStateOf(0) }
     var open by remember { mutableStateOf(vm.prefs.openSections) }
     fun toggle(key: String) {
         open = if (key in open) open - key else open + key
         vm.prefs.openSections = open
     }
     LaunchedEffect(version, accounts) { com.opensolr.mail.ui.guarded {
-            val loaded = withContext(Dispatchers.IO) { vm.db.mailboxes() to vm.db.unreadByRole() }
+            val loaded = withContext(Dispatchers.IO) { Triple(vm.db.mailboxes(), vm.db.unreadByRole(), vm.db.unreadFlagged(accounts.map { it.key })) }
             boxes = loaded.first
             unread = loaded.second
+            flaggedUnread = loaded.third
         }
     }
     Column(Modifier.fillMaxSize()) {
@@ -138,12 +140,12 @@ fun MailboxesScreen(vm: AppViewModel) {
                     Row(itemMotion().fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                         Box(Modifier.weight(1f)) {
                             if (role == null) {
-                                BoxRow(R.drawable.ic_flag, stringResource(R.string.flagged), 0, 0, null) { if (!reordering) vm.home(Screen.List(View.Flagged)) }
+                                BoxRow(R.drawable.ic_flag, stringResource(R.string.flagged), flaggedUnread, 0, null) { if (!reordering) vm.home(Screen.List(View.Flagged)) }
                             } else {
                                 val v = View.Unified(role)
                                 BoxRow(
                                     icon = roleIcon(role.jmap), label = stringResource(roleLabel(role)),
-                                    count = if (role == Role.INBOX || role == Role.JUNK) unread[role.jmap] ?: 0 else 0,
+                                    count = unread[role.jmap] ?: 0,
                                     indent = 0, color = null,
                                     menu = if (reordering) null else BoxMenu(
                                         total = boxes.filter { it.role == role.jmap }.sumOf { it.total },
@@ -269,11 +271,6 @@ private fun BoxRow(icon: Int, label: String, count: Int, indent: Int, color: Col
         }
         if (menu != null) {
             androidx.compose.material3.DropdownMenu(expanded = open, onDismissRequest = { open = false }, containerColor = p.paper, offset = androidx.compose.ui.unit.DpOffset((16 + indent * 18).dp, 0.dp)) {
-                androidx.compose.material3.DropdownMenuItem(
-                    leadingIcon = { Icon(painterResource(R.drawable.ic_read_all), null, tint = p.ink, modifier = Modifier.size(20.dp)) },
-                    text = { Text(stringResource(R.string.mark_all_read), style = MaterialTheme.typography.bodyLarge, fontWeight = androidx.compose.ui.text.font.FontWeight.Medium, color = p.ink) },
-                    onClick = { com.opensolr.mail.ui.Haptics.tick(view, true); open = false; menu.onRead() },
-                )
                 if (menu.canEmpty) {
                     // Emptying destroys for good, so it takes a second tap on the same item.
                     androidx.compose.material3.DropdownMenuItem(
@@ -291,6 +288,12 @@ private fun BoxRow(icon: Int, label: String, count: Int, indent: Int, color: Col
                         },
                     )
                 }
+                // Trash and Junk offer Empty first; Mark all as read comes after it.
+                androidx.compose.material3.DropdownMenuItem(
+                    leadingIcon = { Icon(painterResource(R.drawable.ic_read_all), null, tint = p.ink, modifier = Modifier.size(20.dp)) },
+                    text = { Text(stringResource(R.string.mark_all_read), style = MaterialTheme.typography.bodyLarge, fontWeight = androidx.compose.ui.text.font.FontWeight.Medium, color = p.ink) },
+                    onClick = { com.opensolr.mail.ui.Haptics.tick(view, true); open = false; menu.onRead() },
+                )
             }
         }
     }

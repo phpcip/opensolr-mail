@@ -17,7 +17,7 @@
     <string name="flagged">已标记</string>
     <string name="notes">备忘录</string>
     <string name="settings">设置</string>
-    <string name="selected_n">已选 %1$d</string>
+    <string name="cd_clear_selection">取消选择</string>
     <string name="loading">正在加载…</string>
     <string name="empty_view">没有邮件。</string>
     <string name="no_subject">(无主题)</string>
@@ -364,4 +364,10 @@
     <string name="one_inbox_text">它离开废纸篓，回到收件箱（Fastmail 上也是）。</string>
     <string name="one_notjunk_title">将此会话标为非垃圾邮件?</string>
     <string name="one_notjunk_text">它移到收件箱，Fastmail 会学到它不是垃圾邮件，发件人在本手机上的屏蔽也会解除。</string>
+    <string name="cd_show_details">显示详情</string>
+    <string name="cd_hide_details">隐藏详情</string>
+    <string name="suggest_history">来自你的邮件历史</string>
+    <string name="suggest_history_contacts">来自你的邮件历史和联系人</string>
+    <string name="suggest_contacts">来自你的联系人</string>
+    <string name="suggest_allow_contacts">允许访问联系人以获得更完整的建议</string>
 </resources>

@@ -33,6 +33,20 @@ class MailDb private constructor(context: Context) : SQLiteOpenHelper(context.ap
         db.execSQL("CREATE TABLE IF NOT EXISTS hidden (acc TEXT NOT NULL, thread TEXT NOT NULL, until INTEGER NOT NULL, forever INTEGER NOT NULL DEFAULT 0, PRIMARY KEY (acc, thread))")
         // Senders reported as spam: whatever they send next goes straight to Junk.
         db.execSQL("CREATE TABLE IF NOT EXISTS blocked (acc TEXT NOT NULL, email TEXT NOT NULL, at INTEGER NOT NULL, PRIMARY KEY (acc, email))")
+        // Recipient suggestions read from the mail index, per typed prefix.
+        db.execSQL("CREATE TABLE IF NOT EXISTS suggest_cache (k TEXT NOT NULL PRIMARY KEY, json TEXT NOT NULL, at INTEGER NOT NULL)")
+    }
+
+    fun suggestCached(key: String, notBefore: Long): String? =
+        readableDatabase.rawQuery("SELECT json FROM suggest_cache WHERE k = ? AND at >= ?", arrayOf(key, notBefore.toString())).use { c ->
+            if (c.moveToFirst()) c.getString(0) else null
+        }
+
+    /** Stores one prefix and drops the ones past their time, so the table never grows without bound. */
+    fun suggestStore(key: String, json: String, expiredBefore: Long) {
+        val w = writableDatabase
+        w.insertWithOnConflict("suggest_cache", null, ContentValues().apply { put("k", key); put("json", json); put("at", System.currentTimeMillis()) }, SQLiteDatabase.CONFLICT_REPLACE)
+        w.delete("suggest_cache", "at < ?", arrayOf(expiredBefore.toString()))
     }
 
     fun block(acc: String, emails: Collection<String>) {
@@ -143,6 +157,17 @@ class MailDb private constructor(context: Context) : SQLiteOpenHelper(context.ap
             while (c.moveToNext()) m[c.getString(0)] = c.getInt(1)
             m
         }
+
+    /** Unread messages of the Flagged view: flagged, on these accounts, outside Trash and Junk. */
+    fun unreadFlagged(accounts: List<String>): Int {
+        if (accounts.isEmpty()) return 0
+        val marks = accounts.joinToString(",") { "?" }
+        return readableDatabase.rawQuery(
+            "SELECT COUNT(*) FROM message m WHERE m.flagged = 1 AND m.seen = 0 AND m.acc IN ($marks) AND NOT EXISTS (SELECT 1 FROM msg_box b " +
+                "JOIN mailbox x ON x.acc = b.acc AND x.id = b.box WHERE b.acc = m.acc AND b.msg = m.id AND x.role IN ('trash','junk'))",
+            accounts.toTypedArray(),
+        ).use { c -> if (c.moveToFirst()) c.getInt(0) else 0 }
+    }
 
     // ---------- messages ----------
 

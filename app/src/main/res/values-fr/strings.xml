@@ -17,7 +17,7 @@
     <string name="flagged">Marqués</string>
     <string name="notes">Notes</string>
     <string name="settings">Réglages</string>
-    <string name="selected_n">%1$d sélectionné(s)</string>
+    <string name="cd_clear_selection">Tout désélectionner</string>
     <string name="loading">Chargement…</string>
     <string name="empty_view">Aucun message.</string>
     <string name="no_subject">(sans objet)</string>
@@ -364,4 +364,10 @@
     <string name="one_inbox_text">Elle quitte la Corbeille et revient dans la Boîte de réception, sur Fastmail aussi.</string>
     <string name="one_notjunk_title">Marquer cette conversation comme non spam ?</string>
     <string name="one_notjunk_text">Elle va dans la Boîte de réception, Fastmail apprend qu\'elle n\'est pas du spam et ses expéditeurs ne sont plus bloqués sur ce téléphone.</string>
+    <string name="cd_show_details">Afficher les détails</string>
+    <string name="cd_hide_details">Masquer les détails</string>
+    <string name="suggest_history">De votre historique d\'e-mails</string>
+    <string name="suggest_history_contacts">De votre historique d\'e-mails et de vos contacts</string>
+    <string name="suggest_contacts">De vos contacts</string>
+    <string name="suggest_allow_contacts">Autorisez l\'accès aux contacts pour des suggestions plus complètes</string>
 </resources>

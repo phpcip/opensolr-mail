@@ -45,6 +45,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
+        runCatching { com.opensolr.mail.sync.Notifier.dropSummaryIfEmpty(this) }
         if (vm.store.all().isNotEmpty()) vm.refresh()
         // Also learns at once when the phone was signed out from Account > Devices.
         vm.refreshLimits(30_000)

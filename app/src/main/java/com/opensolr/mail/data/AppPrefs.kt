@@ -106,6 +106,16 @@ class AppPrefs(context: Context) {
         get() = sp.getBoolean("undo_swipe_flag", true)
         set(v) = sp.edit().putBoolean("undo_swipe_flag", v).apply()
 
+    /** Message headers in a conversation: sender and date only (false, the default) or with From, To, Cc and the reply buttons. */
+    var headerDetails: Boolean
+        get() = sp.getBoolean("header_details", false)
+        set(v) = sp.edit().putBoolean("header_details", v).apply()
+
+    /** READ_CONTACTS was asked for once: a later refusal without a dialog means it was refused for good. */
+    var contactsAsked: Boolean
+        get() = sp.getBoolean("contacts_asked", false)
+        set(v) = sp.edit().putBoolean("contacts_asked", v).apply()
+
     var remoteImages: Boolean
         get() = sp.getBoolean(K_IMAGES, false)
         set(v) = sp.edit().putBoolean(K_IMAGES, v).apply()

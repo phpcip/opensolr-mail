@@ -66,6 +66,7 @@ import com.opensolr.mail.ui.Hairline
 import com.opensolr.mail.ui.IconBtn
 import com.opensolr.mail.ui.RefreshBox
 import com.opensolr.mail.ui.Screen
+import com.opensolr.mail.ui.SelectionBar
 import com.opensolr.mail.ui.TopBar
 import com.opensolr.mail.ui.bottomInset
 import com.opensolr.mail.ui.fmtDate
@@ -245,7 +246,7 @@ fun ThreadListScreen(vm: AppViewModel, view: View) {
                 IconBtn(R.drawable.ic_compose, { vm.go(Screen.Compose(ComposeInit())) })
             }
         } else {
-            TopBar(stringResource(R.string.selected_n, selected.size), onBack = { selected = emptySet() })
+            SelectionBar(selected.size, onClear = { selected = emptySet() })
         }
         RefreshBox(refreshing = vm.busy, onRefresh = { vm.refresh() }, modifier = Modifier.weight(1f)) {
             // Long press and drag selects every conversation between, as in Opensolr Photos.

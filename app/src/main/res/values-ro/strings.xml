@@ -17,7 +17,7 @@
     <string name="flagged">Marcate</string>
     <string name="notes">Notițe</string>
     <string name="settings">Setări</string>
-    <string name="selected_n">%1$d selectate</string>
+    <string name="cd_clear_selection">Deselectează tot</string>
     <string name="loading">Se încarcă…</string>
     <string name="empty_view">Niciun mesaj.</string>
     <string name="no_subject">(fără subiect)</string>
@@ -364,4 +364,10 @@
     <string name="one_inbox_text">Pleacă din Trash și se întoarce în Inbox, și pe Fastmail.</string>
     <string name="one_notjunk_title">Marchezi conversația ca nu-spam?</string>
     <string name="one_notjunk_text">Ajunge în Inbox, Fastmail învață că nu e spam, iar expeditorii ei nu mai sunt blocați pe acest telefon.</string>
+    <string name="cd_show_details">Arată detaliile</string>
+    <string name="cd_hide_details">Ascunde detaliile</string>
+    <string name="suggest_history">Din istoricul tău de email</string>
+    <string name="suggest_history_contacts">Din istoricul tău de email și din contacte</string>
+    <string name="suggest_contacts">Din contactele tale</string>
+    <string name="suggest_allow_contacts">Permite accesul la contacte pentru sugestii mai complete</string>
 </resources>
