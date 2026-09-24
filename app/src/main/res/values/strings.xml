@@ -354,4 +354,23 @@
     <string name="bulk_inbox_text">They leave the Trash and go back to the Inbox, on Fastmail too.</string>
     <string name="bulk_notjunk_title">Mark %1$d conversations as not spam?</string>
     <string name="bulk_notjunk_text">They move to the Inbox, Fastmail learns they are not spam, and their senders are no longer blocked on this phone.</string>
+    <string name="one_delete_title">Delete this conversation?</string>
+    <string name="one_delete_text">Every message in it goes to the Trash, on Fastmail too. You can bring it back from the Trash.</string>
+    <string name="one_delete_forever_text">It is already in Trash or Spam: every message in it is deleted for good, on Fastmail too. This cannot be undone.</string>
+    <string name="one_junk_title">Report this conversation as spam?</string>
+    <string name="one_junk_text">It moves to Spam, Fastmail\'s spam filter learns from it, and its senders are blocked on this phone: whatever they send next goes straight to Spam.</string>
+    <string name="one_archive_title">Archive this conversation?</string>
+    <string name="one_archive_text">It leaves its folder and moves to Archive, on Fastmail too. Search still finds it.</string>
+    <string name="one_read_title">Mark this conversation as read?</string>
+    <string name="one_read_text">Every message in it is marked as read, on Fastmail too.</string>
+    <string name="one_unread_title">Mark this conversation as unread?</string>
+    <string name="one_unread_text">Every message in it is marked as unread, on Fastmail too.</string>
+    <string name="one_flag_title">Flag this conversation?</string>
+    <string name="one_flag_text">It is flagged, on Fastmail too, and pinned under Flagged at the top of your lists.</string>
+    <string name="one_unflag_title">Remove the flag from this conversation?</string>
+    <string name="one_unflag_text">Its flag is removed, on Fastmail too, and it leaves Flagged.</string>
+    <string name="one_inbox_title">Move this conversation to the Inbox?</string>
+    <string name="one_inbox_text">It leaves the Trash and goes back to the Inbox, on Fastmail too.</string>
+    <string name="one_notjunk_title">Mark this conversation as not spam?</string>
+    <string name="one_notjunk_text">It moves to the Inbox, Fastmail learns it is not spam, and its senders are no longer blocked on this phone.</string>
 </resources>

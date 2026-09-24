@@ -345,4 +345,23 @@
     <string name="bulk_inbox_text">它们离开废纸篓，回到收件箱（Fastmail 上也是）。</string>
     <string name="bulk_notjunk_title">将 %1$d 个会话标为非垃圾邮件?</string>
     <string name="bulk_notjunk_text">它们移到收件箱，Fastmail 会学到它们不是垃圾邮件，发件人在本手机上的屏蔽也会解除。</string>
+    <string name="one_delete_title">删除此会话?</string>
+    <string name="one_delete_text">其中所有邮件都会移到废纸篓（Fastmail 上也是）。可以从废纸篓中恢复。</string>
+    <string name="one_delete_forever_text">它已在废纸篓或垃圾邮件中：其中所有邮件将被永久删除（Fastmail 上也是），无法撤销。</string>
+    <string name="one_junk_title">将此会话报告为垃圾邮件?</string>
+    <string name="one_junk_text">它会移到垃圾邮件，Fastmail 的垃圾邮件过滤器会从中学习，发件人在本手机上被屏蔽：之后发来的邮件直接进入垃圾邮件。</string>
+    <string name="one_archive_title">归档此会话?</string>
+    <string name="one_archive_text">它离开原文件夹移到归档（Fastmail 上也是）。搜索仍能找到它。</string>
+    <string name="one_read_title">将此会话标为已读?</string>
+    <string name="one_read_text">其中所有邮件都标为已读（Fastmail 上也是）。</string>
+    <string name="one_unread_title">将此会话标为未读?</string>
+    <string name="one_unread_text">其中所有邮件都标为未读（Fastmail 上也是）。</string>
+    <string name="one_flag_title">为此会话加旗标?</string>
+    <string name="one_flag_text">它会加上旗标（Fastmail 上也是），并固定在列表顶部的已加旗标中。</string>
+    <string name="one_unflag_title">取消此会话的旗标?</string>
+    <string name="one_unflag_text">它的旗标被取消（Fastmail 上也是），并离开已加旗标。</string>
+    <string name="one_inbox_title">将此会话移到收件箱?</string>
+    <string name="one_inbox_text">它离开废纸篓，回到收件箱（Fastmail 上也是）。</string>
+    <string name="one_notjunk_title">将此会话标为非垃圾邮件?</string>
+    <string name="one_notjunk_text">它移到收件箱，Fastmail 会学到它不是垃圾邮件，发件人在本手机上的屏蔽也会解除。</string>
 </resources>

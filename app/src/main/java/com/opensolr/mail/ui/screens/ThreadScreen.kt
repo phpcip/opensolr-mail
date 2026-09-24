@@ -34,6 +34,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import com.opensolr.mail.ui.Haptics
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -161,6 +162,9 @@ fun ThreadScreen(vm: AppViewModel, acc: String, threadId: String) {
             )
         }
     }
+
+    // The action waiting for its confirmation: title, text and button, and what it does.
+    var ask by remember { mutableStateOf<Pair<Triple<Int, Int, Int>, () -> Unit>?>(null) }
 
     /** Messages of the conversation that are not only copies in Sent or Drafts: what archive and delete act on. */
     fun actionable(): List<String> {
@@ -310,11 +314,35 @@ fun ThreadScreen(vm: AppViewModel, acc: String, threadId: String) {
                 }, tint = if (latest?.flagged == true) p.accent else null)
                 IconBtn(R.drawable.ic_unread, { vm.setSeen(acc, messages.map { it.id }, false); vm.back() })
                 IconBtn(R.drawable.ic_move, { moving = true }, strong = true)
-                IconBtn(R.drawable.ic_junk, { vm.reportJunk(acc, actionable()); vm.toast(R.string.reported_junk); vm.back() }, strong = true)
-                IconBtn(R.drawable.ic_archive, { vm.archive(acc, actionable()); vm.back() }, strong = true)
-                IconBtn(R.drawable.ic_delete, { vm.delete(acc, actionable()); vm.back() }, strong = true)
+                // Spam, Archive and Delete ask first and say what they will do.
+                IconBtn(R.drawable.ic_junk, { ask = Triple(R.string.one_junk_title, R.string.one_junk_text, R.string.tool_junk) to { vm.reportJunk(acc, actionable()); vm.toast(R.string.reported_junk); vm.back() } }, strong = true)
+                IconBtn(R.drawable.ic_archive, { ask = Triple(R.string.one_archive_title, R.string.one_archive_text, R.string.tool_archive) to { vm.archive(acc, actionable()); vm.back() } }, strong = true)
+                IconBtn(R.drawable.ic_delete, {
+                    // In Trash or Spam a delete is for good.
+                    val boxes = vm.db.mailboxes(acc).associateBy { it.id }
+                    val binned = messages.isNotEmpty() && messages.all { m -> m.mailboxIds.any { boxes[it]?.role == "trash" || boxes[it]?.role == "junk" } }
+                    ask = Triple(R.string.one_delete_title, if (binned) R.string.one_delete_forever_text else R.string.one_delete_text, R.string.delete) to { vm.delete(acc, actionable()); vm.back() }
+                }, strong = true)
             }
         }
+    }
+
+    ask?.let { (texts, action) ->
+        val view = androidx.compose.ui.platform.LocalView.current
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { ask = null },
+            title = { Text(stringResource(texts.first)) },
+            text = { Text(stringResource(texts.second), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium) },
+            confirmButton = {
+                androidx.compose.material3.TextButton(onClick = { Haptics.heavy(view); ask = null; action() }) {
+                    Text(stringResource(texts.third), color = p.accent, fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                androidx.compose.material3.TextButton(onClick = { Haptics.tick(view, false); ask = null }) { Text(stringResource(R.string.cancel), color = p.ink, fontWeight = FontWeight.Bold) }
+            },
+            containerColor = p.paper, titleContentColor = p.ink, textContentColor = p.ink,
+        )
     }
 
     if (moving) {

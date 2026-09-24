@@ -345,4 +345,23 @@
     <string name="bulk_inbox_text">Salen de la Papelera y vuelven a la Bandeja de entrada, también en Fastmail.</string>
     <string name="bulk_notjunk_title">¿Marcar %1$d conversaciones como no spam?</string>
     <string name="bulk_notjunk_text">Pasan a la Bandeja de entrada, Fastmail aprende que no son spam y sus remitentes dejan de estar bloqueados en este teléfono.</string>
+    <string name="one_delete_title">¿Eliminar esta conversación?</string>
+    <string name="one_delete_text">Todos sus mensajes van a la Papelera, también en Fastmail. Puedes recuperarla desde la Papelera.</string>
+    <string name="one_delete_forever_text">Ya está en la Papelera o en Spam: todos sus mensajes se eliminan para siempre, también en Fastmail. No se puede deshacer.</string>
+    <string name="one_junk_title">¿Marcar esta conversación como spam?</string>
+    <string name="one_junk_text">Pasa a Spam, el filtro de spam de Fastmail aprende de ella y sus remitentes quedan bloqueados en este teléfono: lo que envíen después irá directo a Spam.</string>
+    <string name="one_archive_title">¿Archivar esta conversación?</string>
+    <string name="one_archive_text">Sale de su carpeta y pasa a Archivo, también en Fastmail. La búsqueda la sigue encontrando.</string>
+    <string name="one_read_title">¿Marcar esta conversación como leída?</string>
+    <string name="one_read_text">Todos sus mensajes se marcan como leídos, también en Fastmail.</string>
+    <string name="one_unread_title">¿Marcar esta conversación como no leída?</string>
+    <string name="one_unread_text">Todos sus mensajes se marcan como no leídos, también en Fastmail.</string>
+    <string name="one_flag_title">¿Marcar con bandera esta conversación?</string>
+    <string name="one_flag_text">Se marca con bandera, también en Fastmail, y queda fijada en Marcados, arriba de tus listas.</string>
+    <string name="one_unflag_title">¿Quitar la bandera de esta conversación?</string>
+    <string name="one_unflag_text">Se le quita la bandera, también en Fastmail, y sale de Marcados.</string>
+    <string name="one_inbox_title">¿Mover esta conversación a la Bandeja de entrada?</string>
+    <string name="one_inbox_text">Sale de la Papelera y vuelve a la Bandeja de entrada, también en Fastmail.</string>
+    <string name="one_notjunk_title">¿Marcar esta conversación como no spam?</string>
+    <string name="one_notjunk_text">Pasa a la Bandeja de entrada, Fastmail aprende que no es spam y sus remitentes dejan de estar bloqueados en este teléfono.</string>
 </resources>

@@ -345,4 +345,23 @@
     <string name="bulk_inbox_text">Sie verlassen den Papierkorb und kommen zurück in den Posteingang, auch bei Fastmail.</string>
     <string name="bulk_notjunk_title">%1$d Unterhaltungen als kein Spam markieren?</string>
     <string name="bulk_notjunk_text">Sie kommen in den Posteingang, Fastmail lernt, dass sie kein Spam sind, und ihre Absender sind auf diesem Telefon nicht mehr blockiert.</string>
+    <string name="one_delete_title">Diese Unterhaltung löschen?</string>
+    <string name="one_delete_text">Alle Nachrichten darin kommen in den Papierkorb, auch bei Fastmail. Sie lässt sich aus dem Papierkorb zurückholen.</string>
+    <string name="one_delete_forever_text">Sie liegt schon im Papierkorb oder Spam: alle Nachrichten darin werden endgültig gelöscht, auch bei Fastmail. Das lässt sich nicht rückgängig machen.</string>
+    <string name="one_junk_title">Diese Unterhaltung als Spam melden?</string>
+    <string name="one_junk_text">Sie kommt in Spam, der Spamfilter von Fastmail lernt daraus, und ihre Absender werden auf diesem Telefon blockiert: was sie künftig senden, landet direkt in Spam.</string>
+    <string name="one_archive_title">Diese Unterhaltung archivieren?</string>
+    <string name="one_archive_text">Sie verlässt ihren Ordner und kommt ins Archiv, auch bei Fastmail. Die Suche findet sie weiterhin.</string>
+    <string name="one_read_title">Diese Unterhaltung als gelesen markieren?</string>
+    <string name="one_read_text">Alle Nachrichten darin werden als gelesen markiert, auch bei Fastmail.</string>
+    <string name="one_unread_title">Diese Unterhaltung als ungelesen markieren?</string>
+    <string name="one_unread_text">Alle Nachrichten darin werden als ungelesen markiert, auch bei Fastmail.</string>
+    <string name="one_flag_title">Diese Unterhaltung markieren?</string>
+    <string name="one_flag_text">Sie wird markiert, auch bei Fastmail, und oben in Ihren Listen unter Markiert angeheftet.</string>
+    <string name="one_unflag_title">Markierung dieser Unterhaltung entfernen?</string>
+    <string name="one_unflag_text">Ihre Markierung wird entfernt, auch bei Fastmail, und sie verlässt Markiert.</string>
+    <string name="one_inbox_title">Diese Unterhaltung in den Posteingang verschieben?</string>
+    <string name="one_inbox_text">Sie verlässt den Papierkorb und kommt zurück in den Posteingang, auch bei Fastmail.</string>
+    <string name="one_notjunk_title">Diese Unterhaltung als kein Spam markieren?</string>
+    <string name="one_notjunk_text">Sie kommt in den Posteingang, Fastmail lernt, dass sie kein Spam ist, und ihre Absender sind auf diesem Telefon nicht mehr blockiert.</string>
 </resources>

@@ -375,8 +375,8 @@ private fun run(vm: AppViewModel, rows: Set<ThreadRow>, view: View?, action: (St
 private data class Ask(val title: String, val text: String, val label: String, val action: () -> Unit)
 
 /**
- * The actions on the selected conversations. With two or more selected, every action that changes mail asks
- * first and says what it will do; [inBins] is how many of them lie in Trash or Spam, where a delete is for good.
+ * The actions on the selected conversations. Every action that changes mail asks first and says what it
+ * will do, for one conversation or many; [inBins] is how many of them lie in Trash or Spam, where a delete is for good.
  */
 @Composable
 internal fun SelectionBar(count: Int, inBins: Int, onRead: () -> Unit, readIcon: Int, readLabel: Int, flagging: Boolean, onFlag: () -> Unit, onArchive: () -> Unit, onDelete: () -> Unit, onForward: () -> Unit, restoreLabel: Int?, onRestore: () -> Unit, onJunk: (() -> Unit)? = null) {
@@ -384,15 +384,16 @@ internal fun SelectionBar(count: Int, inBins: Int, onRead: () -> Unit, readIcon:
     val view = LocalView.current
     var ask by remember { mutableStateOf<Ask?>(null) }
     val ctx = androidx.compose.ui.platform.LocalContext.current
-    fun confirm(title: Int, text: String, label: String, action: () -> Unit) {
-        if (count < 2) action() else ask = Ask(ctx.getString(title, count), text, label, action)
+    val one = count == 1
+    // [many] and [single] are the title and text for several conversations and for one.
+    fun confirm(many: Pair<Int, Int>, single: Pair<Int, Int>, label: String, action: () -> Unit) {
+        ask = if (one) Ask(ctx.getString(single.first), ctx.getString(single.second), label, action)
+        else Ask(ctx.getString(many.first, count), ctx.getString(many.second), label, action)
     }
-    val deleteText = stringResource(when { inBins == 0 -> R.string.bulk_delete_text; inBins >= count -> R.string.bulk_delete_forever_text; else -> R.string.bulk_delete_mixed_text })
-    val readText = stringResource(if (readLabel == R.string.tool_read) R.string.bulk_read_text else R.string.bulk_unread_text)
-    val flagText = stringResource(if (flagging) R.string.bulk_flag_text else R.string.bulk_unflag_text)
-    val archiveText = stringResource(R.string.bulk_archive_text)
-    val junkText = stringResource(R.string.bulk_junk_text)
-    val restoreText = stringResource(if (restoreLabel == R.string.not_junk) R.string.bulk_notjunk_text else R.string.bulk_inbox_text)
+    val deleteMany = R.string.bulk_delete_title to when { inBins == 0 -> R.string.bulk_delete_text; inBins >= count -> R.string.bulk_delete_forever_text; else -> R.string.bulk_delete_mixed_text }
+    val deleteOne = R.string.one_delete_title to if (inBins > 0) R.string.one_delete_forever_text else R.string.one_delete_text
+    val reading = readLabel == R.string.tool_read
+    val notJunk = restoreLabel == R.string.not_junk
     val readName = stringResource(readLabel)
     val flagName = stringResource(if (flagging) R.string.tool_flag else R.string.tool_unflag)
     val archiveName = stringResource(R.string.tool_archive)
@@ -405,18 +406,21 @@ internal fun SelectionBar(count: Int, inBins: Int, onRead: () -> Unit, readIcon:
         com.opensolr.mail.ui.ToolRow(
             listOfNotNull(
                 restoreName?.let { name -> com.opensolr.mail.ui.Tool(R.drawable.ic_inbox, name, accent = true, onClick = {
-                    confirm(if (restoreLabel == R.string.not_junk) R.string.bulk_notjunk_title else R.string.bulk_inbox_title, restoreText, name, onRestore)
+                    confirm(if (notJunk) R.string.bulk_notjunk_title to R.string.bulk_notjunk_text else R.string.bulk_inbox_title to R.string.bulk_inbox_text,
+                        if (notJunk) R.string.one_notjunk_title to R.string.one_notjunk_text else R.string.one_inbox_title to R.string.one_inbox_text, name, onRestore)
                 }) },
                 com.opensolr.mail.ui.Tool(readIcon, readName, onClick = {
-                    confirm(if (readLabel == R.string.tool_read) R.string.bulk_read_title else R.string.bulk_unread_title, readText, readName, onRead)
+                    confirm(if (reading) R.string.bulk_read_title to R.string.bulk_read_text else R.string.bulk_unread_title to R.string.bulk_unread_text,
+                        if (reading) R.string.one_read_title to R.string.one_read_text else R.string.one_unread_title to R.string.one_unread_text, readName, onRead)
                 }),
                 com.opensolr.mail.ui.Tool(R.drawable.ic_flag, stringResource(R.string.tool_flag), onClick = {
-                    confirm(if (flagging) R.string.bulk_flag_title else R.string.bulk_unflag_title, flagText, flagName, onFlag)
+                    confirm(if (flagging) R.string.bulk_flag_title to R.string.bulk_flag_text else R.string.bulk_unflag_title to R.string.bulk_unflag_text,
+                        if (flagging) R.string.one_flag_title to R.string.one_flag_text else R.string.one_unflag_title to R.string.one_unflag_text, flagName, onFlag)
                 }),
                 com.opensolr.mail.ui.Tool(R.drawable.ic_forward, stringResource(R.string.tool_forward), onClick = onForward),
-                com.opensolr.mail.ui.Tool(R.drawable.ic_archive, archiveName, strong = true, onClick = { confirm(R.string.bulk_archive_title, archiveText, archiveName, onArchive) }),
-                onJunk?.let { junk -> com.opensolr.mail.ui.Tool(R.drawable.ic_junk, junkName, strong = true, onClick = { confirm(R.string.bulk_junk_title, junkText, junkName, junk) }) },
-                com.opensolr.mail.ui.Tool(R.drawable.ic_delete, deleteName, strong = true, onClick = { confirm(R.string.bulk_delete_title, deleteText, deleteName, onDelete) }),
+                com.opensolr.mail.ui.Tool(R.drawable.ic_archive, archiveName, strong = true, onClick = { confirm(R.string.bulk_archive_title to R.string.bulk_archive_text, R.string.one_archive_title to R.string.one_archive_text, archiveName, onArchive) }),
+                onJunk?.let { junk -> com.opensolr.mail.ui.Tool(R.drawable.ic_junk, junkName, strong = true, onClick = { confirm(R.string.bulk_junk_title to R.string.bulk_junk_text, R.string.one_junk_title to R.string.one_junk_text, junkName, junk) }) },
+                com.opensolr.mail.ui.Tool(R.drawable.ic_delete, deleteName, strong = true, onClick = { confirm(deleteMany, deleteOne, deleteName, onDelete) }),
             ),
             Modifier.padding(start = 12.dp, end = 12.dp, top = 10.dp, bottom = bottomInset() + 10.dp),
         )

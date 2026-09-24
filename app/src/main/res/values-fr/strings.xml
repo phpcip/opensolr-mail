@@ -345,4 +345,23 @@
     <string name="bulk_inbox_text">Elles quittent la Corbeille et reviennent dans la Boîte de réception, sur Fastmail aussi.</string>
     <string name="bulk_notjunk_title">Marquer %1$d conversations comme non spam ?</string>
     <string name="bulk_notjunk_text">Elles vont dans la Boîte de réception, Fastmail apprend qu\'elles ne sont pas du spam et leurs expéditeurs ne sont plus bloqués sur ce téléphone.</string>
+    <string name="one_delete_title">Supprimer cette conversation ?</string>
+    <string name="one_delete_text">Tous ses messages vont dans la Corbeille, sur Fastmail aussi. Vous pouvez la récupérer depuis la Corbeille.</string>
+    <string name="one_delete_forever_text">Elle est déjà dans la Corbeille ou les Spams : tous ses messages sont supprimés définitivement, sur Fastmail aussi. Impossible d\'annuler.</string>
+    <string name="one_junk_title">Signaler cette conversation comme spam ?</string>
+    <string name="one_junk_text">Elle passe dans les Spams, le filtre de Fastmail apprend d\'elle et ses expéditeurs sont bloqués sur ce téléphone : ce qu\'ils enverront ensuite ira directement dans les Spams.</string>
+    <string name="one_archive_title">Archiver cette conversation ?</string>
+    <string name="one_archive_text">Elle quitte son dossier pour les Archives, sur Fastmail aussi. La recherche la retrouve toujours.</string>
+    <string name="one_read_title">Marquer cette conversation comme lue ?</string>
+    <string name="one_read_text">Tous ses messages sont marqués comme lus, sur Fastmail aussi.</string>
+    <string name="one_unread_title">Marquer cette conversation comme non lue ?</string>
+    <string name="one_unread_text">Tous ses messages sont marqués comme non lus, sur Fastmail aussi.</string>
+    <string name="one_flag_title">Marquer cette conversation d\'un drapeau ?</string>
+    <string name="one_flag_text">Elle reçoit un drapeau, sur Fastmail aussi, et est épinglée sous Suivis en haut de vos listes.</string>
+    <string name="one_unflag_title">Retirer le drapeau de cette conversation ?</string>
+    <string name="one_unflag_text">Son drapeau est retiré, sur Fastmail aussi, et elle quitte Suivis.</string>
+    <string name="one_inbox_title">Déplacer cette conversation vers la Boîte de réception ?</string>
+    <string name="one_inbox_text">Elle quitte la Corbeille et revient dans la Boîte de réception, sur Fastmail aussi.</string>
+    <string name="one_notjunk_title">Marquer cette conversation comme non spam ?</string>
+    <string name="one_notjunk_text">Elle va dans la Boîte de réception, Fastmail apprend qu\'elle n\'est pas du spam et ses expéditeurs ne sont plus bloqués sur ce téléphone.</string>
 </resources>

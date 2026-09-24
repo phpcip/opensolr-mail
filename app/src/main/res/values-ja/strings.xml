@@ -345,4 +345,23 @@
     <string name="bulk_inbox_text">ゴミ箱から受信トレイに戻ります（Fastmail でも）。</string>
     <string name="bulk_notjunk_title">%1$d 件の会話を迷惑メールではないとしますか?</string>
     <string name="bulk_notjunk_text">受信トレイに移動し、Fastmail は迷惑メールではないと学習します。送信者のこの端末でのブロックも解除されます。</string>
+    <string name="one_delete_title">この会話を削除しますか?</string>
+    <string name="one_delete_text">含まれるすべてのメッセージがゴミ箱に移動します（Fastmail でも）。ゴミ箱から元に戻せます。</string>
+    <string name="one_delete_forever_text">すでにゴミ箱か迷惑メールにあります。含まれるすべてのメッセージが完全に削除されます（Fastmail でも）。元に戻せません。</string>
+    <string name="one_junk_title">この会話を迷惑メールとして報告しますか?</string>
+    <string name="one_junk_text">迷惑メールに移動し、Fastmail の迷惑メールフィルタが学習します。送信者はこの端末でブロックされ、今後届くメールは直接迷惑メールに入ります。</string>
+    <string name="one_archive_title">この会話をアーカイブしますか?</string>
+    <string name="one_archive_text">元のフォルダからアーカイブに移動します（Fastmail でも）。検索では引き続き見つかります。</string>
+    <string name="one_read_title">この会話を既読にしますか?</string>
+    <string name="one_read_text">含まれるすべてのメッセージが既読になります（Fastmail でも）。</string>
+    <string name="one_unread_title">この会話を未読にしますか?</string>
+    <string name="one_unread_text">含まれるすべてのメッセージが未読になります（Fastmail でも）。</string>
+    <string name="one_flag_title">この会話にフラグを付けますか?</string>
+    <string name="one_flag_text">フラグが付き（Fastmail でも）、リストの一番上のフラグ付きに固定されます。</string>
+    <string name="one_unflag_title">この会話のフラグを外しますか?</string>
+    <string name="one_unflag_text">フラグが外れ（Fastmail でも）、フラグ付きから外れます。</string>
+    <string name="one_inbox_title">この会話を受信トレイに移動しますか?</string>
+    <string name="one_inbox_text">ゴミ箱から受信トレイに戻ります（Fastmail でも）。</string>
+    <string name="one_notjunk_title">この会話を迷惑メールではないとしますか?</string>
+    <string name="one_notjunk_text">受信トレイに移動し、Fastmail は迷惑メールではないと学習します。送信者のこの端末でのブロックも解除されます。</string>
 </resources>

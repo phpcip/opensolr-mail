@@ -345,4 +345,23 @@
     <string name="bulk_inbox_text">Pleacă din Trash și se întorc în Inbox, și pe Fastmail.</string>
     <string name="bulk_notjunk_title">Marchezi %1$d conversații ca nu-spam?</string>
     <string name="bulk_notjunk_text">Ajung în Inbox, Fastmail învață că nu sunt spam, iar expeditorii lor nu mai sunt blocați pe acest telefon.</string>
+    <string name="one_delete_title">Ștergi conversația?</string>
+    <string name="one_delete_text">Toate mesajele din ea ajung în Trash, și pe Fastmail. O poți aduce înapoi din Trash.</string>
+    <string name="one_delete_forever_text">E deja în Trash sau Spam: toate mesajele din ea se șterg definitiv, și pe Fastmail. Nu se mai poate recupera.</string>
+    <string name="one_junk_title">Raportezi conversația ca spam?</string>
+    <string name="one_junk_text">Ajunge în Spam, filtrul de spam al Fastmail învață din ea, iar expeditorii ei sunt blocați pe acest telefon: ce trimit de acum ajunge direct în Spam.</string>
+    <string name="one_archive_title">Arhivezi conversația?</string>
+    <string name="one_archive_text">Pleacă din folderul ei și ajunge în Archive, și pe Fastmail. Căutarea o găsește în continuare.</string>
+    <string name="one_read_title">Marchezi conversația ca citită?</string>
+    <string name="one_read_text">Toate mesajele din ea sunt marcate ca citite, și pe Fastmail.</string>
+    <string name="one_unread_title">Marchezi conversația ca necitită?</string>
+    <string name="one_unread_text">Toate mesajele din ea sunt marcate ca necitite, și pe Fastmail.</string>
+    <string name="one_flag_title">Pui flag pe conversație?</string>
+    <string name="one_flag_text">Primește flag, și pe Fastmail, și e fixată la Flagged, în capul listelor.</string>
+    <string name="one_unflag_title">Scoți flag-ul de pe conversație?</string>
+    <string name="one_unflag_text">Flag-ul ei dispare, și pe Fastmail, și iese din Flagged.</string>
+    <string name="one_inbox_title">Muți conversația în Inbox?</string>
+    <string name="one_inbox_text">Pleacă din Trash și se întoarce în Inbox, și pe Fastmail.</string>
+    <string name="one_notjunk_title">Marchezi conversația ca nu-spam?</string>
+    <string name="one_notjunk_text">Ajunge în Inbox, Fastmail învață că nu e spam, iar expeditorii ei nu mai sunt blocați pe acest telefon.</string>
 </resources>
