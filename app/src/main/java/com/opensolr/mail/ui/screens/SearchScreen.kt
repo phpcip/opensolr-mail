@@ -233,7 +233,10 @@ fun SearchScreen(vm: AppViewModel, sheet: String?) {
         val last = listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: -1
         total > 0 && (last >= total - 20 || (!listState.canScrollForward && listState.canScrollBackward))
     } }
-    LaunchedEffect(atEnd, shownHits.size, shownGroups.size, fetchedMore, similarFolded) {
+    // A page that failed is asked for again shortly; the list is never left without its next page.
+    var pageRetry by remember { mutableIntStateOf(0) }
+    // Keyed on the result and on loading too: the first page lands while loading is still on, with the end already in view.
+    LaunchedEffect(result, loading, atEnd, shownHits.size, shownGroups.size, fetchedMore, similarFolded, pageRetry) {
         val res = result ?: return@LaunchedEffect
         if (!atEnd || loadingMore || loading) return@LaunchedEffect
         // A folded Also similar shows none of the later pages: none is fetched until it is opened.
@@ -245,10 +248,20 @@ fun SearchScreen(vm: AppViewModel, sheet: String?) {
         val more = if (grouped) shownGroups.size < res.total && shownGroups.size % 20 == 0 && shownGroups.isNotEmpty() else read < res.total
         if (!more) return@LaunchedEffect
         loadingMore = true
-        runCatching { vm.search.search(submitted, filters, groupBy, start = if (grouped) shownGroups.size else read) }.onSuccess { next ->
+        try {
+            val next = vm.search.search(submitted, filters, groupBy, start = if (grouped) shownGroups.size else read)
+            // A new search started meanwhile: this page belongs to the old one.
+            if (result !== res) return@LaunchedEffect
             if (grouped) extraGroups = extraGroups + next.groups else { extraHits = extraHits + next.hits; fetchedMore += next.fetched.coerceAtLeast(1) }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            loadingMore = false
+            kotlinx.coroutines.delay(3_000L)
+            pageRetry++
+        } finally {
+            loadingMore = false
         }
-        loadingMore = false
     }
 
     // The same controls as the mail lists: swipe to delete or flag, long tap to select, the same bar of actions.
