@@ -333,4 +333,25 @@
     <string name="save">Save</string>
     <string name="clear">Clear</string>
     <string name="regenerate">Regenerate</string>
+    <string name="tool_unflag">Unflag</string>
+    <string name="bulk_delete_title">Delete %1$d conversations?</string>
+    <string name="bulk_delete_text">Every message in them goes to the Trash, on Fastmail too. You can bring them back from the Trash.</string>
+    <string name="bulk_delete_forever_text">They are already in Trash or Spam: every message in them is deleted for good, on Fastmail too. This cannot be undone.</string>
+    <string name="bulk_delete_mixed_text">Those already in Trash or Spam are deleted for good, on Fastmail too, and cannot be brought back. The rest go to the Trash.</string>
+    <string name="bulk_junk_title">Report %1$d conversations as spam?</string>
+    <string name="bulk_junk_text">They move to Spam, Fastmail\'s spam filter learns from them, and their senders are blocked on this phone: whatever they send next goes straight to Spam.</string>
+    <string name="bulk_archive_title">Archive %1$d conversations?</string>
+    <string name="bulk_archive_text">They leave their folders and move to Archive, on Fastmail too. Search still finds them.</string>
+    <string name="bulk_read_title">Mark %1$d conversations as read?</string>
+    <string name="bulk_read_text">Every message in them is marked as read, on Fastmail too.</string>
+    <string name="bulk_unread_title">Mark %1$d conversations as unread?</string>
+    <string name="bulk_unread_text">Every message in them is marked as unread, on Fastmail too.</string>
+    <string name="bulk_flag_title">Flag %1$d conversations?</string>
+    <string name="bulk_flag_text">They are flagged, on Fastmail too, and pinned under Flagged at the top of your lists.</string>
+    <string name="bulk_unflag_title">Remove the flag from %1$d conversations?</string>
+    <string name="bulk_unflag_text">Their flags are removed, on Fastmail too, and they leave Flagged.</string>
+    <string name="bulk_inbox_title">Move %1$d conversations to the Inbox?</string>
+    <string name="bulk_inbox_text">They leave the Trash and go back to the Inbox, on Fastmail too.</string>
+    <string name="bulk_notjunk_title">Mark %1$d conversations as not spam?</string>
+    <string name="bulk_notjunk_text">They move to the Inbox, Fastmail learns they are not spam, and their senders are no longer blocked on this phone.</string>
 </resources>

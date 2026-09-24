@@ -70,6 +70,7 @@ import com.opensolr.mail.ui.TopBar
 import com.opensolr.mail.ui.bottomInset
 import com.opensolr.mail.ui.fmtDate
 import com.opensolr.mail.ui.FastScroller
+import com.opensolr.mail.ui.dragSelect
 import com.opensolr.mail.ui.itemMotion
 import com.opensolr.mail.ui.theme.LocalPalette
 
@@ -247,7 +248,28 @@ fun ThreadListScreen(vm: AppViewModel, view: View) {
             TopBar(stringResource(R.string.selected_n, selected.size), onBack = { selected = emptySet() })
         }
         RefreshBox(refreshing = vm.busy, onRefresh = { vm.refresh() }, modifier = Modifier.weight(1f)) {
-            LazyColumn(state = listState, modifier = Modifier.fillMaxSize()) {
+            // Long press and drag selects every conversation between, as in Opensolr Photos.
+            var dragBase by remember { mutableStateOf<Set<ThreadRow>?>(null) }
+            var dragOff by remember { mutableStateOf(false) }
+            val byKey = remember(groups) { groups.flatMap { it.rows }.associateBy { it.acc + ":" + it.threadId } }
+            LazyColumn(state = listState, modifier = Modifier.fillMaxSize().dragSelect(
+                listState,
+                order = { groups.filter { !folded(it.key) }.flatMap { g -> g.rows.map { it.acc + ":" + it.threadId } } },
+                onStart = { k ->
+                    val r = byKey[k] ?: return@dragSelect
+                    Haptics.tick(view0, true)
+                    dragBase = selected
+                    dragOff = r in selected
+                    selected = if (dragOff) selected - r else selected + r
+                },
+                onRange = { ks ->
+                    val base = dragBase ?: return@dragSelect
+                    val rs = ks.mapNotNull { byKey[it] }
+                    Haptics.tick(view0, false)
+                    selected = if (dragOff) base - rs.toSet() else base + rs
+                },
+                onEnd = { dragBase = null },
+            )) {
                 groups.forEach { g ->
                 if (g.key != "all") item(key = "g:" + g.key) {
                     Box(itemMotion()) { ListGroupHeader(g.label, g.rows.size, !folded(g.key)) { toggleGroup(g.key) } }
@@ -266,7 +288,6 @@ fun ThreadListScreen(vm: AppViewModel, view: View) {
                                 if (selected.isNotEmpty()) selected = if (r in selected) selected - r else selected + r
                                 else vm.go(Screen.Thread(r.acc, r.threadId))
                             },
-                            onLongClick = { selected = selected + r },
                         )
                     }
                     Hairline()
@@ -315,6 +336,7 @@ fun ThreadListScreen(vm: AppViewModel, view: View) {
             val anyUnread = selected.any { it.unread }
             val anyUnflagged = selected.any { !it.flagged }
             SelectionBar(
+                count = selected.size, inBins = if (binRole != null) selected.size else 0, flagging = anyUnflagged,
                 onRead = { run(vm, selected, null) { acc, ids -> vm.setSeen(acc, ids, anyUnread) }; selected = emptySet() },
                 readIcon = if (anyUnread) R.drawable.ic_check else R.drawable.ic_unread,
                 readLabel = if (anyUnread) R.string.tool_read else R.string.tool_unread,
@@ -349,30 +371,77 @@ private fun run(vm: AppViewModel, rows: Set<ThreadRow>, view: View?, action: (St
     }
 }
 
+/** A bulk action waiting for its confirmation: what it does, told before it is done. */
+private data class Ask(val title: String, val text: String, val label: String, val action: () -> Unit)
+
+/**
+ * The actions on the selected conversations. With two or more selected, every action that changes mail asks
+ * first and says what it will do; [inBins] is how many of them lie in Trash or Spam, where a delete is for good.
+ */
 @Composable
-internal fun SelectionBar(onRead: () -> Unit, readIcon: Int, readLabel: Int, onFlag: () -> Unit, onArchive: () -> Unit, onDelete: () -> Unit, onForward: () -> Unit, restoreLabel: Int?, onRestore: () -> Unit, onJunk: (() -> Unit)? = null) {
+internal fun SelectionBar(count: Int, inBins: Int, onRead: () -> Unit, readIcon: Int, readLabel: Int, flagging: Boolean, onFlag: () -> Unit, onArchive: () -> Unit, onDelete: () -> Unit, onForward: () -> Unit, restoreLabel: Int?, onRestore: () -> Unit, onJunk: (() -> Unit)? = null) {
     val p = LocalPalette.current
+    val view = LocalView.current
+    var ask by remember { mutableStateOf<Ask?>(null) }
+    val ctx = androidx.compose.ui.platform.LocalContext.current
+    fun confirm(title: Int, text: String, label: String, action: () -> Unit) {
+        if (count < 2) action() else ask = Ask(ctx.getString(title, count), text, label, action)
+    }
+    val deleteText = stringResource(when { inBins == 0 -> R.string.bulk_delete_text; inBins >= count -> R.string.bulk_delete_forever_text; else -> R.string.bulk_delete_mixed_text })
+    val readText = stringResource(if (readLabel == R.string.tool_read) R.string.bulk_read_text else R.string.bulk_unread_text)
+    val flagText = stringResource(if (flagging) R.string.bulk_flag_text else R.string.bulk_unflag_text)
+    val archiveText = stringResource(R.string.bulk_archive_text)
+    val junkText = stringResource(R.string.bulk_junk_text)
+    val restoreText = stringResource(if (restoreLabel == R.string.not_junk) R.string.bulk_notjunk_text else R.string.bulk_inbox_text)
+    val readName = stringResource(readLabel)
+    val flagName = stringResource(if (flagging) R.string.tool_flag else R.string.tool_unflag)
+    val archiveName = stringResource(R.string.tool_archive)
+    val junkName = stringResource(R.string.tool_junk)
+    val deleteName = stringResource(R.string.delete)
+    val restoreName = restoreLabel?.let { stringResource(if (it == R.string.not_junk) R.string.tool_not_junk else R.string.tool_to_inbox) }
     Column(Modifier.fillMaxWidth().background(p.dockFill)) {
         Hairline()
         // One row of labelled icons, the Opensolr Photos dock; in Trash and Junk the way back to the Inbox comes first.
         com.opensolr.mail.ui.ToolRow(
             listOfNotNull(
-                restoreLabel?.let { com.opensolr.mail.ui.Tool(R.drawable.ic_inbox, stringResource(if (it == R.string.not_junk) R.string.tool_not_junk else R.string.tool_to_inbox), accent = true, onClick = onRestore) },
-                com.opensolr.mail.ui.Tool(readIcon, stringResource(readLabel), onClick = onRead),
-                com.opensolr.mail.ui.Tool(R.drawable.ic_flag, stringResource(R.string.tool_flag), onClick = onFlag),
+                restoreName?.let { name -> com.opensolr.mail.ui.Tool(R.drawable.ic_inbox, name, accent = true, onClick = {
+                    confirm(if (restoreLabel == R.string.not_junk) R.string.bulk_notjunk_title else R.string.bulk_inbox_title, restoreText, name, onRestore)
+                }) },
+                com.opensolr.mail.ui.Tool(readIcon, readName, onClick = {
+                    confirm(if (readLabel == R.string.tool_read) R.string.bulk_read_title else R.string.bulk_unread_title, readText, readName, onRead)
+                }),
+                com.opensolr.mail.ui.Tool(R.drawable.ic_flag, stringResource(R.string.tool_flag), onClick = {
+                    confirm(if (flagging) R.string.bulk_flag_title else R.string.bulk_unflag_title, flagText, flagName, onFlag)
+                }),
                 com.opensolr.mail.ui.Tool(R.drawable.ic_forward, stringResource(R.string.tool_forward), onClick = onForward),
-                com.opensolr.mail.ui.Tool(R.drawable.ic_archive, stringResource(R.string.tool_archive), strong = true, onClick = onArchive),
-                onJunk?.let { com.opensolr.mail.ui.Tool(R.drawable.ic_junk, stringResource(R.string.tool_junk), strong = true, onClick = it) },
-                com.opensolr.mail.ui.Tool(R.drawable.ic_delete, stringResource(R.string.delete), strong = true, onClick = onDelete),
+                com.opensolr.mail.ui.Tool(R.drawable.ic_archive, archiveName, strong = true, onClick = { confirm(R.string.bulk_archive_title, archiveText, archiveName, onArchive) }),
+                onJunk?.let { junk -> com.opensolr.mail.ui.Tool(R.drawable.ic_junk, junkName, strong = true, onClick = { confirm(R.string.bulk_junk_title, junkText, junkName, junk) }) },
+                com.opensolr.mail.ui.Tool(R.drawable.ic_delete, deleteName, strong = true, onClick = { confirm(R.string.bulk_delete_title, deleteText, deleteName, onDelete) }),
             ),
             Modifier.padding(start = 12.dp, end = 12.dp, top = 10.dp, bottom = bottomInset() + 10.dp),
+        )
+    }
+    ask?.let { a ->
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { ask = null },
+            title = { Text(a.title) },
+            text = { Text(a.text, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium) },
+            confirmButton = {
+                androidx.compose.material3.TextButton(onClick = { Haptics.heavy(view); ask = null; a.action() }) {
+                    Text(a.label, color = p.accent, fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                androidx.compose.material3.TextButton(onClick = { Haptics.tick(view, false); ask = null }) { Text(stringResource(R.string.cancel), color = p.ink, fontWeight = FontWeight.Bold) }
+            },
+            containerColor = p.paper, titleContentColor = p.ink, textContentColor = p.ink,
         )
     }
 }
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun ThreadRowView(r: ThreadRow, stripe: Color?, selected: Boolean, onClick: () -> Unit, onLongClick: () -> Unit) {
+private fun ThreadRowView(r: ThreadRow, stripe: Color?, selected: Boolean, onClick: () -> Unit) {
     val p = LocalPalette.current
     val view = LocalView.current
     // Unread stands out plainly: an accent wash behind the row, a large dot, bold sender and subject, the date in the accent.
@@ -381,7 +450,7 @@ private fun ThreadRowView(r: ThreadRow, stripe: Color?, selected: Boolean, onCli
     com.opensolr.mail.ui.StackCard(r.count, bg) {
     Row(
         Modifier.fillMaxWidth()
-            .combinedClickable(onClick = onClick, onLongClick = { Haptics.tick(view, true); onLongClick() }),
+            .combinedClickable(onClick = onClick),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Box(Modifier.width(if (selected) 5.dp else 3.dp).height(68.dp).background(if (selected) p.accentFill else stripe ?: Color.Transparent))

@@ -324,4 +324,25 @@
     <string name="save">Enregistrer</string>
     <string name="clear">Effacer</string>
     <string name="regenerate">Régénérer</string>
+    <string name="tool_unflag">Retirer</string>
+    <string name="bulk_delete_title">Supprimer %1$d conversations ?</string>
+    <string name="bulk_delete_text">Tous leurs messages vont dans la Corbeille, sur Fastmail aussi. Vous pouvez les récupérer depuis la Corbeille.</string>
+    <string name="bulk_delete_forever_text">Elles sont déjà dans la Corbeille ou les Spams : tous leurs messages sont supprimés définitivement, sur Fastmail aussi. Impossible d\'annuler.</string>
+    <string name="bulk_delete_mixed_text">Celles déjà dans la Corbeille ou les Spams sont supprimées définitivement, sur Fastmail aussi, sans retour possible. Les autres vont dans la Corbeille.</string>
+    <string name="bulk_junk_title">Signaler %1$d conversations comme spam ?</string>
+    <string name="bulk_junk_text">Elles passent dans les Spams, le filtre de Fastmail apprend d\'elles et leurs expéditeurs sont bloqués sur ce téléphone : ce qu\'ils enverront ensuite ira directement dans les Spams.</string>
+    <string name="bulk_archive_title">Archiver %1$d conversations ?</string>
+    <string name="bulk_archive_text">Elles quittent leurs dossiers pour les Archives, sur Fastmail aussi. La recherche les retrouve toujours.</string>
+    <string name="bulk_read_title">Marquer %1$d conversations comme lues ?</string>
+    <string name="bulk_read_text">Tous leurs messages sont marqués comme lus, sur Fastmail aussi.</string>
+    <string name="bulk_unread_title">Marquer %1$d conversations comme non lues ?</string>
+    <string name="bulk_unread_text">Tous leurs messages sont marqués comme non lus, sur Fastmail aussi.</string>
+    <string name="bulk_flag_title">Marquer %1$d conversations d\'un drapeau ?</string>
+    <string name="bulk_flag_text">Elles reçoivent un drapeau, sur Fastmail aussi, et sont épinglées sous Suivis en haut de vos listes.</string>
+    <string name="bulk_unflag_title">Retirer le drapeau de %1$d conversations ?</string>
+    <string name="bulk_unflag_text">Leur drapeau est retiré, sur Fastmail aussi, et elles quittent Suivis.</string>
+    <string name="bulk_inbox_title">Déplacer %1$d conversations vers la Boîte de réception ?</string>
+    <string name="bulk_inbox_text">Elles quittent la Corbeille et reviennent dans la Boîte de réception, sur Fastmail aussi.</string>
+    <string name="bulk_notjunk_title">Marquer %1$d conversations comme non spam ?</string>
+    <string name="bulk_notjunk_text">Elles vont dans la Boîte de réception, Fastmail apprend qu\'elles ne sont pas du spam et leurs expéditeurs ne sont plus bloqués sur ce téléphone.</string>
 </resources>

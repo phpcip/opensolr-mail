@@ -324,4 +324,25 @@
     <string name="save">Speichern</string>
     <string name="clear">Leeren</string>
     <string name="regenerate">Neu erzeugen</string>
+    <string name="tool_unflag">Markierung weg</string>
+    <string name="bulk_delete_title">%1$d Unterhaltungen löschen?</string>
+    <string name="bulk_delete_text">Alle Nachrichten darin kommen in den Papierkorb, auch bei Fastmail. Sie lassen sich aus dem Papierkorb zurückholen.</string>
+    <string name="bulk_delete_forever_text">Sie liegen schon im Papierkorb oder Spam: alle Nachrichten darin werden endgültig gelöscht, auch bei Fastmail. Das lässt sich nicht rückgängig machen.</string>
+    <string name="bulk_delete_mixed_text">Die bereits im Papierkorb oder Spam liegenden werden endgültig gelöscht, auch bei Fastmail, und sind nicht wiederherstellbar. Der Rest kommt in den Papierkorb.</string>
+    <string name="bulk_junk_title">%1$d Unterhaltungen als Spam melden?</string>
+    <string name="bulk_junk_text">Sie kommen in Spam, der Spamfilter von Fastmail lernt daraus, und ihre Absender werden auf diesem Telefon blockiert: was sie künftig senden, landet direkt in Spam.</string>
+    <string name="bulk_archive_title">%1$d Unterhaltungen archivieren?</string>
+    <string name="bulk_archive_text">Sie verlassen ihre Ordner und kommen ins Archiv, auch bei Fastmail. Die Suche findet sie weiterhin.</string>
+    <string name="bulk_read_title">%1$d Unterhaltungen als gelesen markieren?</string>
+    <string name="bulk_read_text">Alle Nachrichten darin werden als gelesen markiert, auch bei Fastmail.</string>
+    <string name="bulk_unread_title">%1$d Unterhaltungen als ungelesen markieren?</string>
+    <string name="bulk_unread_text">Alle Nachrichten darin werden als ungelesen markiert, auch bei Fastmail.</string>
+    <string name="bulk_flag_title">%1$d Unterhaltungen markieren?</string>
+    <string name="bulk_flag_text">Sie werden markiert, auch bei Fastmail, und oben in Ihren Listen unter Markiert angeheftet.</string>
+    <string name="bulk_unflag_title">Markierung von %1$d Unterhaltungen entfernen?</string>
+    <string name="bulk_unflag_text">Ihre Markierung wird entfernt, auch bei Fastmail, und sie verlassen Markiert.</string>
+    <string name="bulk_inbox_title">%1$d Unterhaltungen in den Posteingang verschieben?</string>
+    <string name="bulk_inbox_text">Sie verlassen den Papierkorb und kommen zurück in den Posteingang, auch bei Fastmail.</string>
+    <string name="bulk_notjunk_title">%1$d Unterhaltungen als kein Spam markieren?</string>
+    <string name="bulk_notjunk_text">Sie kommen in den Posteingang, Fastmail lernt, dass sie kein Spam sind, und ihre Absender sind auf diesem Telefon nicht mehr blockiert.</string>
 </resources>

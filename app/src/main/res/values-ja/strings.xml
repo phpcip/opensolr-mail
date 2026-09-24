@@ -324,4 +324,25 @@
     <string name="save">保存</string>
     <string name="clear">消去</string>
     <string name="regenerate">再生成</string>
+    <string name="tool_unflag">フラグ解除</string>
+    <string name="bulk_delete_title">%1$d 件の会話を削除しますか?</string>
+    <string name="bulk_delete_text">含まれるすべてのメッセージがゴミ箱に移動します（Fastmail でも）。ゴミ箱から元に戻せます。</string>
+    <string name="bulk_delete_forever_text">すでにゴミ箱か迷惑メールにあります。含まれるすべてのメッセージが完全に削除されます（Fastmail でも）。元に戻せません。</string>
+    <string name="bulk_delete_mixed_text">ゴミ箱か迷惑メールにあるものは完全に削除され（Fastmail でも）、元に戻せません。残りはゴミ箱に移動します。</string>
+    <string name="bulk_junk_title">%1$d 件の会話を迷惑メールとして報告しますか?</string>
+    <string name="bulk_junk_text">迷惑メールに移動し、Fastmail の迷惑メールフィルタが学習します。送信者はこの端末でブロックされ、今後届くメールは直接迷惑メールに入ります。</string>
+    <string name="bulk_archive_title">%1$d 件の会話をアーカイブしますか?</string>
+    <string name="bulk_archive_text">元のフォルダからアーカイブに移動します（Fastmail でも）。検索では引き続き見つかります。</string>
+    <string name="bulk_read_title">%1$d 件の会話を既読にしますか?</string>
+    <string name="bulk_read_text">含まれるすべてのメッセージが既読になります（Fastmail でも）。</string>
+    <string name="bulk_unread_title">%1$d 件の会話を未読にしますか?</string>
+    <string name="bulk_unread_text">含まれるすべてのメッセージが未読になります（Fastmail でも）。</string>
+    <string name="bulk_flag_title">%1$d 件の会話にフラグを付けますか?</string>
+    <string name="bulk_flag_text">フラグが付き（Fastmail でも）、リストの一番上のフラグ付きに固定されます。</string>
+    <string name="bulk_unflag_title">%1$d 件の会話のフラグを外しますか?</string>
+    <string name="bulk_unflag_text">フラグが外れ（Fastmail でも）、フラグ付きから外れます。</string>
+    <string name="bulk_inbox_title">%1$d 件の会話を受信トレイに移動しますか?</string>
+    <string name="bulk_inbox_text">ゴミ箱から受信トレイに戻ります（Fastmail でも）。</string>
+    <string name="bulk_notjunk_title">%1$d 件の会話を迷惑メールではないとしますか?</string>
+    <string name="bulk_notjunk_text">受信トレイに移動し、Fastmail は迷惑メールではないと学習します。送信者のこの端末でのブロックも解除されます。</string>
 </resources>

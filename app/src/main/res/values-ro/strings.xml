@@ -324,4 +324,25 @@
     <string name="save">Salvează</string>
     <string name="clear">Șterge</string>
     <string name="regenerate">Regenerează</string>
+    <string name="tool_unflag">Scoate flag</string>
+    <string name="bulk_delete_title">Ștergi %1$d conversații?</string>
+    <string name="bulk_delete_text">Toate mesajele din ele ajung în Trash, și pe Fastmail. Le poți aduce înapoi din Trash.</string>
+    <string name="bulk_delete_forever_text">Sunt deja în Trash sau Spam: toate mesajele din ele se șterg definitiv, și pe Fastmail. Nu se mai pot recupera.</string>
+    <string name="bulk_delete_mixed_text">Cele aflate deja în Trash sau Spam se șterg definitiv, și pe Fastmail, și nu se mai pot recupera. Restul ajung în Trash.</string>
+    <string name="bulk_junk_title">Raportezi %1$d conversații ca spam?</string>
+    <string name="bulk_junk_text">Ajung în Spam, filtrul de spam al Fastmail învață din ele, iar expeditorii lor sunt blocați pe acest telefon: ce trimit de acum ajunge direct în Spam.</string>
+    <string name="bulk_archive_title">Arhivezi %1$d conversații?</string>
+    <string name="bulk_archive_text">Pleacă din folderele lor și ajung în Archive, și pe Fastmail. Căutarea le găsește în continuare.</string>
+    <string name="bulk_read_title">Marchezi %1$d conversații ca citite?</string>
+    <string name="bulk_read_text">Toate mesajele din ele sunt marcate ca citite, și pe Fastmail.</string>
+    <string name="bulk_unread_title">Marchezi %1$d conversații ca necitite?</string>
+    <string name="bulk_unread_text">Toate mesajele din ele sunt marcate ca necitite, și pe Fastmail.</string>
+    <string name="bulk_flag_title">Pui flag pe %1$d conversații?</string>
+    <string name="bulk_flag_text">Primesc flag, și pe Fastmail, și sunt fixate la Flagged, în capul listelor.</string>
+    <string name="bulk_unflag_title">Scoți flag-ul de pe %1$d conversații?</string>
+    <string name="bulk_unflag_text">Flag-ul lor dispare, și pe Fastmail, și ies din Flagged.</string>
+    <string name="bulk_inbox_title">Muți %1$d conversații în Inbox?</string>
+    <string name="bulk_inbox_text">Pleacă din Trash și se întorc în Inbox, și pe Fastmail.</string>
+    <string name="bulk_notjunk_title">Marchezi %1$d conversații ca nu-spam?</string>
+    <string name="bulk_notjunk_text">Ajung în Inbox, Fastmail învață că nu sunt spam, iar expeditorii lor nu mai sunt blocați pe acest telefon.</string>
 </resources>

@@ -90,6 +90,7 @@ import com.opensolr.mail.ui.bottomInset
 import com.opensolr.mail.ui.fmtDate
 import com.opensolr.mail.ui.highlighted
 import com.opensolr.mail.ui.FastScroller
+import com.opensolr.mail.ui.dragSelect
 import com.opensolr.mail.ui.itemMotion
 import com.opensolr.mail.ui.theme.LocalPalette
 import kotlinx.coroutines.CancellationException
@@ -280,6 +281,9 @@ fun SearchScreen(vm: AppViewModel, sheet: String?, screen: Screen? = null) {
     // The same controls as the mail lists: swipe to delete or flag, long tap to select, the same bar of actions.
     // Flag and read changes show at once; the index catches up at the next indexing.
     var selectedKeys by remember { mutableStateOf<Set<String>>(emptySet()) }
+    // The selection when a drag started, and whether that drag unselects.
+    var dragBase by remember { mutableStateOf<Set<String>?>(null) }
+    var dragOff by remember { mutableStateOf(false) }
     val flagNow = remember { androidx.compose.runtime.mutableStateMapOf<String, Boolean>() }
     val seenNow = remember { androidx.compose.runtime.mutableStateMapOf<String, Boolean>() }
     // Conversations deleted or archived from here stay out of the results until the index catches up.
@@ -353,7 +357,6 @@ fun SearchScreen(vm: AppViewModel, sheet: String?, screen: Screen? = null) {
                     if (selectedKeys.isNotEmpty()) selectedKeys = if (k in selectedKeys) selectedKeys - k else selectedKeys + k
                     else if (h.threadId.isNotEmpty()) { seenNow[k] = true; vm.go(Screen.Thread(h.acc, h.threadId)) }
                 },
-                onLongClick = { if (h.threadId.isNotEmpty()) selectedKeys = selectedKeys + k },
             )
         }
     }
@@ -475,7 +478,41 @@ fun SearchScreen(vm: AppViewModel, sheet: String?, screen: Screen? = null) {
             }
         }
         com.opensolr.mail.ui.RefreshBox(refreshing = loading, onRefresh = { vm.stopAi(); run() }, modifier = Modifier.weight(1f)) {
-        LazyColumn(Modifier.fillMaxSize(), state = listState) {
+        // Long press and drag selects every result between, as in Opensolr Photos.
+        val dragOrder = buildList<Pair<Any, MailSearch.Hit>> {
+            if (groupBy.field == null && bestKeys != null) {
+                if (!bestFolded) best.forEach { add(("h:" + it.acc + ":" + it.emailId) to it) }
+                if (!similarFolded) similar.forEach { add(("h:" + it.acc + ":" + it.emailId) to it) }
+            } else if (groupBy.field == null) {
+                listed.forEach { add(("h:" + it.acc + ":" + it.emailId) to it) }
+            } else {
+                shownGroups.forEach { g ->
+                    val key = groupBy.name + ":" + g.value
+                    if (!vm.isFolded("search_folds", key)) g.hits.filter { vm.hiddenThreads[keyOf(it)] != true && gone[keyOf(it)] != true }
+                        .distinctBy { it.messageId.ifEmpty { it.acc + ":" + it.emailId } }
+                        .forEach { add(("gh:$key:" + it.acc + ":" + it.emailId) to it) }
+                }
+            }
+        }.filter { it.second.threadId.isNotEmpty() }
+        val dragHits = dragOrder.toMap()
+        LazyColumn(Modifier.fillMaxSize().dragSelect(
+            listState,
+            order = { dragOrder.map { it.first } },
+            onStart = { k ->
+                val h = dragHits[k] ?: return@dragSelect
+                Haptics.tick(view, true)
+                dragBase = selectedKeys
+                dragOff = keyOf(h) in selectedKeys
+                selectedKeys = if (dragOff) selectedKeys - keyOf(h) else selectedKeys + keyOf(h)
+            },
+            onRange = { ks ->
+                val base = dragBase ?: return@dragSelect
+                val picked = ks.mapNotNull { dragHits[it]?.let(::keyOf) }
+                Haptics.tick(view, false)
+                selectedKeys = if (dragOff) base - picked.toSet() else base + picked
+            },
+            onEnd = { dragBase = null },
+        ), state = listState) {
             if (hasAnswerCard) item(key = "ai") {
                 // The answer shown belongs to the question typed now; another question offers a new one.
                 val mine = vm.aiQuestion == submitted
@@ -545,6 +582,7 @@ fun SearchScreen(vm: AppViewModel, sheet: String?, screen: Screen? = null) {
                 vm.viewModelScopeLaunch { rows.groupBy { it.acc }.forEach { (acc, rs) -> block(acc, rs.flatMap { vm.threadIds(it) }) } }
             }
             SelectionBar(
+                count = selectedRows.size, inBins = selectedRows.count { binOf[it.acc + ":" + it.threadId] != null }, flagging = anyUnflagged,
                 onRead = { selectedRows.forEach { seenNow[it.acc + ":" + it.threadId] = anyUnread }; each { acc, ids -> vm.setSeen(acc, ids, anyUnread) }; selectedKeys = emptySet() },
                 readIcon = if (anyUnread) R.drawable.ic_check else R.drawable.ic_unread,
                 readLabel = if (anyUnread) R.string.tool_read else R.string.tool_unread,
@@ -893,14 +931,14 @@ private fun GroupHeader(label: String, total: Long, open: Boolean, onToggle: () 
 
 @Composable
 @OptIn(ExperimentalFoundationApi::class)
-private fun HitRow(vm: AppViewModel, h: MailSearch.Hit, folders: List<Pair<String, Color>>, multi: Boolean, color: Int?, selected: Boolean, onClick: () -> Unit, onLongClick: () -> Unit) {
+private fun HitRow(vm: AppViewModel, h: MailSearch.Hit, folders: List<Pair<String, Color>>, multi: Boolean, color: Int?, selected: Boolean, onClick: () -> Unit) {
     val p = LocalPalette.current
     val view = LocalView.current
     Column(Modifier.fillMaxWidth()) {
     // A conversation of several messages is drawn as a stack of cards.
     com.opensolr.mail.ui.StackCard(h.threadCount, if (selected) p.chip else if (h.flagged) p.flagFill else if (!h.seen) com.opensolr.mail.ui.unreadFill() else p.paper) {
     Row(
-        Modifier.fillMaxWidth().combinedClickable(onClick = onClick, onLongClick = { Haptics.tick(view, true); onLongClick() }),
+        Modifier.fillMaxWidth().combinedClickable(onClick = onClick),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Box(Modifier.width(3.dp).height(72.dp).background(if (selected) p.accent else if (multi && color != null) Color(color) else Color.Transparent))
