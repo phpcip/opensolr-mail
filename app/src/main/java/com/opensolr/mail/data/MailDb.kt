@@ -496,6 +496,20 @@ class MailDb private constructor(context: Context) : SQLiteOpenHelper(context.ap
         return out
     }
 
+    /** The names of the folders each message lies in, as this phone holds them. One query per 400. */
+    fun folderNamesOf(acc: String, ids: Collection<String>): Map<String, List<String>> {
+        if (ids.isEmpty()) return emptyMap()
+        val out = HashMap<String, MutableList<String>>()
+        ids.distinct().chunked(400).forEach { chunk ->
+            val marks = chunk.joinToString(",") { "?" }
+            readableDatabase.rawQuery(
+                "SELECT b.msg, x.name FROM msg_box b JOIN mailbox x ON x.acc = b.acc AND x.id = b.box WHERE b.acc = ? AND b.msg IN ($marks) ORDER BY x.sort, x.name COLLATE NOCASE",
+                arrayOf(acc) + chunk,
+            ).use { c -> while (c.moveToNext()) out.getOrPut(c.getString(0)) { ArrayList() }.add(c.getString(1)) }
+        }
+        return out
+    }
+
     /** Of each conversation held here: whether any message is flagged and whether any is unread. One query per 400. */
     fun threadStates(acc: String, threads: Collection<String>): Map<String, Pair<Boolean, Boolean>> {
         if (threads.isEmpty()) return emptyMap()

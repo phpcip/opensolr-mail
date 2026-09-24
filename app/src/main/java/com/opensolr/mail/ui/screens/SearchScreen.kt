@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
@@ -285,11 +286,18 @@ fun SearchScreen(vm: AppViewModel, sheet: String?, screen: Screen? = null) {
     // Flag and read state as this phone holds it, which leads the index: one query per account for the results shown.
     val dbVersion by vm.db.version.collectAsState()
     var held by remember { mutableStateOf<Map<String, Pair<Boolean, Boolean>>>(emptyMap()) }
+    // The folder of each result as this phone holds it, which leads the index after a move.
+    var heldFolders by remember { mutableStateOf<Map<String, List<String>>>(emptyMap()) }
     LaunchedEffect(shownHits, shownGroups, dbVersion) { com.opensolr.mail.ui.guarded {
             val hits = shownHits + shownGroups.flatMap { it.hits }
             held = withContext(Dispatchers.IO) {
                 hits.filter { it.threadId.isNotEmpty() }.groupBy { it.acc }.flatMap { (acc, hs) ->
                     vm.db.threadStates(acc, hs.map { it.threadId }).map { (t, st) -> "$acc:$t" to st }
+                }.toMap()
+            }
+            heldFolders = withContext(Dispatchers.IO) {
+                hits.filter { it.emailId.isNotEmpty() }.groupBy { it.acc }.flatMap { (acc, hs) ->
+                    vm.db.folderNamesOf(acc, hs.map { it.emailId }).map { (m, names) -> "$acc:$m" to names }
                 }.toMap()
             }
         }
@@ -309,7 +317,7 @@ fun SearchScreen(vm: AppViewModel, sheet: String?, screen: Screen? = null) {
     fun ActionHit(h: MailSearch.Hit) {
         val k = keyOf(h)
         if (h.bin.isNotEmpty()) binOf[k] = h.bin
-        val shown = h.copy(flagged = flaggedOf(h), seen = seenOf(h))
+        val shown = h.copy(flagged = flaggedOf(h), seen = seenOf(h), folders = heldFolders[h.acc + ":" + h.emailId] ?: h.folders)
         val row = rowOf(h)
         SwipeRow(
             key = row,
@@ -893,7 +901,17 @@ private fun HitRow(vm: AppViewModel, h: MailSearch.Hit, multi: Boolean, color: I
                 if (h.hasAttachment) com.opensolr.mail.ui.AttachBadge()
                 if (h.flagged) com.opensolr.mail.ui.FlagBadge()
             }
-            Text(highlighted(h.snippet), style = MaterialTheme.typography.bodySmall, color = p.muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                // The folder the message lies in, ahead of its words.
+                if (h.folders.isNotEmpty()) {
+                    Text(
+                        h.folders.joinToString(" \u00b7 "), style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = p.ink, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.widthIn(max = 140.dp).border(1.dp, p.hairline, Corner).background(p.band, Corner).padding(horizontal = 5.dp, vertical = 1.dp),
+                    )
+                    Spacer(Modifier.width(6.dp))
+                }
+                Text(highlighted(h.snippet), style = MaterialTheme.typography.bodySmall, color = p.muted, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+            }
         }
     }
     }
