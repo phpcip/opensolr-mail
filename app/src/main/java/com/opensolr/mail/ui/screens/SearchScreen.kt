@@ -288,12 +288,17 @@ fun SearchScreen(vm: AppViewModel, sheet: String?, screen: Screen? = null) {
     var held by remember { mutableStateOf<Map<String, Pair<Boolean, Boolean>>>(emptyMap()) }
     // The folder of each result as this phone holds it, which leads the index after a move.
     var heldFolders by remember { mutableStateOf<Map<String, List<String>>>(emptyMap()) }
+    // The role of each folder by account and name, for its colour: a folder named by the index is found here too.
+    var folderRoles by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
     LaunchedEffect(shownHits, shownGroups, dbVersion) { com.opensolr.mail.ui.guarded {
             val hits = shownHits + shownGroups.flatMap { it.hits }
             held = withContext(Dispatchers.IO) {
                 hits.filter { it.threadId.isNotEmpty() }.groupBy { it.acc }.flatMap { (acc, hs) ->
                     vm.db.threadStates(acc, hs.map { it.threadId }).map { (t, st) -> "$acc:$t" to st }
                 }.toMap()
+            }
+            folderRoles = withContext(Dispatchers.IO) {
+                vm.db.mailboxes().filter { it.role != null }.associate { it.acc + ":" + it.name to it.role!! }
             }
             heldFolders = withContext(Dispatchers.IO) {
                 hits.filter { it.emailId.isNotEmpty() }.groupBy { it.acc }.flatMap { (acc, hs) ->
@@ -326,7 +331,7 @@ fun SearchScreen(vm: AppViewModel, sheet: String?, screen: Screen? = null) {
             enabled = selectedKeys.isEmpty() && h.threadId.isNotEmpty(),
         ) {
             HitRow(
-                vm, shown, accounts.size > 1, accounts.firstOrNull { it.key == h.acc }?.color, selected = k in selectedKeys,
+                vm, shown, shown.folders.map { it to folderColor(folderRoles[h.acc + ":" + it], it) }, accounts.size > 1, accounts.firstOrNull { it.key == h.acc }?.color, selected = k in selectedKeys,
                 onClick = {
                     if (selectedKeys.isNotEmpty()) selectedKeys = if (k in selectedKeys) selectedKeys - k else selectedKeys + k
                     else if (h.threadId.isNotEmpty()) { seenNow[k] = true; vm.go(Screen.Thread(h.acc, h.threadId)) }
@@ -871,7 +876,7 @@ private fun GroupHeader(label: String, total: Long, open: Boolean, onToggle: () 
 
 @Composable
 @OptIn(ExperimentalFoundationApi::class)
-private fun HitRow(vm: AppViewModel, h: MailSearch.Hit, multi: Boolean, color: Int?, selected: Boolean, onClick: () -> Unit, onLongClick: () -> Unit) {
+private fun HitRow(vm: AppViewModel, h: MailSearch.Hit, folders: List<Pair<String, Color>>, multi: Boolean, color: Int?, selected: Boolean, onClick: () -> Unit, onLongClick: () -> Unit) {
     val p = LocalPalette.current
     val view = LocalView.current
     Column(Modifier.fillMaxWidth()) {
@@ -902,11 +907,11 @@ private fun HitRow(vm: AppViewModel, h: MailSearch.Hit, multi: Boolean, color: I
                 if (h.flagged) com.opensolr.mail.ui.FlagBadge()
             }
             Row(verticalAlignment = Alignment.CenterVertically) {
-                // The folder the message lies in, ahead of its words.
-                if (h.folders.isNotEmpty()) {
+                // The folders the message lies in, ahead of its words, each in its own colour.
+                folders.take(2).forEach { (name, bg) ->
                     Text(
-                        h.folders.joinToString(" \u00b7 "), style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = p.ink, maxLines = 1, overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.widthIn(max = 140.dp).border(1.dp, p.hairline, Corner).background(p.band, Corner).padding(horizontal = 5.dp, vertical = 1.dp),
+                        name, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = Color(0xFFFFFFFF), maxLines = 1, overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.widthIn(max = 110.dp).background(bg, Corner).padding(horizontal = 6.dp, vertical = 1.dp),
                     )
                     Spacer(Modifier.width(6.dp))
                 }
@@ -918,6 +923,23 @@ private fun HitRow(vm: AppViewModel, h: MailSearch.Hit, multi: Boolean, color: I
     Hairline()
     }
 }
+
+/** Folder colours: the same for a role in every account, a steady one per name for the rest; all dark enough for white text. */
+private fun folderColor(role: String?, name: String): Color = when (role ?: name.lowercase().let { n ->
+    when (n) { "inbox" -> "inbox"; "sent", "sent items", "sent mail" -> "sent"; "archive" -> "archive"; "drafts" -> "drafts"; "trash", "deleted items" -> "trash"; "spam", "junk", "junk mail" -> "junk"; else -> null }
+}) {
+    "inbox" -> Color(0xFF1D4ED8)
+    "sent" -> Color(0xFF047857)
+    "archive" -> Color(0xFF6D28D9)
+    "drafts" -> Color(0xFFB45309)
+    "trash" -> Color(0xFFB91C1C)
+    "junk" -> Color(0xFF475569)
+    else -> FOLDER_COLORS[Math.floorMod(name.lowercase().hashCode(), FOLDER_COLORS.size)]
+}
+
+private val FOLDER_COLORS = listOf(
+    Color(0xFF0E7490), Color(0xFFBE185D), Color(0xFF4D7C0F), Color(0xFF9A3412), Color(0xFF86198F), Color(0xFF854D0E), Color(0xFF155E75), Color(0xFF3730A3),
+)
 
 @Composable
 private fun AnswerCard(answer: String?, answering: Boolean, onClose: () -> Unit, onAsk: () -> Unit) {
