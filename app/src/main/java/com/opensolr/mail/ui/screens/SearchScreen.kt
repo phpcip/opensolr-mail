@@ -317,6 +317,13 @@ fun SearchScreen(vm: AppViewModel, sheet: String?, screen: Screen? = null) {
             }
         }
     }
+    // Folders and accounts wear the same colour in the filters and their pills as on the results.
+    val roleByName = folderRoles.entries.associate { it.key.substringAfter(':') to it.value }
+    fun facetColor(field: String, value: String): Color? = when (field) {
+        "mailbox_name_ss" -> folderColor(roleByName[value], value)
+        "account_email_s" -> accounts.firstOrNull { it.username.equals(value, ignoreCase = true) }?.color?.let { Color(it) }
+        else -> null
+    }
     fun flaggedOf(h: MailSearch.Hit) = flagNow[keyOf(h)] ?: held[keyOf(h)]?.first ?: h.flagged
     fun seenOf(h: MailSearch.Hit) = seenNow[keyOf(h)] ?: held[keyOf(h)]?.let { !it.second } ?: h.seen
     fun rowOf(h: MailSearch.Hit) = com.opensolr.mail.data.ThreadRow(
@@ -418,7 +425,7 @@ fun SearchScreen(vm: AppViewModel, sheet: String?, screen: Screen? = null) {
             Spacer(Modifier.weight(1f))
             r?.let { Text(String.format(Locale.US, "%,d", it.total), style = MaterialTheme.typography.labelSmall, color = p.muted) }
         }
-        ActivePills(filters, onChange = { filters = it })
+        ActivePills(filters, ::facetColor, onChange = { filters = it })
         // What the plan stops right now: a closed index has no search, a spent AI allowance leaves words only.
         if (limits?.closed == true) {
             Column(Modifier.padding(horizontal = 12.dp, vertical = 6.dp)) { com.opensolr.mail.ui.Notice(stringResource(R.string.search_closed_text), title = stringResource(R.string.search_closed_title)) }
@@ -598,7 +605,7 @@ fun SearchScreen(vm: AppViewModel, sheet: String?, screen: Screen? = null) {
     if (showFilters) {
         FilterSheet(
             facets = r?.facets.orEmpty(), current = filters, total = r?.total ?: 0, accounts = accounts.map { it.username },
-            open = zonesOpen, onToggle = { vm.toggleKey("filter_zones", it) }, onAll = { vm.setKeySet("filter_zones", it) }, onChange = { filters = it }, onDismiss = { showFilters = false },
+            open = zonesOpen, colorOf = ::facetColor, onToggle = { vm.toggleKey("filter_zones", it) }, onAll = { vm.setKeySet("filter_zones", it) }, onChange = { filters = it }, onDismiss = { showFilters = false },
         )
     }
 }
@@ -811,32 +818,32 @@ private fun Toggle(label: String, on: Boolean, enabled: Boolean = true, onChange
 }
 
 @Composable
-private fun ActivePills(filters: MailSearch.Filters, onChange: (MailSearch.Filters) -> Unit) {
+private fun ActivePills(filters: MailSearch.Filters, colorOf: (String, String) -> Color?, onChange: (MailSearch.Filters) -> Unit) {
     val p = LocalPalette.current
     val view = LocalView.current
-    val pills = buildList {
-        filters.facets.forEach { (field, values) -> values.forEach { v -> add(facetValueLabel(field, v) to filters.toggled(field, v)) } }
+    val pills = buildList<Triple<String, MailSearch.Filters, Color?>> {
+        filters.facets.forEach { (field, values) -> values.forEach { v -> add(Triple(facetValueLabel(field, v), filters.toggled(field, v), colorOf(field, v))) } }
         filters.dates?.let {
             val day = SimpleDateFormat("MM/dd/yyyy", Locale.US).apply { timeZone = TimeZone.getTimeZone("UTC") }
-            add(day.format(it.from) + " – " + day.format(it.to) to filters.copy(dates = null))
+            add(Triple(day.format(it.from) + " – " + day.format(it.to), filters.copy(dates = null), null))
         }
-        if (filters.unread) add(stringResource(R.string.unread) to filters.copy(unread = false))
-        if (filters.flagged) add(stringResource(R.string.flagged) to filters.copy(flagged = false))
-        if (filters.answered) add(stringResource(R.string.f_answered) to filters.copy(answered = false))
-        if (filters.attachments) add(stringResource(R.string.with_attachments) to filters.copy(attachments = false))
-        if (filters.attachmentText) add(stringResource(R.string.f_attachment_text) to filters.copy(attachmentText = false))
-        if (filters.includeTrash) add(stringResource(R.string.include_trash) to filters.copy(includeTrash = false))
+        if (filters.unread) add(Triple(stringResource(R.string.unread), filters.copy(unread = false), null))
+        if (filters.flagged) add(Triple(stringResource(R.string.flagged), filters.copy(flagged = false), null))
+        if (filters.answered) add(Triple(stringResource(R.string.f_answered), filters.copy(answered = false), null))
+        if (filters.attachments) add(Triple(stringResource(R.string.with_attachments), filters.copy(attachments = false), null))
+        if (filters.attachmentText) add(Triple(stringResource(R.string.f_attachment_text), filters.copy(attachmentText = false), null))
+        if (filters.includeTrash) add(Triple(stringResource(R.string.include_trash), filters.copy(includeTrash = false), null))
     }
     if (pills.isEmpty()) return
     Row(Modifier.fillMaxWidth().background(p.toolFill).horizontalScroll(rememberScrollState()).padding(start = 10.dp, end = 10.dp, bottom = 6.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-        pills.forEach { (label, without) ->
+        pills.forEach { (label, without, tint) ->
             Row(
-                Modifier.background(p.accentFill, Corner).clickable { Haptics.tick(view, false); onChange(without) }.padding(horizontal = 10.dp, vertical = 6.dp),
+                Modifier.background(tint ?: p.accentFill, Corner).clickable { Haptics.tick(view, false); onChange(without) }.padding(horizontal = 10.dp, vertical = 6.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text(label, style = MaterialTheme.typography.labelSmall, color = p.onAccentFill, maxLines = 1)
+                Text(label, style = MaterialTheme.typography.labelSmall, color = if (tint != null) Color(0xFFFFFFFF) else p.onAccentFill, maxLines = 1)
                 Spacer(Modifier.width(6.dp))
-                Icon(painterResource(R.drawable.ic_close), null, tint = p.onAccentFill, modifier = Modifier.size(14.dp))
+                Icon(painterResource(R.drawable.ic_close), null, tint = if (tint != null) Color(0xFFFFFFFF) else p.onAccentFill, modifier = Modifier.size(14.dp))
             }
         }
     }
@@ -990,6 +997,7 @@ private fun FilterSheet(
     total: Long,
     accounts: List<String>,
     open: Set<String>,
+    colorOf: (String, String) -> Color?,
     onToggle: (String) -> Unit,
     onAll: (Set<String>) -> Unit,
     onChange: (MailSearch.Filters) -> Unit,
@@ -1039,7 +1047,7 @@ private fun FilterSheet(
                 val chosen = current.values(field)
                 if (values.isEmpty() && chosen.isEmpty()) return@forEach
                 Zone(stringResource(facetTitle(field)), chosen.size, field in open, { onToggle(field) }) {
-                    FacetValues(field, values, chosen) { v -> Haptics.tick(view, v !in chosen); onChange(current.toggled(field, v)) }
+                    FacetValues(field, values, chosen, colorOf) { v -> Haptics.tick(view, v !in chosen); onChange(current.toggled(field, v)) }
                 }
             }
             Hairline()
@@ -1083,7 +1091,7 @@ private fun FilterSheet(
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun FacetValues(field: String, values: List<MailSearch.Facet>, chosen: Set<String>, onToggle: (String) -> Unit) {
+private fun FacetValues(field: String, values: List<MailSearch.Facet>, chosen: Set<String>, colorOf: (String, String) -> Color?, onToggle: (String) -> Unit) {
     val p = LocalPalette.current
     var all by remember(field) { mutableStateOf(false) }
     var filter by remember(field) { mutableStateOf("") }
@@ -1099,16 +1107,30 @@ private fun FacetValues(field: String, values: List<MailSearch.Facet>, chosen: S
     }
     FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
         shown.forEach { f ->
-            SheetChip(if (f.count > 0) "${facetValueLabel(field, f.value)} (${String.format(Locale.US, "%,d", f.count)})" else facetValueLabel(field, f.value), f.value in chosen) { onToggle(f.value) }
+            SheetChip(if (f.count > 0) "${facetValueLabel(field, f.value)} (${String.format(Locale.US, "%,d", f.count)})" else facetValueLabel(field, f.value), f.value in chosen, colorOf(field, f.value)) { onToggle(f.value) }
         }
         if (matching.size > PREVIEW) SheetChip(if (all) stringResource(R.string.show_fewer) else stringResource(R.string.show_all_n, String.format(Locale.US, "%,d", matching.size)), false) { all = !all }
     }
 }
 
 @Composable
-private fun SheetChip(label: String, selected: Boolean, onClick: () -> Unit) {
+private fun SheetChip(label: String, selected: Boolean, color: Color? = null, onClick: () -> Unit) {
     val p = LocalPalette.current
     val view = LocalView.current
+    // A folder or an account in its own colour: a solid swatch and border when off, the whole chip in it when chosen.
+    if (color != null) {
+        Row(
+            Modifier.background(if (selected) color else p.buttonFill, Corner).border(2.dp, if (selected) p.ink else color, Corner)
+                .clickable { Haptics.tap(view); onClick() }.padding(horizontal = 10.dp, vertical = 6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            if (selected) Icon(Icons.Filled.Check, null, tint = Color(0xFFFFFFFF), modifier = Modifier.size(14.dp))
+            else Box(Modifier.size(12.dp).background(color, Corner))
+            Spacer(Modifier.width(6.dp))
+            Text(label, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = if (selected) Color(0xFFFFFFFF) else p.ink, maxLines = 3, overflow = TextOverflow.Ellipsis)
+        }
+        return
+    }
     Box(
         Modifier.background(if (selected) p.accentFill else p.buttonFill, Corner).border(1.dp, if (selected) p.accentFill else p.hairline, Corner)
             .clickable { Haptics.tap(view); onClick() }.padding(horizontal = 12.dp, vertical = 7.dp),
