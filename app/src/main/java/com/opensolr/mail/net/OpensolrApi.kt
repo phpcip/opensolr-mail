@@ -101,12 +101,19 @@ class OpensolrApi(private val prefs: AppPrefs) {
         (0 until a.length()).mapNotNull { a.optJSONObject(it)?.optString("index_name")?.takeIf { n -> n.isNotBlank() } }
     }
 
-    suspend fun vectorRegions(): List<Pair<String, String>> = withContext(Dispatchers.IO) {
-        val t = post(MANAGEMENT + "vector_regions", form()).trim()
+    data class Region(val environment: String, val solrVersion: String, val nearest: Boolean)
+
+    /** The regions an index can go to; the platform flags the one nearest to this phone among those the configuration runs on. */
+    suspend fun vectorRegions(): List<Region> = withContext(Dispatchers.IO) {
+        val t = post(MANAGEMENT + "vector_regions", form {
+            add("nearest", "1")
+            add("min_solr", MIN_SOLR)
+        }).trim()
         if (!t.startsWith("[")) throw ServiceException(message(t))
         val a = JSONArray(t)
-        (0 until a.length()).mapNotNull { a.optJSONObject(it) }.map { it.optString("environment") to it.optString("country") }
-            .filter { it.first.isNotBlank() }
+        (0 until a.length()).mapNotNull { a.optJSONObject(it) }
+            .map { Region(it.optString("environment"), it.optString("solr_version"), it.optBoolean("nearest")) }
+            .filter { it.environment.isNotBlank() }
     }
 
     suspend fun createIndex(name: String, region: String) = withContext(Dispatchers.IO) {
@@ -314,6 +321,7 @@ class OpensolrApi(private val prefs: AppPrefs) {
     companion object {
         const val SITE = "https://opensolr.com"
         const val MANAGEMENT = "https://opensolr.com/solr_manager/api/"
+        const val MIN_SOLR = "9.6"
         const val AI = "https://api.opensolr.com/solr_manager/api/"
         private val JSON = "application/json; charset=utf-8".toMediaType()
 

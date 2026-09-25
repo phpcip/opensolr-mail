@@ -9,7 +9,6 @@ import com.opensolr.mail.net.ServiceException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
-import java.util.TimeZone
 
 /**
  * The Opensolr Index of this phone, as in Opensolr Photos: mail_<device id>__dense. Found again after a reinstall
@@ -59,14 +58,23 @@ class MailIndex(private val context: Context) {
         prefs.connectionJson = ""
     }
 
+    /** Silent: the region the platform flags as nearest, else the first one the configuration runs on. */
     private suspend fun region(): String {
         val regions = api.vectorRegions()
         if (regions.isEmpty()) throw ServiceException("No region can hold this index")
-        val americas = TimeZone.getDefault().id.startsWith("America/")
-        val wanted = if (americas) REGION_AMERICAS else REGION_EUROPE
-        return regions.firstOrNull { it.first.equals(wanted, true) }?.first
-            ?: regions.firstOrNull { (it.second == "USA") == americas }?.first
-            ?: regions.first().first
+        regions.firstOrNull { it.nearest }?.let { return it.environment }
+        return (regions.firstOrNull { versionAtLeast(it.solrVersion, OpensolrApi.MIN_SOLR) } ?: regions.first()).environment
+    }
+
+    private fun versionAtLeast(version: String, min: String): Boolean {
+        val have = version.split('.').map { it.toIntOrNull() ?: 0 }
+        val need = min.split('.').map { it.toIntOrNull() ?: 0 }
+        for (i in 0 until maxOf(have.size, need.size)) {
+            val h = have.getOrElse(i) { 0 }
+            val n = need.getOrElse(i) { 0 }
+            if (h != n) return h > n
+        }
+        return true
     }
 
     private suspend fun connectionWithRetry(name: String): IndexConnection {
@@ -95,8 +103,6 @@ class MailIndex(private val context: Context) {
     companion object {
         const val CONFIG_ASSET = "opensolr-mail-conf.zip"
         const val CONFIG_VERSION = 3
-        const val REGION_AMERICAS = "CHICAGO-96"
-        const val REGION_EUROPE = "FINLAND9"
 
         private val lock = Mutex()
 
