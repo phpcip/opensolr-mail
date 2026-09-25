@@ -470,16 +470,24 @@ fun ToolRow(tools: List<Tool>, modifier: Modifier = Modifier) {
     }
 }
 
+/** Material's TextButton that taps back like every other control: [strong] for the action, the light one for Cancel. */
+@Composable
+fun HapticTextButton(onClick: () -> Unit, strong: Boolean = false, enabled: Boolean = true, content: @Composable androidx.compose.foundation.layout.RowScope.() -> Unit) {
+    val view = androidx.compose.ui.platform.LocalView.current
+    androidx.compose.material3.TextButton(onClick = { Haptics.tick(view, strong); onClick() }, enabled = enabled, content = content)
+}
+
 /** Asks before an action that cannot be taken back: what it does, Cancel, and the action in the accent. */
 @Composable
 fun ConfirmDialog(title: String, text: String, action: String, onDismiss: () -> Unit, onConfirm: () -> Unit) {
     val p = LocalPalette.current
+    val view = androidx.compose.ui.platform.LocalView.current
     androidx.compose.material3.AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(title) },
         text = { Text(text) },
-        confirmButton = { androidx.compose.material3.TextButton(onClick = onConfirm) { Text(action, color = p.accent) } },
-        dismissButton = { androidx.compose.material3.TextButton(onClick = onDismiss) { Text(androidx.compose.ui.res.stringResource(com.opensolr.mail.R.string.cancel), color = p.ink) } },
+        confirmButton = { androidx.compose.material3.TextButton(onClick = { Haptics.heavy(view); onConfirm() }) { Text(action, color = p.accent) } },
+        dismissButton = { HapticTextButton(onClick = onDismiss) { Text(androidx.compose.ui.res.stringResource(com.opensolr.mail.R.string.cancel), color = p.ink) } },
         containerColor = p.paper,
         titleContentColor = p.ink,
         textContentColor = p.muted,

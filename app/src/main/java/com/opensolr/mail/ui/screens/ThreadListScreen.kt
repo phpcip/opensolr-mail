@@ -237,7 +237,7 @@ fun ThreadListScreen(vm: AppViewModel, view: View) {
                         ListGroup.entries.forEach { g ->
                             DropdownMenuItem(
                                 text = { Text(stringResource(g.label), style = MaterialTheme.typography.bodyLarge, fontWeight = if (g == grouping) FontWeight.Bold else FontWeight.Medium, color = if (g == grouping) p.accent else p.ink) },
-                                onClick = { groupMenu = false; grouping = g; vm.prefs.listGroup = g.name },
+                                onClick = { Haptics.tick(view0, false); groupMenu = false; grouping = g; vm.prefs.listGroup = g.name },
                             )
                         }
                     }
@@ -288,7 +288,7 @@ fun ThreadListScreen(vm: AppViewModel, view: View) {
                         ThreadRowView(
                             r, stripe = if (multi) colors[r.acc] else null, selected = r in selected,
                             onClick = {
-                                if (selected.isNotEmpty()) selected = if (r in selected) selected - r else selected + r
+                                if (selected.isNotEmpty()) { Haptics.toggle(view0, r !in selected); selected = if (r in selected) selected - r else selected + r }
                                 else vm.go(Screen.Thread(r.acc, r.threadId))
                             },
                         )

@@ -387,7 +387,7 @@ private fun MessageHeader(m: Message, open: Boolean, details: Boolean, isNew: Bo
     Column(
         Modifier.fillMaxWidth().background(if (isNew) com.opensolr.mail.ui.unreadFill() else p.headFill)
             .drawBehind { drawRect(rim, size = androidx.compose.ui.geometry.Size(4.dp.toPx(), size.height)) }
-            .clickable(onClick = onClick).padding(start = 18.dp, end = 16.dp, top = 12.dp, bottom = 12.dp)
+            .hapticClickable(onClick = onClick).padding(start = 18.dp, end = 16.dp, top = 12.dp, bottom = 12.dp)
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             if (isNew) { com.opensolr.mail.ui.UnreadDot(); Spacer(Modifier.width(8.dp)) }

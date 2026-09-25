@@ -360,7 +360,7 @@ fun SearchScreen(vm: AppViewModel, sheet: String?, screen: Screen? = null) {
             HitRow(
                 vm, shown, shown.folders.map { it to folderColor(folderRoles[h.acc + ":" + it], it) }, accounts.size > 1, accounts.firstOrNull { it.key == h.acc }?.color, selected = k in selectedKeys,
                 onClick = {
-                    if (selectedKeys.isNotEmpty()) selectedKeys = if (k in selectedKeys) selectedKeys - k else selectedKeys + k
+                    if (selectedKeys.isNotEmpty()) { Haptics.toggle(view, k !in selectedKeys); selectedKeys = if (k in selectedKeys) selectedKeys - k else selectedKeys + k }
                     else if (h.threadId.isNotEmpty()) { seenNow[k] = true; vm.go(Screen.Thread(h.acc, h.threadId)) }
                 },
             )
@@ -634,7 +634,7 @@ fun SearchScreen(vm: AppViewModel, sheet: String?, screen: Screen? = null) {
                     Text(stringResource(R.string.delete), color = p.accent, fontWeight = FontWeight.Bold)
                 }
             },
-            dismissButton = { androidx.compose.material3.TextButton(onClick = { confirmDelete = null }) { Text(stringResource(R.string.cancel), color = p.ink) } },
+            dismissButton = { com.opensolr.mail.ui.HapticTextButton(onClick = { confirmDelete = null }) { Text(stringResource(R.string.cancel), color = p.ink) } },
             containerColor = p.paper, titleContentColor = p.ink, textContentColor = p.muted,
         )
     }
@@ -680,11 +680,11 @@ private fun InstructionsDialog(current: String, onSave: (String) -> Unit, onDism
                 modifier = Modifier.fillMaxWidth(),
             )
         },
-        confirmButton = { androidx.compose.material3.TextButton(onClick = { onSave(text) }) { Text(stringResource(R.string.save), color = p.accent, fontWeight = FontWeight.Bold) } },
+        confirmButton = { com.opensolr.mail.ui.HapticTextButton(onClick = { onSave(text) }, strong = true) { Text(stringResource(R.string.save), color = p.accent, fontWeight = FontWeight.Bold) } },
         dismissButton = {
             Row {
-                if (current.isNotBlank()) androidx.compose.material3.TextButton(onClick = { onSave("") }) { Text(stringResource(R.string.clear), color = p.ink) }
-                androidx.compose.material3.TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel), color = p.ink) }
+                if (current.isNotBlank()) com.opensolr.mail.ui.HapticTextButton(onClick = { onSave("") }) { Text(stringResource(R.string.clear), color = p.ink) }
+                com.opensolr.mail.ui.HapticTextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel), color = p.ink) }
             }
         },
         containerColor = p.paper, titleContentColor = p.ink, textContentColor = p.ink,
@@ -760,7 +760,7 @@ private fun SearchOperatorsDialog(onDismiss: () -> Unit) {
                 Text(stringResource(R.string.ops_why_b), style = MaterialTheme.typography.bodyMedium, color = p.ink)
             }
         },
-        confirmButton = { androidx.compose.material3.TextButton(onClick = onDismiss) { Text(stringResource(R.string.ops_close), color = p.accent) } },
+        confirmButton = { com.opensolr.mail.ui.HapticTextButton(onClick = onDismiss) { Text(stringResource(R.string.ops_close), color = p.accent) } },
         containerColor = p.paper,
         titleContentColor = p.ink,
         textContentColor = p.ink,
@@ -1120,14 +1120,14 @@ private fun FilterSheet(
             onDismissRequest = { picking = false },
             colors = DatePickerDefaults.colors(containerColor = p.paper),
             confirmButton = {
-                TextButton(enabled = state.selectedStartDateMillis != null, onClick = {
+                com.opensolr.mail.ui.HapticTextButton(enabled = state.selectedStartDateMillis != null, strong = true, onClick = {
                     val from = state.selectedStartDateMillis
                     val to = state.selectedEndDateMillis ?: from
                     if (from != null && to != null) onChange(current.copy(dates = MailSearch.DateRange(minOf(from, to), maxOf(from, to)), facets = current.facets - "year_i"))
                     picking = false
                 }) { Text(stringResource(R.string.apply), color = p.accent) }
             },
-            dismissButton = { TextButton(onClick = { picking = false }) { Text(stringResource(R.string.cancel), color = p.muted) } },
+            dismissButton = { com.opensolr.mail.ui.HapticTextButton(onClick = { picking = false }) { Text(stringResource(R.string.cancel), color = p.muted) } },
         ) {
             DateRangePicker(
                 state = state,
