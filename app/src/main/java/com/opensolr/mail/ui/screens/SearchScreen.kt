@@ -83,6 +83,8 @@ import com.opensolr.mail.ui.Avatar
 import com.opensolr.mail.ui.Hairline
 import com.opensolr.mail.ui.Haptics
 import com.opensolr.mail.ui.IconBtn
+import com.opensolr.mail.ui.tile
+import com.opensolr.mail.ui.tint
 import com.opensolr.mail.ui.Markdown
 import com.opensolr.mail.ui.Screen
 import com.opensolr.mail.ui.Zone
@@ -389,14 +391,11 @@ fun SearchScreen(vm: AppViewModel, sheet: String?, screen: Screen? = null) {
             // Clearing the box goes back to the plain list, newest first.
             if (query.isNotEmpty()) IconBtn(R.drawable.ic_close, { query = ""; submitted = "" })
             // Lit when the reader has instructions of their own for the AI answer.
-            if (aiOk) Icon(
-                painterResource(R.drawable.ic_instructions), contentDescription = stringResource(R.string.ai_instructions), tint = if (instructions.isNotBlank()) p.accent else p.ink,
-                modifier = Modifier.size(40.dp).clickable { Haptics.tick(view, false); showInstructions = true }.padding(9.dp),
+            if (aiOk) IconBtn(
+                R.drawable.ic_instructions, { showInstructions = true }, tint = if (instructions.isNotBlank()) p.accent else p.ink,
+                contentDescription = stringResource(R.string.ai_instructions),
             )
-            Icon(
-                painterResource(R.drawable.ic_help), contentDescription = stringResource(R.string.cd_search_help), tint = p.muted,
-                modifier = Modifier.size(40.dp).clickable { Haptics.tick(view, false); showOperators = true }.padding(9.dp),
-            )
+            IconBtn(R.drawable.ic_help, { showOperators = true }, tint = p.muted, contentDescription = stringResource(R.string.cd_search_help))
         }
         Hairline()
         Row(
@@ -559,12 +558,13 @@ fun SearchScreen(vm: AppViewModel, sheet: String?, screen: Screen? = null) {
                     if (!folded) {
                         items(g.hits.filter { vm.hiddenThreads[keyOf(it)] != true && gone[keyOf(it)] != true }.distinctBy { it.messageId.ifEmpty { it.acc + ":" + it.emailId } }, key = { "gh:$key:" + it.acc + ":" + it.emailId }) { h -> Box(itemMotion()) { ActionHit(h) } }
                         if (g.total > g.hits.size) item(key = "more:$key") {
+                            val morePress = com.opensolr.mail.ui.rememberPress()
                             Text(
                                 stringResource(R.string.show_all_n, String.format(Locale.US, "%,d", g.total)),
-                                style = MaterialTheme.typography.labelLarge, color = p.accent,
-                                modifier = Modifier.fillMaxWidth().clickable {
+                                style = MaterialTheme.typography.labelLarge, color = morePress.tint(p.accent),
+                                modifier = Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 4.dp).tile(morePress) {
                                     Haptics.tick(view, false)
-                                    val field = groupBy.field ?: return@clickable
+                                    val field = groupBy.field ?: return@tile
                                     filters = if (field == "month_s" || field == "day_s") filters.copy(dates = rangeOf(field, g.value))
                                     else filters.toggled(groupFacet(field), g.value)
                                     groupBy = MailSearch.GroupBy.BEST
@@ -625,16 +625,14 @@ fun SearchScreen(vm: AppViewModel, sheet: String?, screen: Screen? = null) {
             title = { Text(stringResource(R.string.confirm_delete_title)) },
             text = { Text(stringResource(if (viewOf(row) != null) R.string.confirm_delete_forever else R.string.confirm_delete_trash)) },
             confirmButton = {
-                androidx.compose.material3.TextButton(onClick = {
-                    Haptics.heavy(view); confirmDelete = null
+                com.opensolr.mail.ui.DialogButton(stringResource(R.string.delete), {
+                    confirmDelete = null
                     val k = row.acc + ":" + row.threadId
                     gone[k] = true
                     vm.deleteWithUndo(row, viewOf(row)) { gone.remove(k) }
-                }) {
-                    Text(stringResource(R.string.delete), color = p.accent, fontWeight = FontWeight.Bold)
-                }
+                }, accent = true, heavy = true)
             },
-            dismissButton = { com.opensolr.mail.ui.HapticTextButton(onClick = { confirmDelete = null }) { Text(stringResource(R.string.cancel), color = p.ink) } },
+            dismissButton = { com.opensolr.mail.ui.DialogButton(stringResource(R.string.cancel), { confirmDelete = null }) },
             containerColor = p.paper, titleContentColor = p.ink, textContentColor = p.muted,
         )
     }
@@ -680,11 +678,11 @@ private fun InstructionsDialog(current: String, onSave: (String) -> Unit, onDism
                 modifier = Modifier.fillMaxWidth(),
             )
         },
-        confirmButton = { com.opensolr.mail.ui.HapticTextButton(onClick = { onSave(text) }, strong = true) { Text(stringResource(R.string.save), color = p.accent, fontWeight = FontWeight.Bold) } },
+        confirmButton = { com.opensolr.mail.ui.DialogButton(stringResource(R.string.save), { onSave(text) }, accent = true) },
         dismissButton = {
             Row {
-                if (current.isNotBlank()) com.opensolr.mail.ui.HapticTextButton(onClick = { onSave("") }) { Text(stringResource(R.string.clear), color = p.ink) }
-                com.opensolr.mail.ui.HapticTextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel), color = p.ink) }
+                if (current.isNotBlank()) com.opensolr.mail.ui.DialogButton(stringResource(R.string.clear), { onSave("") })
+                com.opensolr.mail.ui.DialogButton(stringResource(R.string.cancel), onDismiss)
             }
         },
         containerColor = p.paper, titleContentColor = p.ink, textContentColor = p.ink,
@@ -760,7 +758,7 @@ private fun SearchOperatorsDialog(onDismiss: () -> Unit) {
                 Text(stringResource(R.string.ops_why_b), style = MaterialTheme.typography.bodyMedium, color = p.ink)
             }
         },
-        confirmButton = { com.opensolr.mail.ui.HapticTextButton(onClick = onDismiss) { Text(stringResource(R.string.ops_close), color = p.accent) } },
+        confirmButton = { com.opensolr.mail.ui.DialogButton(stringResource(R.string.ops_close), onDismiss, accent = true) },
         containerColor = p.paper,
         titleContentColor = p.ink,
         textContentColor = p.ink,
@@ -835,12 +833,12 @@ private fun groupValueLabel(g: MailSearch.GroupBy, value: String, accounts: List
 private fun IconAction(icon: Int, active: Boolean, badge: Int = 0, onClick: () -> Unit) {
     val p = LocalPalette.current
     val view = LocalView.current
+    val press = com.opensolr.mail.ui.rememberPress()
     Box(
-        Modifier.padding(end = 6.dp).size(36.dp).background(p.paper, Corner).border(1.dp, if (active) p.accent else p.hairline, Corner)
-            .clickable { Haptics.tick(view, false); onClick() },
+        Modifier.padding(end = 6.dp).size(36.dp).tile(press, rim = if (active) p.accent else null) { Haptics.tick(view, false); onClick() },
         contentAlignment = Alignment.Center,
     ) {
-        Icon(painterResource(icon), null, tint = if (active) p.accent else p.ink, modifier = Modifier.size(22.dp))
+        Icon(painterResource(icon), null, tint = press.tint(if (active) p.accent else p.ink), modifier = Modifier.size(22.dp))
         if (badge > 0) Text(
             "$badge", style = MaterialTheme.typography.labelSmall, color = p.onAccentFill,
             modifier = Modifier.align(Alignment.TopEnd).background(p.accentFill, Corner).padding(horizontal = 3.dp),
@@ -854,11 +852,13 @@ private fun Toggle(label: String, on: Boolean, enabled: Boolean = true, onChange
     val p = LocalPalette.current
     val view = LocalView.current
     // Greyed out and inert when the plan does not allow it.
+    val press = com.opensolr.mail.ui.rememberPress()
     Box(
-        Modifier.height(36.dp).alpha(if (enabled) 1f else 0.35f).background(if (on) p.accentFill else p.paper, Corner).border(1.dp, if (on) p.accentFill else p.hairline, Corner)
-            .clickable(enabled = enabled) { Haptics.toggle(view, !on); onChange(!on) }.padding(horizontal = 12.dp),
+        Modifier.height(36.dp).alpha(if (enabled) 1f else 0.35f)
+            .tile(press, enabled, fill = if (on) p.accentFill else null, rim = if (on) p.accentFill else null, solid = on) { Haptics.toggle(view, !on); onChange(!on) }
+            .padding(horizontal = 12.dp),
         contentAlignment = Alignment.Center,
-    ) { Text(label, style = MaterialTheme.typography.labelLarge, color = if (on) p.onAccentFill else p.ink) }
+    ) { Text(label, style = MaterialTheme.typography.labelLarge, color = press.tint(if (on) p.onAccentFill else p.ink, solid = on)) }
 }
 
 @Composable
@@ -881,13 +881,16 @@ private fun ActivePills(filters: MailSearch.Filters, colorOf: (String, String) -
     if (pills.isEmpty()) return
     Row(Modifier.fillMaxWidth().background(p.toolFill).horizontalScroll(rememberScrollState()).padding(start = 10.dp, end = 10.dp, bottom = 6.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
         pills.forEach { (label, without, tint) ->
+            val press = com.opensolr.mail.ui.rememberPress()
+            val on = press.tint(if (tint != null) Color(0xFFFFFFFF) else p.onAccentFill, solid = true)
             Row(
-                Modifier.background(tint ?: p.accentFill, Corner).clickable { Haptics.tick(view, false); onChange(without) }.padding(horizontal = 10.dp, vertical = 6.dp),
+                Modifier.tile(press, fill = tint ?: p.accentFill, rim = tint ?: p.accentFill, solid = true) { Haptics.tick(view, false); onChange(without) }
+                    .padding(horizontal = 10.dp, vertical = 6.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text(label, style = MaterialTheme.typography.labelSmall, color = if (tint != null) Color(0xFFFFFFFF) else p.onAccentFill, maxLines = 1)
+                Text(label, style = MaterialTheme.typography.labelSmall, color = on, maxLines = 1)
                 Spacer(Modifier.width(6.dp))
-                Icon(painterResource(R.drawable.ic_close), null, tint = if (tint != null) Color(0xFFFFFFFF) else p.onAccentFill, modifier = Modifier.size(14.dp))
+                Icon(painterResource(R.drawable.ic_close), null, tint = on, modifier = Modifier.size(14.dp))
             }
         }
     }
@@ -1011,23 +1014,21 @@ private fun AnswerCard(answer: String?, answering: Boolean, onClose: () -> Unit,
     val view = LocalView.current
     Column(Modifier.fillMaxWidth().padding(10.dp).background(p.band, Corner).border(1.dp, p.hairline, Corner).padding(12.dp)) {
         if (answer == null && !answering) {
-            Row(Modifier.clickable { Haptics.tick(view, true); onAsk() }, verticalAlignment = Alignment.CenterVertically) {
-                Icon(painterResource(R.drawable.ic_ask), null, tint = p.accent, modifier = Modifier.size(20.dp))
+            val press = com.opensolr.mail.ui.rememberPress()
+            Row(
+                Modifier.tile(press, rim = p.accent) { Haptics.tick(view, true); onAsk() }.padding(horizontal = 12.dp, vertical = 9.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(painterResource(R.drawable.ic_ask), null, tint = press.tint(p.accent), modifier = Modifier.size(20.dp))
                 Spacer(Modifier.width(10.dp))
-                Text(stringResource(R.string.ask_answer), style = MaterialTheme.typography.labelLarge, color = p.accent)
+                Text(stringResource(R.string.ask_answer), style = MaterialTheme.typography.labelLarge, color = press.tint(p.accent))
             }
         } else {
             // Regenerate asks again over the same results; close stops the answer and clears it.
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(stringResource(R.string.answer).uppercase(), style = MaterialTheme.typography.labelMedium, color = p.muted, modifier = Modifier.weight(1f))
-                Icon(
-                    painterResource(R.drawable.ic_idx_reload), contentDescription = stringResource(R.string.regenerate), tint = p.ink,
-                    modifier = Modifier.size(36.dp).clickable { Haptics.tick(view, true); onAsk() }.padding(8.dp),
-                )
-                Icon(
-                    painterResource(R.drawable.ic_close), contentDescription = stringResource(R.string.ops_close), tint = p.ink,
-                    modifier = Modifier.size(36.dp).clickable { Haptics.tick(view, false); onClose() }.padding(8.dp),
-                )
+                IconBtn(R.drawable.ic_idx_reload, onAsk, strong = true, contentDescription = stringResource(R.string.regenerate))
+                IconBtn(R.drawable.ic_close, onClose, contentDescription = stringResource(R.string.ops_close))
             }
             Spacer(Modifier.height(2.dp))
             if (answer.isNullOrBlank()) Text(stringResource(R.string.thinking), style = MaterialTheme.typography.bodyMedium, color = p.muted)
@@ -1120,14 +1121,14 @@ private fun FilterSheet(
             onDismissRequest = { picking = false },
             colors = DatePickerDefaults.colors(containerColor = p.paper),
             confirmButton = {
-                com.opensolr.mail.ui.HapticTextButton(enabled = state.selectedStartDateMillis != null, strong = true, onClick = {
+                com.opensolr.mail.ui.DialogButton(stringResource(R.string.apply), {
                     val from = state.selectedStartDateMillis
                     val to = state.selectedEndDateMillis ?: from
                     if (from != null && to != null) onChange(current.copy(dates = MailSearch.DateRange(minOf(from, to), maxOf(from, to)), facets = current.facets - "year_i"))
                     picking = false
-                }) { Text(stringResource(R.string.apply), color = p.accent) }
+                }, accent = true, enabled = state.selectedStartDateMillis != null)
             },
-            dismissButton = { com.opensolr.mail.ui.HapticTextButton(onClick = { picking = false }) { Text(stringResource(R.string.cancel), color = p.muted) } },
+            dismissButton = { com.opensolr.mail.ui.DialogButton(stringResource(R.string.cancel), { picking = false }) },
         ) {
             DateRangePicker(
                 state = state,
@@ -1172,35 +1173,38 @@ private fun SheetChip(label: String, selected: Boolean, color: Color? = null, on
     val p = LocalPalette.current
     val view = LocalView.current
     // A folder or an account in its own colour: a solid swatch and border when off, the whole chip in it when chosen.
+    val press = com.opensolr.mail.ui.rememberPress()
     if (color != null) {
         Row(
-            Modifier.background(if (selected) color else p.buttonFill, Corner).border(2.dp, if (selected) p.ink else color, Corner)
-                .clickable { Haptics.tap(view); onClick() }.padding(horizontal = 10.dp, vertical = 6.dp),
+            Modifier.tile(press, fill = if (selected) color else null, rim = if (selected) p.ink else color, solid = selected, rimWidth = 2.dp) { Haptics.tap(view); onClick() }
+                .padding(horizontal = 10.dp, vertical = 6.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            if (selected) Icon(Icons.Filled.Check, null, tint = Color(0xFFFFFFFF), modifier = Modifier.size(14.dp))
-            else Box(Modifier.size(12.dp).background(color, Corner))
+            if (selected) Icon(Icons.Filled.Check, null, tint = press.tint(Color(0xFFFFFFFF), solid = true), modifier = Modifier.size(14.dp))
+            else Box(Modifier.size(12.dp).background(if (press.on) p.onAccentFill else color, Corner))
             Spacer(Modifier.width(6.dp))
-            Text(label, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = if (selected) Color(0xFFFFFFFF) else p.ink, maxLines = 3, overflow = TextOverflow.Ellipsis)
+            Text(label, style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = press.tint(if (selected) Color(0xFFFFFFFF) else p.ink, solid = selected), maxLines = 3, overflow = TextOverflow.Ellipsis)
         }
         return
     }
     Box(
-        Modifier.background(if (selected) p.accentFill else p.buttonFill, Corner).border(1.dp, if (selected) p.accentFill else p.hairline, Corner)
-            .clickable { Haptics.tap(view); onClick() }.padding(horizontal = 12.dp, vertical = 7.dp),
-    ) { Text(label, style = MaterialTheme.typography.labelSmall, color = if (selected) p.onAccentFill else p.ink, maxLines = 3, overflow = TextOverflow.Ellipsis) }
+        Modifier.tile(press, fill = if (selected) p.accentFill else null, rim = if (selected) p.accentFill else null, solid = selected) { Haptics.tap(view); onClick() }
+            .padding(horizontal = 12.dp, vertical = 7.dp),
+    ) { Text(label, style = MaterialTheme.typography.labelSmall, color = press.tint(if (selected) p.onAccentFill else p.ink, solid = selected), maxLines = 3, overflow = TextOverflow.Ellipsis) }
 }
 
 @Composable
 private fun SheetActions(total: Long, onClear: () -> Unit, onDone: () -> Unit) {
     val p = LocalPalette.current
     val view = LocalView.current
+    val clear = com.opensolr.mail.ui.rememberPress()
+    val done = com.opensolr.mail.ui.rememberPress()
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End)) {
-        Box(Modifier.height(36.dp).border(1.dp, p.hairline, Corner).clickable { Haptics.tick(view, false); onClear() }.padding(horizontal = 12.dp), contentAlignment = Alignment.Center) {
-            Text(stringResource(R.string.clear_all), style = MaterialTheme.typography.labelMedium, color = p.ink)
+        Box(Modifier.height(36.dp).tile(clear) { Haptics.tick(view, false); onClear() }.padding(horizontal = 12.dp), contentAlignment = Alignment.Center) {
+            Text(stringResource(R.string.clear_all), style = MaterialTheme.typography.labelMedium, color = clear.tint(p.ink))
         }
-        Box(Modifier.height(36.dp).background(p.accentFill, Corner).clickable { Haptics.tick(view, true); onDone() }.padding(horizontal = 12.dp), contentAlignment = Alignment.Center) {
-            Text(stringResource(R.string.done_count, String.format(Locale.US, "%,d", total)), style = MaterialTheme.typography.labelMedium, color = p.onAccentFill)
+        Box(Modifier.height(36.dp).tile(done, fill = p.accentFill, rim = p.accentFill, solid = true) { Haptics.tick(view, true); onDone() }.padding(horizontal = 12.dp), contentAlignment = Alignment.Center) {
+            Text(stringResource(R.string.done_count, String.format(Locale.US, "%,d", total)), style = MaterialTheme.typography.labelMedium, color = done.tint(p.onAccentFill, solid = true))
         }
     }
 }

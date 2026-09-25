@@ -39,6 +39,9 @@ import com.opensolr.mail.R
 import com.opensolr.mail.data.Mailbox
 import com.opensolr.mail.data.Role
 import com.opensolr.mail.data.View
+import com.opensolr.mail.ui.rememberPress
+import com.opensolr.mail.ui.tile
+import com.opensolr.mail.ui.tint
 import com.opensolr.mail.ui.AppViewModel
 import com.opensolr.mail.ui.ComposeInit
 import com.opensolr.mail.ui.Hairline
@@ -164,13 +167,16 @@ fun MailboxesScreen(vm: AppViewModel) {
                     }
                 }
                 item(key = "u:reorder") {
+                    val view = androidx.compose.ui.platform.LocalView.current
+                    val press = rememberPress()
                     Row(
-                        Modifier.fillMaxWidth().hapticClickable { reordering = !reordering }.padding(horizontal = 16.dp, vertical = 12.dp),
+                        Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp).tile(press) { com.opensolr.mail.ui.Haptics.tap(view); reordering = !reordering }
+                            .padding(horizontal = 12.dp, vertical = 10.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        Icon(painterResource(R.drawable.ic_reorder), null, tint = LocalPalette.current.accent, modifier = Modifier.size(18.dp))
+                        Icon(painterResource(R.drawable.ic_reorder), null, tint = press.tint(LocalPalette.current.accent), modifier = Modifier.size(18.dp))
                         Spacer(Modifier.width(10.dp))
-                        Text(stringResource(if (reordering) R.string.reorder_done else R.string.reorder_folders), style = MaterialTheme.typography.labelLarge, color = LocalPalette.current.accent)
+                        Text(stringResource(if (reordering) R.string.reorder_done else R.string.reorder_folders), style = MaterialTheme.typography.labelLarge, color = press.tint(LocalPalette.current.accent))
                     }
                 }
             }

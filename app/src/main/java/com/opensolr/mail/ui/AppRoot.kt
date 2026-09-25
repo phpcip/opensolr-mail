@@ -85,10 +85,13 @@ fun AppRoot(vm: AppViewModel) {
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(u.text, style = MaterialTheme.typography.bodyMedium, color = p.paper, modifier = Modifier.weight(1f))
+                val press = rememberPress()
                 Text(
                     androidx.compose.ui.res.stringResource(com.opensolr.mail.R.string.undo).uppercase(),
-                    style = MaterialTheme.typography.labelLarge, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold, color = p.paper,
-                    modifier = Modifier.clickable { Haptics.tick(v, true); vm.undoLast() }.padding(horizontal = 18.dp, vertical = 16.dp),
+                    style = MaterialTheme.typography.labelLarge, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold,
+                    color = if (press.on) p.onAccentFill else p.paper,
+                    modifier = Modifier.padding(8.dp).tile(press, fill = p.ink, rim = p.paper.copy(alpha = 0.45f)) { Haptics.tick(v, true); vm.undoLast() }
+                        .padding(horizontal = 14.dp, vertical = 9.dp),
                 )
             }
         }

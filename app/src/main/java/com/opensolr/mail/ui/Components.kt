@@ -27,6 +27,9 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.getValue
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.compositeOver
@@ -50,6 +53,51 @@ import java.util.Date
 import java.util.Locale
 
 private val SHAPE = RoundedCornerShape(2.dp)
+
+/** A button's touch: on at once when pressed, held a moment after release so even a quick tap shows. */
+@androidx.compose.runtime.Stable
+class Press(val source: androidx.compose.foundation.interaction.MutableInteractionSource, val on: Boolean)
+
+@Composable
+fun rememberPress(): Press {
+    val source = androidx.compose.runtime.remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
+    val down by source.collectIsPressedAsState()
+    var shown by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
+    androidx.compose.runtime.LaunchedEffect(down) {
+        if (down) shown = true else { kotlinx.coroutines.delay(150); shown = false }
+    }
+    return Press(source, shown)
+}
+
+/**
+ * Every button of the app: 2px corners, a quiet fill and a thin border at rest. On touch the fill flips to
+ * the accent ([solid] buttons, already filled, flip to ink) and fades back.
+ */
+@Composable
+fun Modifier.tile(
+    press: Press,
+    enabled: Boolean = true,
+    fill: Color? = null,
+    rim: Color? = null,
+    solid: Boolean = false,
+    rimWidth: androidx.compose.ui.unit.Dp = 1.dp,
+    onClick: () -> Unit,
+): Modifier {
+    val p = LocalPalette.current
+    val hit = if (solid) p.ink else p.accentFill
+    val speed = androidx.compose.animation.core.tween<Color>(if (press.on) 40 else 220)
+    val bg by androidx.compose.animation.animateColorAsState(if (press.on) hit else fill ?: p.buttonFill, speed, label = "tileFill")
+    val edge by androidx.compose.animation.animateColorAsState(if (press.on) hit else rim ?: p.hairline, speed, label = "tileRim")
+    return this.clip(SHAPE).background(bg).border(rimWidth, edge, SHAPE)
+        .clickable(interactionSource = press.source, indication = null, enabled = enabled, onClick = onClick)
+}
+
+/** The colour of what sits on a [tile]: its own at rest, the one that reads on the pressed fill while touched. */
+@Composable
+fun Press.tint(rest: Color, solid: Boolean = false): Color {
+    val p = LocalPalette.current
+    return if (on) (if (solid) p.paper else p.onAccentFill) else rest
+}
 
 /** The header row of every screen: fill, hairline under it, actions on the right. */
 @Composable
@@ -80,13 +128,14 @@ fun SelectionBar(count: Int, onClear: () -> Unit, actions: @Composable RowScope.
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
+            val press = rememberPress()
             Row(
-                modifier = Modifier.clickable { Haptics.tick(view, false); onClear() }.padding(horizontal = 10.dp, vertical = 8.dp),
+                modifier = Modifier.padding(horizontal = 2.dp).height(40.dp).tile(press) { Haptics.tick(view, false); onClear() }.padding(horizontal = 10.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Icon(painterResource(com.opensolr.mail.R.drawable.ic_check), contentDescription = androidx.compose.ui.res.stringResource(com.opensolr.mail.R.string.cd_clear_selection), tint = p.accent, modifier = Modifier.size(22.dp))
+                Icon(painterResource(com.opensolr.mail.R.drawable.ic_check), contentDescription = androidx.compose.ui.res.stringResource(com.opensolr.mail.R.string.cd_clear_selection), tint = press.tint(p.accent), modifier = Modifier.size(22.dp))
                 Spacer(Modifier.width(8.dp))
-                Text(count.toString(), style = MaterialTheme.typography.titleMedium, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold, color = p.accent, maxLines = 1)
+                Text(count.toString(), style = MaterialTheme.typography.titleMedium, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold, color = press.tint(p.accent), maxLines = 1)
             }
         }
         actions()
@@ -94,19 +143,21 @@ fun SelectionBar(count: Int, onClear: () -> Unit, actions: @Composable RowScope.
     Box(Modifier.fillMaxWidth().height(1.dp).background(p.hairline))
 }
 
-/** A square tap target around a monochrome line icon. */
+/** A monochrome line icon on a bordered square button. */
 @Composable
-fun IconBtn(@DrawableRes icon: Int, onClick: () -> Unit, tint: Color? = null, enabled: Boolean = true, strong: Boolean = false) {
+fun IconBtn(@DrawableRes icon: Int, onClick: () -> Unit, tint: Color? = null, enabled: Boolean = true, strong: Boolean = false, contentDescription: String? = null, modifier: Modifier? = null) {
     val p = LocalPalette.current
     val view = androidx.compose.ui.platform.LocalView.current
+    val press = rememberPress()
     Box(
-        modifier = Modifier.size(44.dp).clickable(enabled = enabled) {
+        // A bar that shares its width among its buttons passes its own size.
+        modifier = (modifier ?: Modifier.padding(2.dp).size(40.dp)).tile(press, enabled) {
             if (strong) Haptics.tick(view, true) else Haptics.tap(view)
             onClick()
         },
         contentAlignment = Alignment.Center,
     ) {
-        Icon(painterResource(icon), contentDescription = null, tint = if (enabled) tint ?: p.ink else p.hairline, modifier = Modifier.size(22.dp))
+        Icon(painterResource(icon), contentDescription = contentDescription, tint = press.tint(if (enabled) tint ?: p.ink else p.hairline), modifier = Modifier.size(if (modifier != null) 24.dp else 22.dp))
     }
 }
 
@@ -115,28 +166,31 @@ fun IconBtn(@DrawableRes icon: Int, onClick: () -> Unit, tint: Color? = null, en
 fun AccentButton(text: String, onClick: () -> Unit, modifier: Modifier = Modifier, enabled: Boolean = true) {
     val p = LocalPalette.current
     val view = androidx.compose.ui.platform.LocalView.current
+    val press = rememberPress()
+    val fill = if (enabled) p.accentFill else p.hairline
     Box(
-        modifier = modifier.heightIn(min = 46.dp).background(if (enabled) p.accentFill else p.hairline, SHAPE)
-            .clickable(enabled = enabled) { Haptics.tick(view, true); onClick() }.padding(horizontal = 18.dp, vertical = 12.dp),
+        modifier = modifier.heightIn(min = 46.dp).tile(press, enabled, fill = fill, rim = fill, solid = true) { Haptics.tick(view, true); onClick() }
+            .padding(horizontal = 18.dp, vertical = 12.dp),
         contentAlignment = Alignment.Center,
-    ) { Text(text, style = MaterialTheme.typography.labelLarge, color = p.onAccentFill) }
+    ) { Text(text, style = MaterialTheme.typography.labelLarge, color = press.tint(p.onAccentFill, solid = true)) }
 }
 
 /** Bordered button on the quiet fill. */
 @Composable
 fun GhostButton(text: String, onClick: () -> Unit, modifier: Modifier = Modifier, @DrawableRes icon: Int? = null) {
     val p = LocalPalette.current
+    val view = androidx.compose.ui.platform.LocalView.current
+    val press = rememberPress()
     Row(
-        modifier = modifier.heightIn(min = 44.dp).background(p.buttonFill, SHAPE).border(1.dp, p.hairline, SHAPE)
-            .hapticClickable(onClick = onClick).padding(horizontal = 14.dp, vertical = 10.dp),
+        modifier = modifier.heightIn(min = 44.dp).tile(press) { Haptics.tap(view); onClick() }.padding(horizontal = 14.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.Center,
     ) {
         if (icon != null) {
-            Icon(painterResource(icon), null, tint = p.ink, modifier = Modifier.size(18.dp))
+            Icon(painterResource(icon), null, tint = press.tint(p.ink), modifier = Modifier.size(18.dp))
             Spacer(Modifier.width(8.dp))
         }
-        Text(text, style = MaterialTheme.typography.labelLarge, color = p.ink)
+        Text(text, style = MaterialTheme.typography.labelLarge, color = press.tint(p.ink))
     }
 }
 
@@ -144,12 +198,13 @@ fun GhostButton(text: String, onClick: () -> Unit, modifier: Modifier = Modifier
 @Composable
 fun Chip(text: String, selected: Boolean, onClick: () -> Unit) {
     val p = LocalPalette.current
+    val view = androidx.compose.ui.platform.LocalView.current
+    val press = rememberPress()
     Box(
-        modifier = Modifier.background(if (selected) p.accentFill else p.buttonFill, SHAPE)
-            .border(1.dp, if (selected) p.accentFill else p.hairline, SHAPE)
-            .hapticClickable(onClick = onClick).padding(horizontal = 12.dp, vertical = 7.dp),
+        modifier = Modifier.tile(press, fill = if (selected) p.accentFill else null, rim = if (selected) p.accentFill else null, solid = selected) { Haptics.tap(view); onClick() }
+            .padding(horizontal = 12.dp, vertical = 7.dp),
     ) {
-        Text(text, style = MaterialTheme.typography.labelSmall, color = if (selected) p.onAccentFill else p.ink, maxLines = 1)
+        Text(text, style = MaterialTheme.typography.labelSmall, color = press.tint(if (selected) p.onAccentFill else p.ink, solid = selected), maxLines = 1)
     }
 }
 
@@ -442,19 +497,17 @@ fun ToolRow(tools: List<Tool>, modifier: Modifier = Modifier) {
     Row(modifier.fillMaxWidth().height(androidx.compose.foundation.layout.IntrinsicSize.Min), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
         // A short row keeps small tiles, a quarter of the width each, instead of stretching them.
         tools.forEach { t ->
-            val tint = when {
+            val press = rememberPress()
+            val tint = press.tint(when {
                 !t.enabled -> p.hairline
                 t.accent || t.active -> p.accent
                 else -> p.ink
-            }
+            })
             Column(
                 Modifier
                     .weight(1f)
                     .fillMaxHeight()
-                    .clip(SHAPE)
-                    .background(p.buttonFill)
-                    .border(1.dp, if (t.accent || t.active) p.accent else p.hairline, SHAPE)
-                    .clickable(enabled = t.enabled) { if (t.strong) Haptics.tick(view, true) else Haptics.tap(view); t.onClick() }
+                    .tile(press, t.enabled, rim = if (t.accent || t.active) p.accent else null) { if (t.strong) Haptics.tick(view, true) else Haptics.tap(view); t.onClick() }
                     .padding(vertical = 6.dp, horizontal = 2.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
@@ -470,24 +523,36 @@ fun ToolRow(tools: List<Tool>, modifier: Modifier = Modifier) {
     }
 }
 
-/** Material's TextButton that taps back like every other control: [strong] for the action, the light one for Cancel. */
+/** A dialog's button, bordered like every other: [accent] for the action, [heavy] when it cannot be taken back. */
 @Composable
-fun HapticTextButton(onClick: () -> Unit, strong: Boolean = false, enabled: Boolean = true, content: @Composable androidx.compose.foundation.layout.RowScope.() -> Unit) {
+fun DialogButton(text: String, onClick: () -> Unit, accent: Boolean = false, strong: Boolean = false, heavy: Boolean = false, enabled: Boolean = true) {
+    val p = LocalPalette.current
     val view = androidx.compose.ui.platform.LocalView.current
-    androidx.compose.material3.TextButton(onClick = { Haptics.tick(view, strong); onClick() }, enabled = enabled, content = content)
+    val press = rememberPress()
+    Box(
+        Modifier.padding(start = 6.dp).heightIn(min = 40.dp).tile(press, enabled, rim = if (accent && enabled) p.accent else null) {
+            if (heavy) Haptics.heavy(view) else Haptics.tick(view, strong || accent)
+            onClick()
+        }.padding(horizontal = 14.dp, vertical = 9.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            text, style = MaterialTheme.typography.labelLarge, fontWeight = if (accent) FontWeight.Bold else FontWeight.SemiBold,
+            color = press.tint(if (!enabled) p.hairline else if (accent) p.accent else p.ink),
+        )
+    }
 }
 
 /** Asks before an action that cannot be taken back: what it does, Cancel, and the action in the accent. */
 @Composable
 fun ConfirmDialog(title: String, text: String, action: String, onDismiss: () -> Unit, onConfirm: () -> Unit) {
     val p = LocalPalette.current
-    val view = androidx.compose.ui.platform.LocalView.current
     androidx.compose.material3.AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(title) },
         text = { Text(text) },
-        confirmButton = { androidx.compose.material3.TextButton(onClick = { Haptics.heavy(view); onConfirm() }) { Text(action, color = p.accent) } },
-        dismissButton = { HapticTextButton(onClick = onDismiss) { Text(androidx.compose.ui.res.stringResource(com.opensolr.mail.R.string.cancel), color = p.ink) } },
+        confirmButton = { DialogButton(action, onConfirm, accent = true, heavy = true) },
+        dismissButton = { DialogButton(androidx.compose.ui.res.stringResource(com.opensolr.mail.R.string.cancel), onDismiss) },
         containerColor = p.paper,
         titleContentColor = p.ink,
         textContentColor = p.muted,

@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
@@ -34,6 +35,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import com.opensolr.mail.ui.rememberPress
+import com.opensolr.mail.ui.tile
+import com.opensolr.mail.ui.tint
 import com.opensolr.mail.ui.Haptics
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -327,22 +331,23 @@ fun ThreadScreen(vm: AppViewModel, acc: String, threadId: String) {
         }
         Column(Modifier.fillMaxWidth().background(p.dockFill)) {
             Hairline()
+            // The buttons share the whole width, one hairline apart.
             Row(
-                Modifier.fillMaxWidth().padding(bottom = bottomInset()).height(56.dp),
-                horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically,
+                Modifier.fillMaxWidth().padding(bottom = bottomInset()).height(54.dp).padding(horizontal = 4.dp, vertical = 4.dp),
+                horizontalArrangement = Arrangement.spacedBy(2.dp), verticalAlignment = Alignment.CenterVertically,
             ) {
-                IconBtn(R.drawable.ic_reply, { reply(Replies.Kind.REPLY) })
-                IconBtn(R.drawable.ic_reply_all, { reply(Replies.Kind.REPLY_ALL) })
-                IconBtn(R.drawable.ic_forward, { reply(Replies.Kind.FORWARD) })
-                IconBtn(R.drawable.ic_flag, {
+                BarBtn(R.drawable.ic_reply, { reply(Replies.Kind.REPLY) })
+                BarBtn(R.drawable.ic_reply_all, { reply(Replies.Kind.REPLY_ALL) })
+                BarBtn(R.drawable.ic_forward, { reply(Replies.Kind.FORWARD) })
+                BarBtn(R.drawable.ic_flag, {
                     latest?.let { vm.setFlagged(acc, listOf(it.id), !it.flagged) }
                 }, tint = if (latest?.flagged == true) p.accent else null)
-                IconBtn(R.drawable.ic_unread, { vm.setSeen(acc, messages.map { it.id }, false); vm.back() })
-                IconBtn(R.drawable.ic_move, { moving = true }, strong = true)
+                BarBtn(R.drawable.ic_unread, { vm.setSeen(acc, messages.map { it.id }, false); vm.back() })
+                BarBtn(R.drawable.ic_move, { moving = true }, strong = true)
                 // Spam, Archive and Delete ask first and say what they will do.
-                IconBtn(R.drawable.ic_junk, { ask = Triple(R.string.one_junk_title, R.string.one_junk_text, R.string.tool_junk) to { vm.reportJunk(acc, actionable()); vm.toast(R.string.reported_junk); vm.back() } }, strong = true)
-                IconBtn(R.drawable.ic_archive, { ask = Triple(R.string.one_archive_title, R.string.one_archive_text, R.string.tool_archive) to { vm.archive(acc, actionable()); vm.back() } }, strong = true)
-                IconBtn(R.drawable.ic_delete, {
+                BarBtn(R.drawable.ic_junk, { ask = Triple(R.string.one_junk_title, R.string.one_junk_text, R.string.tool_junk) to { vm.reportJunk(acc, actionable()); vm.toast(R.string.reported_junk); vm.back() } }, strong = true)
+                BarBtn(R.drawable.ic_archive, { ask = Triple(R.string.one_archive_title, R.string.one_archive_text, R.string.tool_archive) to { vm.archive(acc, actionable()); vm.back() } }, strong = true)
+                BarBtn(R.drawable.ic_delete, {
                     // In Trash or Spam a delete is for good.
                     val boxes = vm.db.mailboxes(acc).associateBy { it.id }
                     val binned = messages.isNotEmpty() && messages.all { m -> m.mailboxIds.any { boxes[it]?.role == "trash" || boxes[it]?.role == "junk" } }
@@ -358,14 +363,8 @@ fun ThreadScreen(vm: AppViewModel, acc: String, threadId: String) {
             onDismissRequest = { ask = null },
             title = { Text(stringResource(texts.first)) },
             text = { Text(stringResource(texts.second), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium) },
-            confirmButton = {
-                androidx.compose.material3.TextButton(onClick = { Haptics.heavy(view); ask = null; action() }) {
-                    Text(stringResource(texts.third), color = p.accent, fontWeight = FontWeight.Bold)
-                }
-            },
-            dismissButton = {
-                androidx.compose.material3.TextButton(onClick = { Haptics.tick(view, false); ask = null }) { Text(stringResource(R.string.cancel), color = p.ink, fontWeight = FontWeight.Bold) }
-            },
+            confirmButton = { com.opensolr.mail.ui.DialogButton(stringResource(texts.third), { ask = null; action() }, accent = true, heavy = true) },
+            dismissButton = { com.opensolr.mail.ui.DialogButton(stringResource(R.string.cancel), { ask = null }) },
             containerColor = p.paper, titleContentColor = p.ink, textContentColor = p.ink,
         )
     }
@@ -400,14 +399,16 @@ private fun MessageHeader(m: Message, open: Boolean, details: Boolean, isNew: Bo
             // An open message shows only the sender and the date; the chevron unfolds From, To and Cc.
             if (open) {
                 val turn by androidx.compose.animation.core.animateFloatAsState(if (details) 180f else 0f, label = "details")
+                val view = androidx.compose.ui.platform.LocalView.current
+                val press = rememberPress()
                 Box(
-                    Modifier.padding(start = 6.dp).size(32.dp).hapticClickable(onClick = onDetails),
+                    Modifier.padding(start = 6.dp).size(32.dp).tile(press) { com.opensolr.mail.ui.Haptics.tap(view); onDetails() },
                     contentAlignment = Alignment.Center,
                 ) {
                     Icon(
                         painterResource(R.drawable.ic_chevron_down),
                         contentDescription = stringResource(if (details) R.string.cd_hide_details else R.string.cd_show_details),
-                        tint = p.muted, modifier = Modifier.size(18.dp).graphicsLayer { rotationZ = turn },
+                        tint = press.tint(p.ink), modifier = Modifier.size(18.dp).graphicsLayer { rotationZ = turn },
                     )
                 }
             }
@@ -440,38 +441,48 @@ private fun AddressLine(label: String, list: List<com.opensolr.mail.data.Address
                 CopyPill(a.email, strong = false) { onCopy(a.email) }
             }
             if (list.size > 2) {
+                val view = androidx.compose.ui.platform.LocalView.current
+                val press = rememberPress()
                 Text(
                     if (all) stringResource(R.string.hide_all) else stringResource(R.string.show_all_people, list.size),
-                    style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold, color = p.accent,
-                    modifier = Modifier.hapticClickable { all = !all }.padding(horizontal = 6.dp, vertical = 3.dp),
+                    style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Bold, color = press.tint(p.accent),
+                    modifier = Modifier.tile(press, fill = p.pillFill, rim = p.headRim) { com.opensolr.mail.ui.Haptics.tap(view); all = !all }.padding(horizontal = 6.dp, vertical = 3.dp),
                 )
             }
         }
     }
 }
 
+/** A button of the bar under a message: an [IconBtn] sized by the bar. */
+@Composable
+private fun androidx.compose.foundation.layout.RowScope.BarBtn(icon: Int, onClick: () -> Unit, tint: Color? = null, strong: Boolean = false) =
+    IconBtn(icon, onClick, tint = tint, strong = strong, modifier = Modifier.weight(1f).fillMaxHeight())
+
 /** A small pill for the remote-picture choices: a line icon and a short label, in the accent. */
 @Composable
 private fun ImagePill(icon: Int, label: String, onClick: () -> Unit) {
     val p = LocalPalette.current
+    val view = androidx.compose.ui.platform.LocalView.current
+    val press = rememberPress()
     Row(
-        Modifier.background(p.pillFill, RoundedCornerShape(2.dp)).border(1.dp, p.headRim, RoundedCornerShape(2.dp))
-            .hapticClickable(onClick = onClick).padding(horizontal = 7.dp, vertical = 3.dp),
+        Modifier.tile(press, fill = p.pillFill, rim = p.headRim) { com.opensolr.mail.ui.Haptics.tap(view); onClick() }.padding(horizontal = 7.dp, vertical = 3.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Icon(painterResource(icon), contentDescription = null, tint = p.accent, modifier = Modifier.size(14.dp))
+        Icon(painterResource(icon), contentDescription = null, tint = press.tint(p.accent), modifier = Modifier.size(14.dp))
         Spacer(Modifier.width(4.dp))
-        Text(label, style = MaterialTheme.typography.labelSmall, color = p.accent, maxLines = 1)
+        Text(label, style = MaterialTheme.typography.labelSmall, color = press.tint(p.accent), maxLines = 1)
     }
 }
 
 @Composable
 private fun CopyPill(text: String, strong: Boolean, onCopy: () -> Unit) {
     val p = LocalPalette.current
+    val view = androidx.compose.ui.platform.LocalView.current
+    val press = rememberPress()
     Text(
-        text, style = MaterialTheme.typography.bodySmall, color = if (strong) p.ink else p.muted,
+        text, style = MaterialTheme.typography.bodySmall, color = press.tint(if (strong) p.ink else p.muted),
         maxLines = 1, overflow = TextOverflow.Ellipsis,
-        modifier = Modifier.background(p.pillFill, RoundedCornerShape(2.dp)).border(1.dp, p.headRim, RoundedCornerShape(2.dp)).hapticClickable(onClick = onCopy).padding(horizontal = 6.dp, vertical = 3.dp),
+        modifier = Modifier.tile(press, fill = p.pillFill, rim = p.headRim) { com.opensolr.mail.ui.Haptics.tap(view); onCopy() }.padding(horizontal = 6.dp, vertical = 3.dp),
     )
 }
 
@@ -481,25 +492,27 @@ private fun Attachments(files: List<com.opensolr.mail.data.Attachment>, onSave: 
     val p = LocalPalette.current
     FlowRow(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
         files.forEach { a ->
+            val view = androidx.compose.ui.platform.LocalView.current
+            val open = rememberPress()
+            val save = rememberPress()
             Row(
-                Modifier.background(p.pillFill, RoundedCornerShape(2.dp)).border(1.dp, p.headRim, RoundedCornerShape(2.dp))
-                    .hapticClickable { onOpen(a) }.padding(start = 8.dp, end = 5.dp, top = 5.dp, bottom = 5.dp),
+                Modifier.tile(open, fill = p.pillFill, rim = p.headRim) { com.opensolr.mail.ui.Haptics.tap(view); onOpen(a) }
+                    .padding(start = 8.dp, end = 5.dp, top = 5.dp, bottom = 5.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 com.opensolr.mail.ui.FileTypeIcon(a.name, a.type)
                 Spacer(Modifier.width(7.dp))
                 // Cut in the middle, so the end of the name and its extension always show.
-                com.opensolr.mail.ui.MiddleEllipsisName(a.name.ifBlank { a.type }, MaterialTheme.typography.labelSmall, p.ink, Modifier.weight(1f, fill = false))
+                com.opensolr.mail.ui.MiddleEllipsisName(a.name.ifBlank { a.type }, MaterialTheme.typography.labelSmall, open.tint(p.ink), Modifier.weight(1f, fill = false))
                 Spacer(Modifier.width(6.dp))
-                Text(fmtSize(a.size), style = MaterialTheme.typography.labelSmall, color = p.muted)
+                Text(fmtSize(a.size), style = MaterialTheme.typography.labelSmall, color = open.tint(p.muted))
                 Spacer(Modifier.width(4.dp))
                 // The download is a button of its own, bordered, next to the name that opens the file.
                 Box(
-                    Modifier.size(28.dp).background(p.buttonFill, RoundedCornerShape(2.dp)).border(1.dp, p.headRim, RoundedCornerShape(2.dp))
-                        .hapticClickable { onSave(a) },
+                    Modifier.size(28.dp).tile(save, rim = p.headRim) { com.opensolr.mail.ui.Haptics.tap(view); onSave(a) },
                     contentAlignment = Alignment.Center,
                 ) {
-                    Icon(painterResource(R.drawable.ic_download), null, tint = p.accent, modifier = Modifier.size(15.dp))
+                    Icon(painterResource(R.drawable.ic_download), null, tint = save.tint(p.accent), modifier = Modifier.size(15.dp))
                 }
             }
         }

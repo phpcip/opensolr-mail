@@ -319,14 +319,8 @@ fun ThreadListScreen(vm: AppViewModel, view: View) {
                 onDismissRequest = { confirmDelete = null },
                 title = { Text(stringResource(R.string.confirm_delete_title)) },
                 text = { Text(stringResource(if (forever) R.string.confirm_delete_forever else R.string.confirm_delete_trash)) },
-                confirmButton = {
-                    androidx.compose.material3.TextButton(onClick = { Haptics.heavy(view0); confirmDelete = null; vm.deleteWithUndo(r, view) }) {
-                        Text(stringResource(R.string.delete), color = p.accent, fontWeight = FontWeight.Bold)
-                    }
-                },
-                dismissButton = {
-                    androidx.compose.material3.TextButton(onClick = { Haptics.tick(view0, false); confirmDelete = null }) { Text(stringResource(R.string.cancel), color = p.ink) }
-                },
+                confirmButton = { com.opensolr.mail.ui.DialogButton(stringResource(R.string.delete), { confirmDelete = null; vm.deleteWithUndo(r, view) }, accent = true, heavy = true) },
+                dismissButton = { com.opensolr.mail.ui.DialogButton(stringResource(R.string.cancel), { confirmDelete = null }) },
                 containerColor = p.paper, titleContentColor = p.ink, textContentColor = p.muted,
             )
         }
@@ -434,14 +428,8 @@ internal fun SelectionBar(count: Int, inBins: Int, onRead: () -> Unit, readIcon:
             onDismissRequest = { ask = null },
             title = { Text(a.title) },
             text = { Text(a.text, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium) },
-            confirmButton = {
-                androidx.compose.material3.TextButton(onClick = { Haptics.heavy(view); ask = null; a.action() }) {
-                    Text(a.label, color = p.accent, fontWeight = FontWeight.Bold)
-                }
-            },
-            dismissButton = {
-                androidx.compose.material3.TextButton(onClick = { Haptics.tick(view, false); ask = null }) { Text(stringResource(R.string.cancel), color = p.ink, fontWeight = FontWeight.Bold) }
-            },
+            confirmButton = { com.opensolr.mail.ui.DialogButton(a.label, { ask = null; a.action() }, accent = true, heavy = true) },
+            dismissButton = { com.opensolr.mail.ui.DialogButton(stringResource(R.string.cancel), { ask = null }) },
             containerColor = p.paper, titleContentColor = p.ink, textContentColor = p.ink,
         )
     }

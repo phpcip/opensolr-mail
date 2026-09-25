@@ -45,6 +45,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import com.opensolr.mail.R
 import androidx.compose.runtime.LaunchedEffect
+import com.opensolr.mail.ui.rememberPress
+import com.opensolr.mail.ui.tile
+import com.opensolr.mail.ui.tint
 import com.opensolr.mail.ui.BodyField
 import com.opensolr.mail.data.Address
 import com.opensolr.mail.jmap.MailActions
@@ -190,9 +193,12 @@ fun ComposeScreen(vm: AppViewModel, init: ComposeInit) {
                 Suggestions("bcc")
                 Hairline()
             } else {
+                val view = androidx.compose.ui.platform.LocalView.current
+                val press = rememberPress()
                 Text(
-                    stringResource(R.string.cc_bcc), style = MaterialTheme.typography.labelSmall, color = p.accent,
-                    modifier = Modifier.hapticClickable { showCc = true }.padding(horizontal = 12.dp, vertical = 10.dp),
+                    stringResource(R.string.cc_bcc), style = MaterialTheme.typography.labelSmall, color = press.tint(p.accent),
+                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp).tile(press) { com.opensolr.mail.ui.Haptics.tap(view); showCc = true }
+                        .padding(horizontal = 12.dp, vertical = 7.dp),
                 )
                 Hairline()
             }
