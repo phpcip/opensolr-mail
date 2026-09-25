@@ -33,7 +33,11 @@ fun Modifier.dragSelect(
     onEnd: () -> Unit,
 ): Modifier = composed {
     val scope = rememberCoroutineScope()
+    // The gesture outlives recompositions: it always calls the callbacks of the latest one, never the first.
     val orderNow by rememberUpdatedState(order)
+    val startNow by rememberUpdatedState(onStart)
+    val rangeNow by rememberUpdatedState(onRange)
+    val endNow by rememberUpdatedState(onEnd)
     val at = remember { mutableStateOf<Offset?>(null) }
     val edgePx = with(LocalDensity.current) { EDGE.toPx() }
     val stepPx = with(LocalDensity.current) { STEP.toPx() }
@@ -45,7 +49,7 @@ fun Modifier.dragSelect(
         return (items.lastOrNull { it.offset <= point.y } ?: items.first()).key
     }
 
-    this.pointerInput(Unit) {
+    this.pointerInput(state) {
         awaitEachGesture {
             val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
             // Only a finger held still for a long press starts it; any earlier move is a scroll or a swipe.
@@ -59,21 +63,29 @@ fun Modifier.dragSelect(
                 true
             }
             if (left != null) return@awaitEachGesture
-            val keys = orderNow()
-            val positions = HashMap<Any, Int>(keys.size * 2).apply { keys.forEachIndexed { i, k -> put(k, i) } }
+            var keys = orderNow()
+            var positions = HashMap<Any, Int>(keys.size * 2).apply { keys.forEachIndexed { i, k -> put(k, i) } }
+            var seenTotal = state.layoutInfo.totalItemsCount
             val startKey = state.layoutInfo.visibleItemsInfo.firstOrNull { down.position.y >= it.offset && down.position.y < it.offset + it.size }?.key
-            val anchor = startKey?.let { positions[it] } ?: return@awaitEachGesture
+            if (startKey == null || startKey !in positions) return@awaitEachGesture
             at.value = down.position
-            onStart(keys[anchor])
-            var covered = 1
+            startNow(startKey)
+            var covered: Pair<Any, Any> = startKey to startKey
 
             fun spread(point: Offset) {
+                // A page landed (or mail arrived) during the drag: the rows it brought join the range.
+                if (state.layoutInfo.totalItemsCount != seenTotal) {
+                    seenTotal = state.layoutInfo.totalItemsCount
+                    keys = orderNow()
+                    positions = HashMap<Any, Int>(keys.size * 2).apply { keys.forEachIndexed { i, k -> put(k, i) } }
+                }
+                val anchor = positions[startKey] ?: return
                 val here = keyAt(point, positions)?.let { positions[it] } ?: return
                 val from = minOf(anchor, here)
                 val to = maxOf(anchor, here)
-                if (to - from + 1 == covered) return
-                covered = to - from + 1
-                onRange(keys.subList(from, to + 1).toList())
+                if (covered == keys[from] to keys[to]) return
+                covered = keys[from] to keys[to]
+                rangeNow(keys.subList(from, to + 1).toList())
             }
 
             val scrolling = scope.launch {
@@ -104,7 +116,7 @@ fun Modifier.dragSelect(
             } finally {
                 scrolling.cancel()
                 at.value = null
-                onEnd()
+                endNow()
             }
         }
     }

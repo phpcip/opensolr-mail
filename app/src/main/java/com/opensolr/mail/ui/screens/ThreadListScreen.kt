@@ -100,7 +100,8 @@ fun ThreadListScreen(vm: AppViewModel, view: View) {
     var exhausted by remember(view) { mutableStateOf(false) }
     var loadingOlder by remember(view) { mutableStateOf(false) }
     var olderTick by remember(view) { mutableIntStateOf(0) }
-    var selected by remember(view) { mutableStateOf<Set<ThreadRow>>(emptySet()) }
+    // The selection holds conversation keys, so a sync that rebuilds the rows keeps it.
+    var selectedKeys by remember(view) { mutableStateOf<Set<String>>(emptySet()) }
     val scrollKey = when (view) {
         is View.Unified -> "u_" + view.role.jmap
         is View.Box -> "b_" + view.acc + "_" + view.mailboxId
@@ -124,6 +125,9 @@ fun ThreadListScreen(vm: AppViewModel, view: View) {
         (if (top.isEmpty()) emptyList() else listOf(RowGroup("pinned", pinnedLabel, top))) +
             (if (grouping == ListGroup.NONE) listOf(RowGroup("all", "", shown)) else groupRows(shown, grouping) { k -> accounts.firstOrNull { it.key == k }?.username ?: k })
     }
+
+    val byKey = remember(groups) { groups.flatMap { it.rows }.associateBy { it.acc + ":" + it.threadId } }
+    val selected = remember(selectedKeys, byKey) { selectedKeys.mapNotNullTo(LinkedHashSet()) { byKey[it] } }
 
     // The pinned Flagged section starts folded and remembers being opened, apart from the day groups.
     val pinName = "pinopen_" + scrollKey
@@ -218,7 +222,7 @@ fun ThreadListScreen(vm: AppViewModel, view: View) {
     // Back clears a selection first; from any other list it returns to All Inboxes; only from All Inboxes it leaves the app.
     val inbox = com.opensolr.mail.data.View.Unified(com.opensolr.mail.data.Role.INBOX)
     androidx.activity.compose.BackHandler(enabled = selected.isNotEmpty() || (vm.stack.size <= 1 && view != inbox)) {
-        if (selected.isNotEmpty()) selected = emptySet() else vm.home(Screen.List(inbox))
+        if (selected.isNotEmpty()) selectedKeys = emptySet() else vm.home(Screen.List(inbox))
     }
 
     Column(Modifier.fillMaxSize()) {
@@ -249,28 +253,28 @@ fun ThreadListScreen(vm: AppViewModel, view: View) {
                 IconBtn(R.drawable.ic_compose, { vm.go(Screen.Compose(ComposeInit())) })
             }
         } else {
-            SelectionBar(selected.size, onClear = { selected = emptySet() })
+            SelectionBar(selected.size, onClear = { selectedKeys = emptySet() })
         }
         RefreshBox(refreshing = vm.busy, onRefresh = { vm.refresh() }, modifier = Modifier.weight(1f)) {
             // Long press and drag selects every conversation between, as in Opensolr Photos.
-            var dragBase by remember { mutableStateOf<Set<ThreadRow>?>(null) }
+            var dragBase by remember { mutableStateOf<Set<String>?>(null) }
             var dragOff by remember { mutableStateOf(false) }
-            val byKey = remember(groups) { groups.flatMap { it.rows }.associateBy { it.acc + ":" + it.threadId } }
             LazyColumn(state = listState, modifier = Modifier.fillMaxSize().dragSelect(
                 listState,
                 order = { groups.filter { !folded(it.key) }.flatMap { g -> g.rows.map { it.acc + ":" + it.threadId } } },
                 onStart = { k ->
-                    val r = byKey[k] ?: return@dragSelect
+                    val r = k as? String ?: return@dragSelect
+                    if (r !in byKey) return@dragSelect
                     Haptics.tick(view0, true)
-                    dragBase = selected
-                    dragOff = r in selected
-                    selected = if (dragOff) selected - r else selected + r
+                    dragBase = selectedKeys
+                    dragOff = r in selectedKeys
+                    selectedKeys = if (dragOff) selectedKeys - r else selectedKeys + r
                 },
                 onRange = { ks ->
                     val base = dragBase ?: return@dragSelect
-                    val rs = ks.mapNotNull { byKey[it] }
+                    val rs = ks.mapNotNull { (it as? String)?.takeIf { k -> k in byKey } }
                     Haptics.tick(view0, false)
-                    selected = if (dragOff) base - rs.toSet() else base + rs
+                    selectedKeys = if (dragOff) base - rs.toSet() else base + rs
                 },
                 onEnd = { dragBase = null },
             )) {
@@ -287,9 +291,10 @@ fun ThreadListScreen(vm: AppViewModel, view: View) {
                         enabled = selected.isEmpty(),
                     ) {
                         ThreadRowView(
-                            r, stripe = if (multi) colors[r.acc] else null, selected = r in selected,
+                            r, stripe = if (multi) colors[r.acc] else null, selected = (r.acc + ":" + r.threadId) in selectedKeys,
                             onClick = {
-                                if (selected.isNotEmpty()) { Haptics.toggle(view0, r !in selected); selected = if (r in selected) selected - r else selected + r }
+                                val rk = r.acc + ":" + r.threadId
+                                if (selected.isNotEmpty()) { Haptics.toggle(view0, rk !in selectedKeys); selectedKeys = if (rk in selectedKeys) selectedKeys - rk else selectedKeys + rk }
                                 else vm.go(Screen.Thread(r.acc, r.threadId))
                             },
                         )
@@ -335,18 +340,18 @@ fun ThreadListScreen(vm: AppViewModel, view: View) {
             val anyUnflagged = selected.any { !it.flagged }
             SelectionBar(
                 count = selected.size, inBins = if (binRole != null) selected.size else 0, flagging = anyUnflagged,
-                onRead = { run(vm, selected, null) { acc, ids -> vm.setSeen(acc, ids, anyUnread) }; selected = emptySet() },
+                onRead = { run(vm, selected, null) { acc, ids -> vm.setSeen(acc, ids, anyUnread) }; selectedKeys = emptySet() },
                 readIcon = if (anyUnread) R.drawable.ic_check else R.drawable.ic_unread,
                 readLabel = if (anyUnread) R.string.tool_read else R.string.tool_unread,
-                onFlag = { run(vm, selected, view) { acc, ids -> vm.setFlagged(acc, ids, anyUnflagged) }; selected = emptySet() },
-                onArchive = { run(vm, selected, view) { acc, ids -> vm.archive(acc, ids) }; selected = emptySet() },
+                onFlag = { run(vm, selected, view) { acc, ids -> vm.setFlagged(acc, ids, anyUnflagged) }; selectedKeys = emptySet() },
+                onArchive = { run(vm, selected, view) { acc, ids -> vm.archive(acc, ids) }; selectedKeys = emptySet() },
                 onDelete = {
                     val rows = selected
                     vm.viewModelScopeLaunch { rows.groupBy { it.acc }.forEach { (acc, rs) -> vm.delete(acc, rs.flatMap { vm.deleteIds(it, view) }) } }
-                    selected = emptySet()
+                    selectedKeys = emptySet()
                 },
-                onForward = { vm.forwardSelected(selected.toList()); selected = emptySet() },
-                onJunk = if (binRole == null) ({ vm.reportJunkRows(selected.toList()); selected = emptySet() }) else null,
+                onForward = { vm.forwardSelected(selected.toList()); selectedKeys = emptySet() },
+                onJunk = if (binRole == null) ({ vm.reportJunkRows(selected.toList()); selectedKeys = emptySet() }) else null,
                 restoreLabel = when (binRole) {
                     "junk" -> R.string.not_junk
                     "trash" -> R.string.move_to_inbox
@@ -355,7 +360,7 @@ fun ThreadListScreen(vm: AppViewModel, view: View) {
                 onRestore = {
                     val notJunk = binRole == "junk"
                     run(vm, selected, view) { acc, ids -> vm.restoreToInbox(acc, ids, notJunk) }
-                    selected = emptySet()
+                    selectedKeys = emptySet()
                 },
             )
         }
