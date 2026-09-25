@@ -1,6 +1,7 @@
 package com.opensolr.mail.ui.screens
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
@@ -225,7 +226,8 @@ private fun SectionHeader(label: String, color: Color?, unread: Int, open: Boole
     val view = androidx.compose.ui.platform.LocalView.current
     Row(
         Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp)
-            .background(p.accent.copy(alpha = 0.12f), androidx.compose.foundation.shape.RoundedCornerShape(2.dp))
+            .background(p.groupFill, androidx.compose.foundation.shape.RoundedCornerShape(2.dp))
+            .border(1.dp, p.groupRim, androidx.compose.foundation.shape.RoundedCornerShape(2.dp))
             .clickable { com.opensolr.mail.ui.Haptics.tick(view, false); onToggle() }
             .padding(horizontal = 8.dp, vertical = 9.dp),
         verticalAlignment = Alignment.CenterVertically,

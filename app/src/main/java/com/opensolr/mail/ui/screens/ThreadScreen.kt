@@ -84,8 +84,8 @@ fun ThreadScreen(vm: AppViewModel, acc: String, threadId: String) {
     var arrivedNew by remember(threadId) { mutableStateOf<Set<String>?>(null) }
     val bodies = remember { mutableStateMapOf<String, Message>() }
     val expanded = remember { mutableStateMapOf<String, Boolean>() }
-    // Compact headers unless the reader unfolded them; the choice is kept for every message and every later visit.
-    var details by remember { mutableStateOf(vm.prefs.headerDetails) }
+    // Header details unfold per message: only the one tapped opens.
+    val details = remember { mutableStateMapOf<String, Boolean>() }
     val images = remember { mutableStateMapOf<String, Boolean>() }
     var moving by remember { mutableStateOf(false) }
     var saving by remember { mutableStateOf<com.opensolr.mail.data.Attachment?>(null) }
@@ -217,7 +217,7 @@ fun ThreadScreen(vm: AppViewModel, acc: String, threadId: String) {
                 val open = expanded[m.id] == true
                 val sender = m.from.firstOrNull()?.label.orEmpty()
                 Box(Modifier.scrollMark(threadMarks, m.id, sender + "\n" + fmtDate(m.received)).padding(top = 8.dp)) {
-                    MessageHeader(m, open, details, isNew = arrivedNew?.contains(m.id) == true, onCopy = { copy(it) }, onDetails = { details = !details; vm.prefs.headerDetails = details }) { expanded[m.id] = !open }
+                    MessageHeader(m, open, details[m.id] == true, isNew = arrivedNew?.contains(m.id) == true, onCopy = { copy(it) }, onDetails = { details[m.id] = details[m.id] != true }) { expanded[m.id] = !open }
                 }
                 androidx.compose.animation.AnimatedVisibility(
                     visible = open,
@@ -225,7 +225,7 @@ fun ThreadScreen(vm: AppViewModel, acc: String, threadId: String) {
                     exit = androidx.compose.animation.shrinkVertically(androidx.compose.animation.core.tween(200)) + androidx.compose.animation.fadeOut(androidx.compose.animation.core.tween(160)),
                 ) {
                     Column {
-                        if (details) Row(Modifier.fillMaxWidth().background(p.headFill).drawBehind { drawRect(p.accent, size = androidx.compose.ui.geometry.Size(4.dp.toPx(), size.height)) }.padding(horizontal = 8.dp), horizontalArrangement = Arrangement.End) {
+                        if (details[m.id] == true) Row(Modifier.fillMaxWidth().background(p.headFill).drawBehind { drawRect(p.accent, size = androidx.compose.ui.geometry.Size(4.dp.toPx(), size.height)) }.padding(horizontal = 8.dp), horizontalArrangement = Arrangement.End) {
                             IconBtn(R.drawable.ic_reply, { reply(Replies.Kind.REPLY, m) })
                             IconBtn(R.drawable.ic_reply_all, { reply(Replies.Kind.REPLY_ALL, m) })
                             IconBtn(R.drawable.ic_forward, { reply(Replies.Kind.FORWARD, m) })

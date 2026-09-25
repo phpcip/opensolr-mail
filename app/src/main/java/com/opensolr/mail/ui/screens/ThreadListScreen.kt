@@ -2,6 +2,7 @@ package com.opensolr.mail.ui.screens
 
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
@@ -539,7 +540,8 @@ private fun ListGroupHeader(label: String, count: Int, open: Boolean, onToggle: 
     val view = LocalView.current
     Row(
         Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 3.dp)
-            .background(p.accent.copy(alpha = 0.12f), androidx.compose.foundation.shape.RoundedCornerShape(2.dp))
+            .background(p.groupFill, androidx.compose.foundation.shape.RoundedCornerShape(2.dp))
+            .border(1.dp, p.groupRim, androidx.compose.foundation.shape.RoundedCornerShape(2.dp))
             .clickable { Haptics.tick(view, false); onToggle() }
             .padding(horizontal = 10.dp, vertical = 7.dp),
         verticalAlignment = Alignment.CenterVertically,

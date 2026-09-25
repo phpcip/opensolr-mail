@@ -921,7 +921,7 @@ private fun GroupHeader(label: String, total: Long, open: Boolean, onToggle: () 
     val p = LocalPalette.current
     val view = LocalView.current
     Row(
-        Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 4.dp).background(p.accent.copy(alpha = 0.12f), Corner)
+        Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 4.dp).background(p.groupFill, Corner).border(1.dp, p.groupRim, Corner)
             .clickable { Haptics.tick(view, false); onToggle() }.padding(horizontal = 10.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {

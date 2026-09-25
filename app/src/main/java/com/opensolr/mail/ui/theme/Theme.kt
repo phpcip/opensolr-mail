@@ -55,6 +55,9 @@ data class Palette(
     val headFill: Color,
     val headRim: Color,
     val pillFill: Color,
+    /** The bar that titles a group of rows (a day, a sender, a section of mailboxes), and its edge. */
+    val groupFill: Color,
+    val groupRim: Color,
 )
 
 private val LightPalette = Palette(
@@ -78,6 +81,8 @@ private val LightPalette = Palette(
     headFill = Color(0xFFF1ECE4),
     headRim = Color(0xFFCFC7BB),
     pillFill = Color(0xFFFFFFFF),
+    groupFill = Color(0xFFF1D5C5),
+    groupRim = Color(0xFFD9A487),
 )
 
 private val DarkPalette = Palette(
@@ -101,6 +106,8 @@ private val DarkPalette = Palette(
     headFill = Color(0xFF211F1C),
     headRim = Color(0xFF4A453F),
     pillFill = Color(0xFF34302B),
+    groupFill = Color(0xFF4A2A1B),
+    groupRim = Color(0xFF7A4128),
 )
 
 val LocalPalette = staticCompositionLocalOf { LightPalette }
