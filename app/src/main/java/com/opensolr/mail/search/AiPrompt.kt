@@ -1,6 +1,6 @@
 package com.opensolr.mail.search
 
-/** The Opensolr AI Hints prompt, the same bytes as every other Opensolr implementation. */
+/** The prompt of the AI answer in Opensolr Mail: the Opensolr AI Hints prompt, with a drill-down in place of "find all". */
 object AiPrompt {
 
     const val TOP_N = 5
@@ -49,19 +49,18 @@ object AiPrompt {
         return context + "\n\n" +
             "Those were the " + count + " documents.\n\n" +
             "Now answer the question below using only facts stated in those documents. " +
-            "Find ALL of the " + count + " documents that are relevant to the question, even " +
-            "when the question describes the subject in completely different words than a " +
-            "document does, and answer the question based on those. Where more than one of " +
-            "them bears on the question, combine what each one adds into a single answer.\n" +
-            "Write the answer itself, formatted in Markdown for reading. Begin with one " +
-            "sentence that answers the question directly. Whenever the answer covers more " +
-            "than one development, position or fact — which is most of the time — set " +
-            "the detail out as a Markdown list, each item on its own line opening with a " +
-            "bold lead-in that names it. Keep it as prose only if there is genuinely just " +
-            "one thing to say. Be thorough: cover every distinct point the documents offer " +
-            "that bears on the question, with the concrete details — the people, places, " +
-            "numbers, dates and named events involved. Do not stop at the first thing you can " +
-            "say. Never invent generic headings such as \"Overview\", \"Key Points\" or " +
+            "First drill down: discard every document that does not mention what the question " +
+            "asks about, and when the question names a day, a month or a year, also every " +
+            "document not dated within it. Answer from the documents that are left, and from " +
+            "those alone. Where more than one of them bears on the question, combine what each " +
+            "one adds into a single answer.\n" +
+            "Write the answer itself, formatted in Markdown for reading, and be as succinct as " +
+            "possible. Begin with one short sentence that answers the question directly. Where " +
+            "there are several items, follow it with a short Markdown bullet list, one line per " +
+            "item, each opening with a bold lead-in that names it. If there is just one thing to " +
+            "say, that one sentence is the whole answer. Give only the details that answer the question — the people, " +
+            "places, numbers, dates and named events involved — and leave out everything else. " +
+            "Never repeat an item. Never invent generic headings such as \"Overview\", \"Key Points\" or " +
             "\"Summary\". Never begin with \"Based on\" or \"According to\", and never end with " +
             "a sentence about the documents or the context. Do not name documents, do not say " +
             "which ones you used, and do not comment on the ones you did not use.\n" +
