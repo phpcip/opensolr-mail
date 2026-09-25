@@ -93,7 +93,7 @@
     <string name="action_delete">Eliminar</string>
     <string name="action_reply_all">Responder a todos</string>
     <string name="indexing">Indexando el correo para la búsqueda</string>
-    <string name="idx_title">Índice de búsqueda</string>
+    <string name="idx_title">Opensolr Index</string>
     <string name="idx_running">Trabajando</string>
     <string name="zone_updates">Actualizaciones</string>
     <string name="idx_error_title">Último error</string>
@@ -159,8 +159,7 @@
     <string name="setup_search">Búsqueda (opcional)</string>
     <string name="setup_opensolr_connected">Conectado a Opensolr como %1$s</string>
     <string name="connect_opensolr">Conectar una cuenta de Opensolr</string>
-    <string name="search_needs_account_title">La búsqueda necesita una cuenta de Opensolr</string>
-    <string name="search_needs_account_text">Tu correo se busca en un Opensolr Index de tu cuenta de Opensolr. Sin ella no hay búsqueda ni respuestas de IA, y el correo nuevo se comprueba cada 15 minutos en lugar de llegar al instante. Leer, escribir, notas y calendarios funcionan igual.</string>
+    <string name="search_needs_account_text">Tu correo se busca por significado y con respuestas de IA en un Opensolr Index de tu cuenta de Opensolr. Sin ella, elige la búsqueda de Fastmail en Ajustes: una búsqueda clásica por palabras. El correo nuevo se comprueba cada 15 minutos en lugar de llegar al instante. Leer, escribir, notas y calendarios funcionan igual.</string>
     <string name="search_closed_title">La búsqueda está detenida</string>
     <string name="search_closed_text">Tu Opensolr Index se quedó sin espacio en disco o sin el ancho de banda del mes, así que la búsqueda y la indexación están detenidas. En el caso del ancho de banda, vuelven al empezar el mes.</string>
     <string name="search_ai_off_quota">La búsqueda con IA está apagada hasta que se renueven tus solicitudes de IA del mes: solo palabras.</string>
@@ -366,10 +365,19 @@
     <string name="one_notjunk_text">Pasa a la Bandeja de entrada, Fastmail aprende que no es spam y sus remitentes dejan de estar bloqueados en este teléfono.</string>
     <string name="cd_show_details">Mostrar detalles</string>
     <string name="cd_hide_details">Ocultar detalles</string>
-    <string name="suggest_history">De tu historial de correo</string>
-    <string name="suggest_history_contacts">De tu historial de correo y tus contactos</string>
-    <string name="suggest_contacts">De tus contactos</string>
     <string name="suggest_allow_contacts">Permite el acceso a los contactos para sugerencias más completas</string>
     <string name="att_already_title">Ya descargado</string>
     <string name="att_already_text">%1$s ya está en Descargas. Toca para abrirlo.</string>
+    <string name="search_where">Buscar en</string>
+    <string name="engine_opensolr_sub">Búsqueda por palabras y significado, respuestas de IA, texto leído de fotos y adjuntos, filtros y agrupación. Necesita una cuenta de Opensolr: tu correo se indexa en tu propio Opensolr Index. Cuando el índice se queda sin disco o ancho de banda, o no responde, la búsqueda pasa a Fastmail.</string>
+    <string name="engine_fastmail_sub">Búsqueda clásica por palabras, los más recientes primero, en los servidores de Fastmail. Solo necesita tu cuenta de Fastmail.</string>
+    <string name="fallback_closed">Tu Opensolr Index se ha quedado sin disco o ancho de banda, así que esta búsqueda se hace en Fastmail: solo palabras, los más recientes primero.</string>
+    <string name="fallback_unreachable">Tu Opensolr Index no responde ahora, así que esta búsqueda se hace en Fastmail: solo palabras, los más recientes primero. Desliza hacia abajo para volver a probar el índice.</string>
+    <string name="contacts_title">Contactos</string>
+    <string name="contacts_search">Buscar contactos</string>
+    <string name="contacts_none">No se han encontrado contactos.</string>
+    <string name="contacts_write">Escribir a</string>
+    <string name="opensolr_pitch_title">Opensolr: búsqueda con IA para tu correo</string>
+    <string name="opensolr_pitch_text">Tu correo va a un Opensolr Index propio: búsqueda por significado y no solo por palabras, respuestas de IA sobre tu correo, texto leído de fotos y adjuntos, filtros y agrupación, y el correo nuevo llega al instante. Gratis para buzones pequeños y medianos.</string>
+    <string name="tool_go_opensolr">Ir a Opensolr</string>
 </resources>

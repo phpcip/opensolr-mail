@@ -20,10 +20,10 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.text.Normalizer
 
-/** Recipient suggestions for To, Cc and Bcc: the people in the mail index and the phone's contacts, in one list. */
+/** Recipient suggestions for To, Cc and Bcc: the mail index (with an Opensolr account), the Fastmail address books and the phone's contacts, in one list. */
 class RecipientSuggest(private val context: Context) {
 
-    data class Suggestion(val name: String, val email: String, val photo: String?, val fromContacts: Boolean)
+    data class Suggestion(val name: String, val email: String, val photo: String?)
 
     private val db = MailDb.get(context)
 
@@ -35,16 +35,22 @@ class RecipientSuggest(private val context: Context) {
         if (text.isEmpty()) return@withContext emptyList()
         val words = foldWords(text)
         val history = runCatching { fromHistory(text, words) }.getOrDefault(emptyList())
+        val fastmail = runCatching { fromFastmail(words) }.getOrDefault(emptyList())
         val contacts = if (contactsAllowed()) runCatching { fromContacts(text) }.getOrDefault(emptyList()) else emptyList()
-        // One list, one row per address: a contact lends its name and photo to the same address from the history.
-        val byEmail = contacts.associateBy { it.email.lowercase() }
-        val photos = if (contactsAllowed()) runCatching { photosOf(history.map { it.second }.filter { it.lowercase() !in byEmail }) }.getOrDefault(emptyMap()) else emptyMap()
-        val merged = LinkedHashMap<String, Suggestion>()
-        history.forEach { (name, email) ->
-            val key = email.lowercase()
-            val c = byEmail[key]
-            merged[key] = if (c != null) c.copy(name = c.name.ifBlank { name }) else Suggestion(name, email, photos[key], false)
+        // One list, one row per address, most written to first: a phone contact, then a Fastmail card, lends
+        // its name and picture to the same address wherever it came from.
+        val phoneBy = contacts.associateBy { it.email.lowercase() }
+        val fmBy = fastmail.associateBy { it.email.lowercase() }
+        val known = phoneBy.keys + fmBy.keys
+        val photos = if (contactsAllowed()) runCatching { photosOf(history.map { it.second }.filter { it.lowercase() !in known }) }.getOrDefault(emptyMap()) else emptyMap()
+        fun best(key: String, name: String, email: String, photo: String?): Suggestion {
+            val c = phoneBy[key]
+            val f = fmBy[key]
+            return Suggestion(c?.name?.ifBlank { null } ?: f?.name?.ifBlank { null } ?: name, email, c?.photo ?: f?.photo ?: photo)
         }
+        val merged = LinkedHashMap<String, Suggestion>()
+        history.forEach { (name, email) -> val key = email.lowercase(); merged[key] = best(key, name, email, photos[key]) }
+        fastmail.forEach { f -> val key = f.email.lowercase(); merged.putIfAbsent(key, best(key, f.name, f.email, f.photo)) }
         contacts.forEach { c -> merged.putIfAbsent(c.email.lowercase(), c) }
         merged.values.take(MAX)
     }
@@ -103,6 +109,10 @@ class RecipientSuggest(private val context: Context) {
         return list
     }
 
+    /** Fastmail cards whose name or address the typed words fit, one row per address. */
+    private fun fromFastmail(words: List<String>): List<Suggestion> =
+        ContactBook(context).fastmail().flatMap { p -> p.emails.filter { fits(words, p.name, it) }.map { Suggestion(p.name, it, p.photo) } }.take(MAX)
+
     /** The phone's contacts whose name or address matches, through the provider's own filter. */
     private fun fromContacts(text: String): List<Suggestion> {
         val uri = Uri.withAppendedPath(ContactsContract.CommonDataKinds.Email.CONTENT_FILTER_URI, Uri.encode(text))
@@ -115,7 +125,7 @@ class RecipientSuggest(private val context: Context) {
             while (c.moveToNext() && out.size < MAX) {
                 val email = c.getString(0)?.trim().orEmpty()
                 if (!email.contains('@')) continue
-                out += Suggestion(cleanName(c.getString(1).orEmpty(), email), email, c.getString(2), true)
+                out += Suggestion(cleanName(c.getString(1).orEmpty(), email), email, c.getString(2))
             }
         }
         return out.distinctBy { it.email.lowercase() }
@@ -170,12 +180,12 @@ class RecipientSuggest(private val context: Context) {
             return if (name.equals(email, true)) "" else name
         }
 
-        private fun foldWords(text: String): List<String> =
+        fun foldWords(text: String): List<String> =
             Normalizer.normalize(text.lowercase(), Normalizer.Form.NFD).replace(Regex("\\p{M}+"), "")
                 .split(Regex("[^\\p{L}\\p{N}@._+-]+")).filter { it.isNotEmpty() }
 
         /** Every typed word starts a word of the name or of the address. */
-        private fun fits(words: List<String>, name: String, email: String): Boolean {
+        fun fits(words: List<String>, name: String, email: String): Boolean {
             val pool = foldWords(name) + foldWords(email).flatMap { w -> listOf(w) + w.split('@', '.', '_', '-', '+').filter { it.isNotEmpty() } }
             return words.all { w -> pool.any { it.startsWith(w) } }
         }

@@ -73,14 +73,14 @@
     <string name="title">Title</string>
     <string name="note_hint">Note</string>
 
-    <string name="mail_accounts">Mail accounts</string>
+    <string name="mail_accounts">Mail Accounts</string>
     <string name="calendar_sync">Calendars in the phone\'s calendar</string>
     <string name="sign_in_again">Sign in again</string>
     <string name="sign_in_again_needed">Fastmail ended this sign-in. Sign in again.</string>
     <string name="remove">Remove</string>
     <string name="confirm_remove">Tap to remove</string>
     <string name="add_account">Add a Fastmail account</string>
-    <string name="opensolr_account">Opensolr account</string>
+    <string name="opensolr_account">Opensolr Account</string>
     <string name="index_no_room">Your plan has no room for the mail index.</string>
     <string name="index_words_only">Your plan searches by words only.</string>
     <string name="index_quota">Monthly AI quota reached: new mail is searchable by words, meaning follows next month.</string>
@@ -101,7 +101,7 @@
     <string name="action_delete">Delete</string>
     <string name="action_reply_all">Reply all</string>
     <string name="indexing">Indexing mail for search</string>
-    <string name="idx_title">Search index</string>
+    <string name="idx_title">Opensolr Index</string>
     <string name="idx_running">Working</string>
     <string name="zone_updates">Updates</string>
     <string name="idx_error_title">Last error</string>
@@ -167,8 +167,7 @@
     <string name="setup_search">Search (optional)</string>
     <string name="setup_opensolr_connected">Connected to Opensolr as %1$s</string>
     <string name="connect_opensolr">Connect an Opensolr account</string>
-    <string name="search_needs_account_title">Search needs an Opensolr account</string>
-    <string name="search_needs_account_text">Your mail is searched in an Opensolr Index that lives in your Opensolr account. Without one there is no search and no AI answers, and new mail is checked every 15 minutes instead of arriving at once. Reading, writing, notes and calendars work the same.</string>
+    <string name="search_needs_account_text">Your mail is searched by meaning and answered by AI in an Opensolr Index that lives in your Opensolr account. Without one, choose Fastmail search in Settings: a classic search by words. New mail is checked every 15 minutes instead of arriving at once. Reading, writing, notes and calendars work the same.</string>
     <string name="search_closed_title">Search is stopped</string>
     <string name="search_closed_text">Your Opensolr Index is out of disk space or out of this month\'s bandwidth, so search and indexing are stopped. For bandwidth, they are back when the month resets.</string>
     <string name="search_ai_off_quota">AI search is off until your monthly AI requests reset: words only.</string>
@@ -374,10 +373,21 @@
     <string name="one_notjunk_text">It moves to the Inbox, Fastmail learns it is not spam, and its senders are no longer blocked on this phone.</string>
     <string name="cd_show_details">Show details</string>
     <string name="cd_hide_details">Hide details</string>
-    <string name="suggest_history">From your email history</string>
-    <string name="suggest_history_contacts">From your email history and contacts</string>
-    <string name="suggest_contacts">From your contacts</string>
     <string name="suggest_allow_contacts">Allow access to contacts for more complete suggestions</string>
     <string name="att_already_title">Already downloaded</string>
     <string name="att_already_text">%1$s is already in Downloads. Tap to open it.</string>
+    <string name="engine_opensolr" translatable="false">Opensolr</string>
+    <string name="engine_fastmail" translatable="false">Fastmail</string>
+    <string name="search_where">Search in</string>
+    <string name="engine_opensolr_sub">Search by words and meaning, AI answers, text read from pictures and attachments, filters and grouping. Needs an Opensolr account: your mail is indexed in your own Opensolr Index. When the index is out of disk or bandwidth, or can\'t be reached, search falls back to Fastmail.</string>
+    <string name="engine_fastmail_sub">Classic search by words, newest first, on Fastmail\'s own servers. Needs only your Fastmail account.</string>
+    <string name="fallback_closed">Your Opensolr Index is out of disk space or bandwidth, so this search runs on Fastmail: words only, newest first.</string>
+    <string name="fallback_unreachable">Your Opensolr Index can\'t be reached right now, so this search runs on Fastmail: words only, newest first. Pull down to try the index again.</string>
+    <string name="contacts_title">Contacts</string>
+    <string name="contacts_search">Search contacts</string>
+    <string name="contacts_none">No contacts found.</string>
+    <string name="contacts_write">Write to</string>
+    <string name="opensolr_pitch_title">Opensolr: AI search for your mail</string>
+    <string name="opensolr_pitch_text">Your mail goes into an Opensolr Index of your own: search by meaning as well as words, AI answers from your mail, text read from pictures and attachments, filters and grouping, and new mail arriving at once. Free for small and mid-sized mailboxes.</string>
+    <string name="tool_go_opensolr">Go to Opensolr</string>
 </resources>

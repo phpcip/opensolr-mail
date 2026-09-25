@@ -93,7 +93,7 @@
     <string name="action_delete">Șterge</string>
     <string name="action_reply_all">Răspunde tuturor</string>
     <string name="indexing">Se indexează mailul pentru căutare</string>
-    <string name="idx_title">Indexul de căutare</string>
+    <string name="idx_title">Opensolr Index</string>
     <string name="idx_running">Lucrează</string>
     <string name="zone_updates">Actualizări</string>
     <string name="idx_error_title">Ultima eroare</string>
@@ -159,8 +159,7 @@
     <string name="setup_search">Căutare (opțional)</string>
     <string name="setup_opensolr_connected">Conectat la Opensolr ca %1$s</string>
     <string name="connect_opensolr">Conectează un cont Opensolr</string>
-    <string name="search_needs_account_title">Căutarea are nevoie de un cont Opensolr</string>
-    <string name="search_needs_account_text">Mailul tău e căutat într-un Opensolr Index din contul tău Opensolr. Fără el nu există căutare și nici răspunsuri AI, iar mailul nou e verificat la 15 minute în loc să sosească imediat. Citit, scris, notițe și calendare merg la fel.</string>
+    <string name="search_needs_account_text">Mailul tău e căutat după sens și cu răspunsuri AI într-un Opensolr Index din contul tău Opensolr. Fără el, alege căutarea Fastmail din Settings: o căutare clasică după cuvinte. Mailul nou e verificat la 15 minute în loc să sosească imediat. Citit, scris, notițe și calendare merg la fel.</string>
     <string name="search_closed_title">Căutarea e oprită</string>
     <string name="search_closed_text">Opensolr Index-ul tău a rămas fără spațiu pe disc sau fără traficul lunii, așa că se opresc căutarea și indexarea. Pentru trafic, revin când se resetează luna.</string>
     <string name="search_ai_off_quota">Căutarea AI e oprită până se resetează cererile AI ale lunii: doar cuvinte.</string>
@@ -366,10 +365,19 @@
     <string name="one_notjunk_text">Ajunge în Inbox, Fastmail învață că nu e spam, iar expeditorii ei nu mai sunt blocați pe acest telefon.</string>
     <string name="cd_show_details">Arată detaliile</string>
     <string name="cd_hide_details">Ascunde detaliile</string>
-    <string name="suggest_history">Din istoricul tău de email</string>
-    <string name="suggest_history_contacts">Din istoricul tău de email și din contacte</string>
-    <string name="suggest_contacts">Din contactele tale</string>
     <string name="suggest_allow_contacts">Permite accesul la contacte pentru sugestii mai complete</string>
     <string name="att_already_title">Deja descărcat</string>
     <string name="att_already_text">%1$s este deja în Downloads. Atinge ca să-l deschizi.</string>
+    <string name="search_where">Caută în</string>
+    <string name="engine_opensolr_sub">Căutare după cuvinte și sens, răspunsuri AI, text citit din poze și atașamente, filtre și grupare. Are nevoie de un cont Opensolr: mailul tău e indexat în propriul tău Opensolr Index. Când indexul rămâne fără disk sau bandwidth ori nu poate fi accesat, căutarea trece pe Fastmail.</string>
+    <string name="engine_fastmail_sub">Căutare clasică după cuvinte, cele mai noi întâi, pe serverele Fastmail. Are nevoie doar de contul tău Fastmail.</string>
+    <string name="fallback_closed">Opensolr Index-ul tău a rămas fără disk sau bandwidth, așa că această căutare merge pe Fastmail: doar cuvinte, cele mai noi întâi.</string>
+    <string name="fallback_unreachable">Opensolr Index-ul tău nu poate fi accesat acum, așa că această căutare merge pe Fastmail: doar cuvinte, cele mai noi întâi. Trage în jos ca să încerci din nou indexul.</string>
+    <string name="contacts_title">Contacte</string>
+    <string name="contacts_search">Caută în contacte</string>
+    <string name="contacts_none">Niciun contact găsit.</string>
+    <string name="contacts_write">Scrie-i</string>
+    <string name="opensolr_pitch_title">Opensolr: căutare AI pentru mailul tău</string>
+    <string name="opensolr_pitch_text">Mailul tău intră într-un Opensolr Index al tău: căutare după sens, nu doar după cuvinte, răspunsuri AI din mailurile tale, text citit din poze și atașamente, filtre și grupare, iar mailul nou sosește imediat. Gratuit pentru căsuțe mici și medii.</string>
+    <string name="tool_go_opensolr">Mergi la Opensolr</string>
 </resources>

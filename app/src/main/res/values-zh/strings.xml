@@ -93,7 +93,7 @@
     <string name="action_delete">删除</string>
     <string name="action_reply_all">全部回复</string>
     <string name="indexing">正在为搜索索引邮件</string>
-    <string name="idx_title">搜索索引</string>
+    <string name="idx_title">Opensolr Index</string>
     <string name="idx_running">处理中</string>
     <string name="zone_updates">更新</string>
     <string name="idx_error_title">最近错误</string>
@@ -159,8 +159,7 @@
     <string name="setup_search">搜索(可选)</string>
     <string name="setup_opensolr_connected">已以 %1$s 连接 Opensolr</string>
     <string name="connect_opensolr">连接 Opensolr 账户</string>
-    <string name="search_needs_account_title">搜索需要 Opensolr 账户</string>
-    <string name="search_needs_account_text">你的邮件在你 Opensolr 账户中的 Opensolr Index 里搜索。没有账户就没有搜索和 AI 回答,新邮件每 15 分钟检查一次,而不是即时到达。阅读、写信、笔记和日历照常可用。</string>
+    <string name="search_needs_account_text">你的邮件在你 Opensolr 账户中的 Opensolr Index 里按含义搜索并由 AI 回答。没有账户时,请在设置中选择 Fastmail 搜索:按字词的经典搜索。新邮件每 15 分钟检查一次,而不是即时到达。阅读、写信、笔记和日历照常可用。</string>
     <string name="search_closed_title">搜索已停止</string>
     <string name="search_closed_text">你的 Opensolr Index 已用完磁盘空间或本月流量,搜索和索引已停止。若是流量,会在下个月恢复。</string>
     <string name="search_ai_off_quota">本月 AI 请求重置前,AI 搜索已关闭:仅按关键词。</string>
@@ -366,10 +365,19 @@
     <string name="one_notjunk_text">它移到收件箱，Fastmail 会学到它不是垃圾邮件，发件人在本手机上的屏蔽也会解除。</string>
     <string name="cd_show_details">显示详情</string>
     <string name="cd_hide_details">隐藏详情</string>
-    <string name="suggest_history">来自你的邮件历史</string>
-    <string name="suggest_history_contacts">来自你的邮件历史和联系人</string>
-    <string name="suggest_contacts">来自你的联系人</string>
     <string name="suggest_allow_contacts">允许访问联系人以获得更完整的建议</string>
     <string name="att_already_title">已下载</string>
     <string name="att_already_text">%1$s 已在下载中。点按即可打开。</string>
+    <string name="search_where">搜索位置</string>
+    <string name="engine_opensolr_sub">按字词和含义搜索、AI 回答、读取图片和附件中的文字、筛选和分组。需要 Opensolr 账户:你的邮件会被索引到你自己的 Opensolr Index。当索引磁盘或流量用尽,或无法访问时,搜索会改用 Fastmail。</string>
+    <string name="engine_fastmail_sub">在 Fastmail 服务器上按字词的经典搜索,最新的在前。只需要你的 Fastmail 账户。</string>
+    <string name="fallback_closed">你的 Opensolr Index 磁盘或流量已用尽,因此本次搜索在 Fastmail 上进行:仅字词,最新的在前。</string>
+    <string name="fallback_unreachable">目前无法访问你的 Opensolr Index,因此本次搜索在 Fastmail 上进行:仅字词,最新的在前。下拉可重新尝试索引。</string>
+    <string name="contacts_title">联系人</string>
+    <string name="contacts_search">搜索联系人</string>
+    <string name="contacts_none">未找到联系人。</string>
+    <string name="contacts_write">写信给</string>
+    <string name="opensolr_pitch_title">Opensolr:为你的邮件提供 AI 搜索</string>
+    <string name="opensolr_pitch_text">你的邮件会进入你自己的 Opensolr Index:不仅按字词,还按含义搜索,基于你的邮件给出 AI 回答,读取图片和附件中的文字,支持筛选和分组,新邮件即时送达。中小型邮箱免费。</string>
+    <string name="tool_go_opensolr">前往 Opensolr</string>
 </resources>

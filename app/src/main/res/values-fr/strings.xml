@@ -93,7 +93,7 @@
     <string name="action_delete">Supprimer</string>
     <string name="action_reply_all">Répondre à tous</string>
     <string name="indexing">Indexation du courrier pour la recherche</string>
-    <string name="idx_title">Index de recherche</string>
+    <string name="idx_title">Opensolr Index</string>
     <string name="idx_running">En cours</string>
     <string name="zone_updates">Mises à jour</string>
     <string name="idx_error_title">Dernière erreur</string>
@@ -159,8 +159,7 @@
     <string name="setup_search">Recherche (facultatif)</string>
     <string name="setup_opensolr_connected">Connecté à Opensolr en tant que %1$s</string>
     <string name="connect_opensolr">Connecter un compte Opensolr</string>
-    <string name="search_needs_account_title">La recherche nécessite un compte Opensolr</string>
-    <string name="search_needs_account_text">Vos e-mails sont recherchés dans un Opensolr Index de votre compte Opensolr. Sans compte, pas de recherche ni de réponses IA, et les nouveaux e-mails sont relevés toutes les 15 minutes au lieu d\'arriver tout de suite. Lecture, écriture, notes et calendriers fonctionnent comme d\'habitude.</string>
+    <string name="search_needs_account_text">Vos e-mails sont recherchés par le sens et avec des réponses IA dans un Opensolr Index de votre compte Opensolr. Sans compte, choisissez la recherche Fastmail dans les Réglages : une recherche classique par mots. Les nouveaux e-mails sont relevés toutes les 15 minutes au lieu d\'arriver tout de suite. Lecture, écriture, notes et calendriers fonctionnent comme d\'habitude.</string>
     <string name="search_closed_title">La recherche est arrêtée</string>
     <string name="search_closed_text">Votre Opensolr Index n\'a plus d\'espace disque ou plus de bande passante ce mois-ci : la recherche et l\'indexation sont arrêtées. Pour la bande passante, elles reprennent au changement de mois.</string>
     <string name="search_ai_off_quota">La recherche IA est coupée jusqu\'à la remise à zéro de vos requêtes IA mensuelles : mots seulement.</string>
@@ -366,10 +365,19 @@
     <string name="one_notjunk_text">Elle va dans la Boîte de réception, Fastmail apprend qu\'elle n\'est pas du spam et ses expéditeurs ne sont plus bloqués sur ce téléphone.</string>
     <string name="cd_show_details">Afficher les détails</string>
     <string name="cd_hide_details">Masquer les détails</string>
-    <string name="suggest_history">De votre historique d\'e-mails</string>
-    <string name="suggest_history_contacts">De votre historique d\'e-mails et de vos contacts</string>
-    <string name="suggest_contacts">De vos contacts</string>
     <string name="suggest_allow_contacts">Autorisez l\'accès aux contacts pour des suggestions plus complètes</string>
     <string name="att_already_title">Déjà téléchargé</string>
     <string name="att_already_text">%1$s est déjà dans Téléchargements. Touchez pour l\'ouvrir.</string>
+    <string name="search_where">Chercher dans</string>
+    <string name="engine_opensolr_sub">Recherche par mots et par le sens, réponses IA, texte lu dans les photos et pièces jointes, filtres et regroupement. Nécessite un compte Opensolr : vos e-mails sont indexés dans votre propre Opensolr Index. Si l\'index manque d\'espace disque ou de bande passante, ou ne répond pas, la recherche passe sur Fastmail.</string>
+    <string name="engine_fastmail_sub">Recherche classique par mots, les plus récents d\'abord, sur les serveurs de Fastmail. Nécessite seulement votre compte Fastmail.</string>
+    <string name="fallback_closed">Votre Opensolr Index manque d\'espace disque ou de bande passante, cette recherche se fait donc sur Fastmail : mots uniquement, les plus récents d\'abord.</string>
+    <string name="fallback_unreachable">Votre Opensolr Index ne répond pas pour le moment, cette recherche se fait donc sur Fastmail : mots uniquement, les plus récents d\'abord. Tirez vers le bas pour réessayer l\'index.</string>
+    <string name="contacts_title">Contacts</string>
+    <string name="contacts_search">Rechercher des contacts</string>
+    <string name="contacts_none">Aucun contact trouvé.</string>
+    <string name="contacts_write">Écrire à</string>
+    <string name="opensolr_pitch_title">Opensolr : la recherche IA pour vos e-mails</string>
+    <string name="opensolr_pitch_text">Vos e-mails vont dans votre propre Opensolr Index : recherche par le sens et pas seulement par les mots, réponses IA sur vos e-mails, texte lu dans les photos et pièces jointes, filtres et regroupement, et les nouveaux e-mails arrivent tout de suite. Gratuit pour les boîtes petites et moyennes.</string>
+    <string name="tool_go_opensolr">Aller sur Opensolr</string>
 </resources>

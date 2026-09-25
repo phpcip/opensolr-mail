@@ -116,6 +116,8 @@ private data class SearchSnapshot(
     val extraHits: List<MailSearch.Hit>,
     val extraGroups: List<MailSearch.Group>,
     val fetchedMore: Int = 0,
+    val fastmail: Boolean = false,
+    val cursor: com.opensolr.mail.search.FastmailSearch.Cursor? = null,
 )
 
 /** Search and browse every account at once, the way Opensolr Photos and search.opensolr.com do it. */
@@ -123,7 +125,8 @@ private data class SearchSnapshot(
 @Composable
 fun SearchScreen(vm: AppViewModel, sheet: String?, screen: Screen? = null) {
     val p = LocalPalette.current
-    if (!vm.signedIn) {
+    // Chosen in Settings: Fastmail's own search, classic, words only; or the Opensolr Index.
+    if (!vm.useFastmailSearch && !vm.signedIn) {
         Column(Modifier.fillMaxSize()) {
             com.opensolr.mail.ui.TopBar(stringResource(R.string.search_hint), onBack = { vm.back() })
             Column(Modifier.padding(20.dp)) { com.opensolr.mail.ui.NeedsOpensolr(vm) }
@@ -132,8 +135,12 @@ fun SearchScreen(vm: AppViewModel, sheet: String?, screen: Screen? = null) {
     }
     LaunchedEffect(Unit) { vm.refreshLimits(minAgeMs = 5 * 60_000) }
     val limits = vm.limits
-    // AI search, AI answers and their instructions need AI in the plan and allowance left this month; without them, words only.
-    val aiOk = limits?.aiUsable ?: vm.prefs.vectorAllowed
+    // The Opensolr Index chosen but out of disk or bandwidth, or not answering: the search falls back to Fastmail.
+    var unreachable by remember { mutableStateOf(false) }
+    val closed = !vm.useFastmailSearch && limits?.closed == true
+    val fastmail = vm.useFastmailSearch || closed || unreachable
+    // AI search, AI answers and their instructions need the Opensolr Index, AI in the plan and allowance left this month.
+    val aiOk = !fastmail && (limits?.aiUsable ?: vm.prefs.vectorAllowed)
     val view = LocalView.current
     val scope = rememberCoroutineScope()
     val accounts by vm.store.accounts.collectAsState()
@@ -142,7 +149,9 @@ fun SearchScreen(vm: AppViewModel, sheet: String?, screen: Screen? = null) {
     // What was last searched: typing changes nothing until Search on the keyboard, so no half word is ever searched or embedded.
     var submitted by rememberSaveable { mutableStateOf(snap?.query ?: vm.searchQuery) }
     var filters by remember { mutableStateOf(snap?.filters ?: vm.searchFilters) }
-    var groupBy by remember { mutableStateOf(snap?.groupBy ?: runCatching { MailSearch.GroupBy.valueOf(vm.prefs.groupBy) }.getOrDefault(MailSearch.GroupBy.BEST)) }
+    var groupPick by remember { mutableStateOf(snap?.groupBy ?: runCatching { MailSearch.GroupBy.valueOf(vm.prefs.groupBy) }.getOrDefault(MailSearch.GroupBy.BEST)) }
+    // Fastmail has no grouping: its results are one list, newest first.
+    val groupBy = if (fastmail) MailSearch.GroupBy.NONE else groupPick
     var ai by remember { mutableStateOf(vm.prefs.aiSearch) }
     var fresh by remember { mutableStateOf(vm.prefs.freshSearch) }
     var result by remember { mutableStateOf(snap?.result) }
@@ -150,14 +159,16 @@ fun SearchScreen(vm: AppViewModel, sheet: String?, screen: Screen? = null) {
     var extraGroups by remember { mutableStateOf(snap?.extraGroups ?: emptyList()) }
     // Messages read from the index by the pages after the first: pages go by messages, the list shows conversations.
     var fetchedMore by remember { mutableIntStateOf(snap?.fetchedMore ?: 0) }
-    var skipFirst by remember { mutableStateOf(snap != null && snap.ai == ai && snap.fresh == fresh) }
+    // Where each Fastmail account's next page starts.
+    var cursor by remember { mutableStateOf(snap?.cursor) }
+    var skipFirst by remember { mutableStateOf(snap != null && snap.ai == ai && snap.fresh == fresh && snap.fastmail == fastmail) }
     var loading by remember { mutableStateOf(false) }
     var loadingMore by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     // The sheet asked for opens once per entry, not again on the way back from a message.
     val openSheet = remember { sheet.takeIf { screen == null || vm.searchSheetShown !== screen }.also { if (screen != null) vm.searchSheetShown = screen } }
-    var showFilters by remember { mutableStateOf(openSheet == "filters") }
-    var showGroup by remember { mutableStateOf(openSheet == "group") }
+    var showFilters by remember { mutableStateOf(openSheet == "filters" && !fastmail) }
+    var showGroup by remember { mutableStateOf(openSheet == "group" && !fastmail) }
     var showOperators by remember { mutableStateOf(false) }
     var showInstructions by remember { mutableStateOf(false) }
     var instructions by remember { mutableStateOf(vm.prefs.aiInstructions) }
@@ -173,7 +184,14 @@ fun SearchScreen(vm: AppViewModel, sheet: String?, screen: Screen? = null) {
             loading = true
             error = null
             try {
-                result = vm.search.search(submitted, filters, groupBy)
+                if (fastmail) {
+                    val (res, next) = vm.fastmailSearch.search(submitted)
+                    result = res
+                    cursor = next
+                } else {
+                    result = vm.search.search(submitted, filters, groupBy)
+                    cursor = null
+                }
                 // AI was asked for but the search came back words only: the plan or the allowance may have changed.
                 if (ai && aiOk && submitted.isNotBlank() && result?.smart == false) vm.refreshLimits(minAgeMs = 60_000)
                 extraHits = emptyList()
@@ -186,7 +204,8 @@ fun SearchScreen(vm: AppViewModel, sheet: String?, screen: Screen? = null) {
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                error = e.message ?: vm.text(R.string.err_generic)
+                // The index did not answer: the same search goes to Fastmail instead.
+                if (!fastmail) unreachable = true else error = e.message ?: vm.text(R.string.err_generic)
             } finally {
                 loading = false
             }
@@ -202,17 +221,17 @@ fun SearchScreen(vm: AppViewModel, sheet: String?, screen: Screen? = null) {
     }
     // Searched again only when something that shapes the result changed: coming back from a message with the same
     // search keeps the list and its place, even when the plan's limits load a moment later.
-    var lastRun by remember { mutableStateOf(if (skipFirst) listOf<Any?>(submitted, filters, groupBy, ai, fresh) else null) }
-    LaunchedEffect(submitted, filters, groupBy, ai, fresh) {
-        val now = listOf<Any?>(submitted, filters, groupBy, ai, fresh)
+    var lastRun by remember { mutableStateOf(if (skipFirst) listOf<Any?>(submitted, filters, groupBy, ai, fresh, fastmail) else null) }
+    LaunchedEffect(submitted, filters, groupBy, ai, fresh, fastmail) {
+        val now = listOf<Any?>(submitted, filters, groupBy, ai, fresh, fastmail)
         if (skipFirst) { skipFirst = false; lastRun = now; return@LaunchedEffect }
         if (now == lastRun) return@LaunchedEffect
         lastRun = now
         run()
     }
-    LaunchedEffect(result, extraHits, extraGroups, fetchedMore) {
+    LaunchedEffect(result, extraHits, extraGroups, fetchedMore, cursor) {
         val res = result ?: return@LaunchedEffect
-        vm.searchSnapshot = SearchSnapshot(submitted, filters, groupBy, ai, fresh, res, extraHits, extraGroups, fetchedMore)
+        vm.searchSnapshot = SearchSnapshot(submitted, filters, groupPick, ai, fresh, res, extraHits, extraGroups, fetchedMore, fastmail, cursor)
     }
 
     val r = result
@@ -226,13 +245,14 @@ fun SearchScreen(vm: AppViewModel, sheet: String?, screen: Screen? = null) {
     // A group comes once even if a later page repeats it: two items with one key would close the app.
     val shownGroups = ((r?.groups.orEmpty()) + extraGroups).distinctBy { it.value }
     // Best matches / Also similar, as in Opensolr Photos: the cut is made once, on the first page, where the
-    // score falls the most below the share of the best one; every later page is Also similar.
+    // score falls the most below the share of the best one; every later page is Also similar. A first page
+    // with no such fall (scores close together) is all Best matches: the grouping is always there.
     val bestKeys = remember(r, groupBy, submitted) {
         val first = r?.hits.orEmpty()
             .distinctBy { it.acc + ":" + it.threadId.ifEmpty { it.emailId } }
             .distinctBy { it.messageId.ifEmpty { it.acc + ":" + it.emailId } }
         if (groupBy != MailSearch.GroupBy.BEST || submitted.isBlank()) null
-        else scoreCut(first)?.let { cut -> first.take(cut).map { it.acc + ":" + it.emailId }.toSet() }
+        else first.take(scoreCut(first) ?: first.size).map { it.acc + ":" + it.emailId }.toSet()
     }
     val openKeys = vm.keySet("search_open")
     val bestFolded = vm.isFolded("search_folds", BEST_KEY)
@@ -250,17 +270,37 @@ fun SearchScreen(vm: AppViewModel, sheet: String?, screen: Screen? = null) {
     val bestNow by androidx.compose.runtime.rememberUpdatedState(bestKeys)
     val similarFoldedNow by androidx.compose.runtime.rememberUpdatedState(similarFolded)
     val hitsNow by androidx.compose.runtime.rememberUpdatedState(shownHits.size)
+    val groupNow by androidx.compose.runtime.rememberUpdatedState(groupBy)
     // One collector for the whole screen, one page at a time: a page is never cancelled half way by a fast scroll,
     // and every change (end reached, page landed, search done, group opened) is looked at again once it is back.
     LaunchedEffect(Unit) {
         androidx.compose.runtime.snapshotFlow {
-            listOf<Any?>(result, loading, atEnd, hitsNow, extraGroups.size, fetchedMore, similarFoldedNow, bestNow == null, pageRetry)
+            listOf<Any?>(result, loading, atEnd, hitsNow, extraGroups.size, fetchedMore, similarFoldedNow, bestNow == null, pageRetry, cursor)
         }.collect {
             val res = result ?: return@collect
             if (!atEnd || loading) return@collect
+            // Fastmail: every account goes on from where its last page was cut.
+            if (fastmail) {
+                val c = cursor ?: return@collect
+                if (!c.more) return@collect
+                loadingMore = true
+                try {
+                    val (next, nc) = vm.fastmailSearch.search(submitted, c)
+                    if (result === res && cursor === c) { extraHits = extraHits + next.hits; cursor = nc }
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    loadingMore = false
+                    kotlinx.coroutines.delay(3_000L)
+                    pageRetry++
+                } finally {
+                    loadingMore = false
+                }
+                return@collect
+            }
             // A folded Also similar shows none of the later pages: none is fetched until it is opened.
             if (bestNow != null && similarFoldedNow) return@collect
-            val grouped = groupBy.field != null
+            val grouped = groupNow.field != null
             // Pages go by what was read from the index, not by the lines shown: a page whose messages all belong to
             // conversations on screen (or whose groups repeat) adds no line, and the next one is still asked for.
             val read = res.fetched + fetchedMore
@@ -269,7 +309,7 @@ fun SearchScreen(vm: AppViewModel, sheet: String?, screen: Screen? = null) {
             if (!more) return@collect
             loadingMore = true
             try {
-                val next = vm.search.search(submitted, filters, groupBy, start = if (grouped) groupsRead else read)
+                val next = vm.search.search(submitted, filters, groupNow, start = if (grouped) groupsRead else read)
                 // A new search started meanwhile: this page belongs to the old one.
                 if (result === res) {
                     if (grouped) extraGroups = extraGroups + next.groups else { extraHits = extraHits + next.hits; fetchedMore += next.fetched.coerceAtLeast(1) }
@@ -373,7 +413,8 @@ fun SearchScreen(vm: AppViewModel, sheet: String?, screen: Screen? = null) {
         if (selectedKeys.isNotEmpty()) com.opensolr.mail.ui.SelectionBar(selectedKeys.size, onClear = { selectedKeys = emptySet() })
         else Row(Modifier.fillMaxWidth().background(p.band).padding(horizontal = 6.dp).height(52.dp), verticalAlignment = Alignment.CenterVertically) {
             IconBtn(R.drawable.ic_back, { vm.back() })
-            Box(Modifier.weight(1f).padding(horizontal = 4.dp)) {
+            Row(Modifier.weight(1f).padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+            Box(Modifier.weight(1f)) {
                 if (query.isEmpty()) Text(stringResource(R.string.search_hint), style = MaterialTheme.typography.bodyLarge, color = p.muted)
                 BasicTextField(
                     value = query, onValueChange = { query = it }, singleLine = true,
@@ -388,17 +429,18 @@ fun SearchScreen(vm: AppViewModel, sheet: String?, screen: Screen? = null) {
                     modifier = Modifier.fillMaxWidth().focusRequester(focus),
                 )
             }
-            // Clearing the box goes back to the plain list, newest first.
-            if (query.isNotEmpty()) IconBtn(R.drawable.ic_close, { query = ""; submitted = "" })
-            // Lit when the reader has instructions of their own for the AI answer.
-            if (aiOk) IconBtn(
-                R.drawable.ic_instructions, { showInstructions = true }, tint = if (instructions.isNotBlank()) p.accent else p.ink,
-                contentDescription = stringResource(R.string.ai_instructions),
+            // A small, quiet clear at the end of the box: back to the plain list, newest first.
+            if (query.isNotEmpty()) Icon(
+                painterResource(R.drawable.ic_close), stringResource(R.string.clear), tint = p.muted,
+                modifier = Modifier.padding(start = 4.dp).size(28.dp).clickable { Haptics.tick(view, false); query = ""; submitted = "" }.padding(7.dp),
             )
-            IconBtn(R.drawable.ic_help, { showOperators = true }, tint = p.muted, contentDescription = stringResource(R.string.cd_search_help))
+            }
+            // With the Opensolr tools row, help sits there; the classic Fastmail search keeps it here.
+            if (fastmail) IconBtn(R.drawable.ic_help, { showOperators = true }, tint = p.muted, contentDescription = stringResource(R.string.cd_search_help))
         }
         Hairline()
-        Row(
+        // Fastmail's search is the classic one: no grouping, no filters, no AI; the Opensolr tools only with the index.
+        if (!fastmail) Row(
             Modifier.fillMaxWidth().background(p.toolFill).padding(horizontal = 10.dp, vertical = 6.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
@@ -410,12 +452,17 @@ fun SearchScreen(vm: AppViewModel, sheet: String?, screen: Screen? = null) {
                         DropdownMenuItem(
                             text = { Text(stringResource(groupLabel(how)), style = MaterialTheme.typography.bodyLarge, fontWeight = if (how == groupBy) FontWeight.Bold else FontWeight.Medium, color = if (how == groupBy) p.accent else p.ink) },
                             leadingIcon = { if (how == groupBy) Icon(Icons.Filled.Check, null, tint = p.accent, modifier = Modifier.size(18.dp)) else Spacer(Modifier.size(18.dp)) },
-                            onClick = { Haptics.tick(view, false); showGroup = false; groupBy = how; vm.prefs.groupBy = how.name },
+                            onClick = { Haptics.tick(view, false); showGroup = false; groupPick = how; vm.prefs.groupBy = how.name },
                         )
                     }
                 }
             }
             IconAction(R.drawable.ic_filters, active = filters.count > 0, badge = filters.count) { showFilters = true }
+            IconToggle(R.drawable.ic_ai, stringResource(R.string.ai), ai && aiOk, enabled = aiOk) { ai = it; vm.prefs.aiSearch = it }
+            IconToggle(R.drawable.ic_fresh, stringResource(R.string.fresh), fresh) { fresh = it; vm.prefs.freshSearch = it }
+            // Lit when the reader has instructions of their own for the AI answer.
+            if (aiOk) IconAction(R.drawable.ic_instructions, active = instructions.isNotBlank(), contentDescription = stringResource(R.string.ai_instructions)) { showInstructions = true }
+            // Collapse / expand all, when the results have groups to fold: after the instructions, before help.
             if (groupBy.field != null) {
                 val anyOpen = vm.anyUnfolded("search_folds", shownGroups.map { groupBy.name + ":" + it.value })
                 IconAction(if (anyOpen) R.drawable.ic_collapse_all else R.drawable.ic_expand_all, active = false) { vm.foldAll("search_folds", anyOpen) }
@@ -426,18 +473,19 @@ fun SearchScreen(vm: AppViewModel, sheet: String?, screen: Screen? = null) {
                     vm.setKeySet("search_open", if (anyOpen) openKeys - SIMILAR_KEY else openKeys + SIMILAR_KEY)
                 }
             }
-            Spacer(Modifier.width(8.dp))
-            Toggle(stringResource(R.string.ai), ai && aiOk, enabled = aiOk) { ai = it; vm.prefs.aiSearch = it }
-            Spacer(Modifier.width(6.dp))
-            Toggle(stringResource(R.string.fresh), fresh) { fresh = it; vm.prefs.freshSearch = it }
+            IconAction(R.drawable.ic_help, active = false, contentDescription = stringResource(R.string.cd_search_help)) { showOperators = true }
             Spacer(Modifier.weight(1f))
             r?.let { Text(String.format(Locale.US, "%,d", it.total), style = MaterialTheme.typography.labelSmall, color = p.muted) }
         }
-        ActivePills(filters, ::facetColor, onChange = { filters = it })
+        if (!fastmail) ActivePills(filters, ::facetColor, onChange = { filters = it })
         // What the plan stops right now: a closed index has no search, a spent AI allowance leaves words only.
-        if (limits?.closed == true) {
-            Column(Modifier.padding(horizontal = 12.dp, vertical = 6.dp)) { com.opensolr.mail.ui.Notice(stringResource(R.string.search_closed_text), title = stringResource(R.string.search_closed_title)) }
-        } else if (limits != null && !limits.aiUsable) {
+        // Why this search runs on Fastmail when the Opensolr Index was chosen.
+        if (closed || unreachable) {
+            Text(
+                stringResource(if (closed) R.string.fallback_closed else R.string.fallback_unreachable),
+                style = MaterialTheme.typography.bodySmall, color = p.accent, modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
+            )
+        } else if (fastmail) Unit else if (limits != null && !limits.aiUsable) {
             Text(
                 stringResource(if (limits.vectorAllowed) R.string.search_ai_off_quota else R.string.search_ai_off_plan),
                 style = MaterialTheme.typography.bodySmall, color = p.accent, modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
@@ -455,7 +503,9 @@ fun SearchScreen(vm: AppViewModel, sheet: String?, screen: Screen? = null) {
         val similar = if (bestKeys == null) emptyList() else listed.filter { (it.acc + ":" + it.emailId) !in bestKeys }
         val bestLabel = stringResource(R.string.best_matches)
         val similarLabel = stringResource(R.string.also_similar)
-        val scrollIndex = remember(listed, bestKeys, bestFolded, similarFolded, shownGroups, groupBy, groupLabels, searchFolds, hasAnswerCard, error != null, hasEmpty, loadingMore) {
+        // Also similar is shown while it has rows or pages still to read; an empty last section is not.
+        val showSimilar = similar.isNotEmpty() || (r != null && r.fetched + fetchedMore < r.total)
+        val scrollIndex = remember(listed, bestKeys, bestFolded, similarFolded, showSimilar, shownGroups, groupBy, groupLabels, searchFolds, hasAnswerCard, error != null, hasEmpty, loadingMore) {
             val dayLabel = SimpleDateFormat("EEE, MM/dd/yyyy", Locale.getDefault())
             com.opensolr.mail.ui.ScrollIndex().apply {
                 if (hasAnswerCard) row()
@@ -464,8 +514,8 @@ fun SearchScreen(vm: AppViewModel, sheet: String?, screen: Screen? = null) {
                 if (groupBy.field == null && bestKeys != null) {
                     head(bestLabel)
                     if (!bestFolded) best.forEach { h -> row(dayLabel.format(java.util.Date(h.received))) }
-                    head(similarLabel)
-                    if (!similarFolded) similar.forEach { h -> row(dayLabel.format(java.util.Date(h.received))) }
+                    if (showSimilar) head(similarLabel)
+                    if (showSimilar && !similarFolded) similar.forEach { h -> row(dayLabel.format(java.util.Date(h.received))) }
                 } else if (groupBy.field == null) {
                     // Ranked results carry no headings; the day of each hit is its title.
                     listed.forEach { h -> row(dayLabel.format(java.util.Date(h.received))) }
@@ -482,7 +532,8 @@ fun SearchScreen(vm: AppViewModel, sheet: String?, screen: Screen? = null) {
                 row()
             }
         }
-        com.opensolr.mail.ui.RefreshBox(refreshing = loading, onRefresh = { vm.stopAi(); run() }, modifier = Modifier.weight(1f)) {
+        // Pulling down after a fallback asks the Opensolr Index again.
+        com.opensolr.mail.ui.RefreshBox(refreshing = loading, onRefresh = { vm.stopAi(); if (unreachable) unreachable = false else run() }, modifier = Modifier.weight(1f)) {
         // Long press and drag selects every result between, as in Opensolr Photos.
         val dragOrder = buildList<Pair<Any, MailSearch.Hit>> {
             if (groupBy.field == null && bestKeys != null) {
@@ -538,7 +589,7 @@ fun SearchScreen(vm: AppViewModel, sheet: String?, screen: Screen? = null) {
             if (groupBy.field == null && bestKeys != null) {
                 item(key = "g:best") { Box(itemMotion()) { GroupHeader(bestLabel, best.size.toLong(), !bestFolded) { vm.toggleFold("search_folds", BEST_KEY) } } }
                 if (!bestFolded) items(best, key = { "h:" + it.acc + ":" + it.emailId }) { h -> Box(itemMotion()) { ActionHit(h) } }
-                item(key = "g:similar") {
+                if (showSimilar) item(key = "g:similar") {
                     Box(itemMotion()) {
                         GroupHeader(similarLabel, similar.size.toLong(), !similarFolded) {
                             vm.setKeySet("search_open", if (similarFolded) openKeys + SIMILAR_KEY else openKeys - SIMILAR_KEY)
@@ -567,8 +618,8 @@ fun SearchScreen(vm: AppViewModel, sheet: String?, screen: Screen? = null) {
                                     val field = groupBy.field ?: return@tile
                                     filters = if (field == "month_s" || field == "day_s") filters.copy(dates = rangeOf(field, g.value))
                                     else filters.toggled(groupFacet(field), g.value)
-                                    groupBy = MailSearch.GroupBy.BEST
-                                    vm.prefs.groupBy = groupBy.name
+                                    groupPick = MailSearch.GroupBy.BEST
+                                    vm.prefs.groupBy = groupPick.name
                                 }.padding(horizontal = 16.dp, vertical = 10.dp),
                             )
                         }
@@ -830,15 +881,15 @@ private fun groupValueLabel(g: MailSearch.GroupBy, value: String, accounts: List
 }
 
 @Composable
-private fun IconAction(icon: Int, active: Boolean, badge: Int = 0, onClick: () -> Unit) {
+private fun IconAction(icon: Int, active: Boolean, badge: Int = 0, contentDescription: String? = null, onClick: () -> Unit) {
     val p = LocalPalette.current
     val view = LocalView.current
     val press = com.opensolr.mail.ui.rememberPress()
     Box(
-        Modifier.padding(end = 6.dp).size(36.dp).tile(press, rim = if (active) p.accent else null) { Haptics.tick(view, false); onClick() },
+        Modifier.padding(end = 4.dp).size(36.dp).tile(press, rim = if (active) p.accent else null) { Haptics.tick(view, false); onClick() },
         contentAlignment = Alignment.Center,
     ) {
-        Icon(painterResource(icon), null, tint = press.tint(if (active) p.accent else p.ink), modifier = Modifier.size(22.dp))
+        Icon(painterResource(icon), contentDescription, tint = press.tint(if (active) p.accent else p.ink), modifier = Modifier.size(22.dp))
         if (badge > 0) Text(
             "$badge", style = MaterialTheme.typography.labelSmall, color = p.onAccentFill,
             modifier = Modifier.align(Alignment.TopEnd).background(p.accentFill, Corner).padding(horizontal = 3.dp),
@@ -846,19 +897,18 @@ private fun IconAction(icon: Int, active: Boolean, badge: Int = 0, onClick: () -
     }
 }
 
-/** A switch-like pill for the AI and Fresh toggles. */
+/** An icon switch for AI and Fresh: filled in the accent when on. */
 @Composable
-private fun Toggle(label: String, on: Boolean, enabled: Boolean = true, onChange: (Boolean) -> Unit) {
+private fun IconToggle(icon: Int, label: String, on: Boolean, enabled: Boolean = true, onChange: (Boolean) -> Unit) {
     val p = LocalPalette.current
     val view = LocalView.current
     // Greyed out and inert when the plan does not allow it.
     val press = com.opensolr.mail.ui.rememberPress()
     Box(
-        Modifier.height(36.dp).alpha(if (enabled) 1f else 0.35f)
-            .tile(press, enabled, fill = if (on) p.accentFill else null, rim = if (on) p.accentFill else null, solid = on) { Haptics.toggle(view, !on); onChange(!on) }
-            .padding(horizontal = 12.dp),
+        Modifier.padding(end = 4.dp).size(36.dp).alpha(if (enabled) 1f else 0.35f)
+            .tile(press, enabled, fill = if (on) p.accentFill else null, rim = if (on) p.accentFill else null, solid = on) { Haptics.toggle(view, !on); onChange(!on) },
         contentAlignment = Alignment.Center,
-    ) { Text(label, style = MaterialTheme.typography.labelLarge, color = press.tint(if (on) p.onAccentFill else p.ink, solid = on)) }
+    ) { Icon(painterResource(icon), label, tint = press.tint(if (on) p.onAccentFill else p.ink, solid = on), modifier = Modifier.size(22.dp)) }
 }
 
 @Composable

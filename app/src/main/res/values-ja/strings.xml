@@ -93,7 +93,7 @@
     <string name="action_delete">削除</string>
     <string name="action_reply_all">全員に返信</string>
     <string name="indexing">検索用にメールをインデックス中</string>
-    <string name="idx_title">検索インデックス</string>
+    <string name="idx_title">Opensolr Index</string>
     <string name="idx_running">処理中</string>
     <string name="zone_updates">アップデート</string>
     <string name="idx_error_title">最後のエラー</string>
@@ -159,8 +159,7 @@
     <string name="setup_search">検索(任意)</string>
     <string name="setup_opensolr_connected">Opensolr に %1$s として接続済み</string>
     <string name="connect_opensolr">Opensolr アカウントを接続</string>
-    <string name="search_needs_account_title">検索には Opensolr アカウントが必要です</string>
-    <string name="search_needs_account_text">メールは Opensolr アカウント内の Opensolr Index で検索されます。アカウントがないと検索も AI の回答も使えず、新着メールはすぐに届く代わりに 15 分ごとの確認になります。閲覧、作成、メモ、カレンダーはそのまま使えます。</string>
+    <string name="search_needs_account_text">メールは Opensolr アカウント内の Opensolr Index で、意味による検索と AI の回答つきで検索されます。アカウントがない場合は、設定で Fastmail 検索(単語によるクラシック検索)を選んでください。新着メールはすぐに届く代わりに 15 分ごとの確認になります。閲覧、作成、メモ、カレンダーはそのまま使えます。</string>
     <string name="search_closed_title">検索は停止中です</string>
     <string name="search_closed_text">Opensolr Index のディスク容量または今月の転送量が上限に達したため、検索とインデックス作成が止まっています。転送量の場合は月が変わると再開します。</string>
     <string name="search_ai_off_quota">月間の AI リクエストがリセットされるまで AI 検索はオフです(キーワードのみ)。</string>
@@ -366,10 +365,19 @@
     <string name="one_notjunk_text">受信トレイに移動し、Fastmail は迷惑メールではないと学習します。送信者のこの端末でのブロックも解除されます。</string>
     <string name="cd_show_details">詳細を表示</string>
     <string name="cd_hide_details">詳細を隠す</string>
-    <string name="suggest_history">メール履歴から</string>
-    <string name="suggest_history_contacts">メール履歴と連絡先から</string>
-    <string name="suggest_contacts">連絡先から</string>
     <string name="suggest_allow_contacts">より完全な候補のために連絡先へのアクセスを許可</string>
     <string name="att_already_title">ダウンロード済み</string>
     <string name="att_already_text">%1$s はすでにダウンロードにあります。タップして開きます。</string>
+    <string name="search_where">検索先</string>
+    <string name="engine_opensolr_sub">単語と意味による検索、AI の回答、写真と添付ファイルから読み取った文字、フィルターとグループ化。Opensolr アカウントが必要です:メールはあなた自身の Opensolr Index にインデックスされます。インデックスのディスクや帯域が不足したり、接続できない場合は Fastmail の検索に切り替わります。</string>
+    <string name="engine_fastmail_sub">Fastmail のサーバーでの、単語によるクラシック検索(新しい順)。Fastmail アカウントだけで使えます。</string>
+    <string name="fallback_closed">Opensolr Index のディスクまたは帯域が不足しているため、この検索は Fastmail で行われます:単語のみ、新しい順。</string>
+    <string name="fallback_unreachable">現在 Opensolr Index に接続できないため、この検索は Fastmail で行われます:単語のみ、新しい順。下に引くとインデックスを再試行します。</string>
+    <string name="contacts_title">連絡先</string>
+    <string name="contacts_search">連絡先を検索</string>
+    <string name="contacts_none">連絡先が見つかりません。</string>
+    <string name="contacts_write">メールを書く</string>
+    <string name="opensolr_pitch_title">Opensolr:メールの AI 検索</string>
+    <string name="opensolr_pitch_text">メールはあなた専用の Opensolr Index に入ります。単語だけでなく意味でも検索でき、メールに基づく AI の回答、写真や添付ファイルから読み取った文字、フィルターとグループ化が使え、新着メールはすぐに届きます。小規模・中規模のメールボックスは無料です。</string>
+    <string name="tool_go_opensolr">Opensolr へ</string>
 </resources>

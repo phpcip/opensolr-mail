@@ -35,6 +35,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onGloballyPositioned
@@ -53,9 +54,10 @@ import kotlin.math.abs
 import kotlin.math.roundToInt
 
 private val Corner = RoundedCornerShape(2.dp)
-private val THUMB = 72.dp
+private val THUMB = 84.dp
 private val LABEL_LIFT = 64.dp
-private val TRACK = 36.dp
+private val TRACK = 48.dp
+private val THUMB_WIDTH = 28.dp
 private val LABEL_ROOM = 260.dp
 private const val SNAP_ITEMS = 4
 
@@ -310,12 +312,23 @@ fun BoxScope.FastScroller(state: ScrollState, marks: ScrollMarks, minScreens: Fl
 @Composable
 private fun BoxScope.Thumb(y: Float, alpha: Float, dragging: Boolean) {
     val p = LocalPalette.current
+    // A wide handle with up and down marks, as in Google Photos: easy to find and to hold.
+    val mark = if (dragging) p.onAccentFill else p.paper
     Box(
         Modifier.align(Alignment.TopEnd).offset { IntOffset(0, y.roundToInt()) }
-            .padding(end = 4.dp).size(width = 16.dp, height = THUMB).alpha(alpha)
+            .padding(end = 4.dp).size(width = THUMB_WIDTH, height = THUMB).alpha(alpha)
             .background(if (dragging) p.accentFill else p.ink, Corner)
             .border(1.dp, if (dragging) p.accentFill else p.paper, Corner),
-    )
+        contentAlignment = Alignment.Center,
+    ) {
+        androidx.compose.foundation.layout.Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            androidx.compose.material3.Icon(
+                androidx.compose.ui.res.painterResource(com.opensolr.mail.R.drawable.ic_chevron_down), null, tint = mark,
+                modifier = Modifier.size(18.dp).graphicsLayer { rotationZ = 180f },
+            )
+            androidx.compose.material3.Icon(androidx.compose.ui.res.painterResource(com.opensolr.mail.R.drawable.ic_chevron_down), null, tint = mark, modifier = Modifier.size(18.dp))
+        }
+    }
 }
 
 @Composable

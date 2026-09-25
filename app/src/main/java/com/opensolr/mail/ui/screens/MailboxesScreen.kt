@@ -98,6 +98,8 @@ fun MailboxesScreen(vm: AppViewModel) {
     }
     Column(Modifier.fillMaxSize()) {
         TopBar(stringResource(R.string.mailboxes)) {
+            // Everyone to write to, from every place that knows them.
+            IconBtn(R.drawable.ic_contact, { vm.go(Screen.Contacts) }, contentDescription = stringResource(R.string.contacts_title))
             val allKeys = listOf("unified") + accounts.map { it.key }
             val anyOpen = allKeys.any { it in open }
             IconBtn(if (anyOpen) R.drawable.ic_collapse_all else R.drawable.ic_expand_all, {

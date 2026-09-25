@@ -248,7 +248,8 @@ fun ThreadListScreen(vm: AppViewModel, view: View) {
                     }
                 }
                 if (view !is View.Flagged && (rows.any { it.unread } || pinned.any { it.unread })) IconBtn(R.drawable.ic_read_all, { vm.readAll(view) })
-                IconBtn(R.drawable.ic_filters, { vm.go(Screen.Search("filters")) })
+                // Filters are the Opensolr search's; Fastmail's classic search has none.
+                if (!vm.useFastmailSearch) IconBtn(R.drawable.ic_filters, { vm.go(Screen.Search("filters")) })
                 IconBtn(R.drawable.ic_search, { vm.go(Screen.Search()) })
                 IconBtn(R.drawable.ic_compose, { vm.go(Screen.Compose(ComposeInit())) })
             }

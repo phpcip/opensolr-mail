@@ -50,6 +50,7 @@ sealed class Screen {
     data class Notes(val acc: String) : Screen()
     data class NoteEdit(val acc: String, val noteId: String?) : Screen()
     object Settings : Screen()
+    object Contacts : Screen()
 }
 
 /** What a compose screen opens with. */
@@ -83,11 +84,23 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     private val actions = MailActions(app)
     private val sync = MailSync(app)
     val search = MailSearch(app)
+    val fastmailSearch = com.opensolr.mail.search.FastmailSearch(app)
 
     val stack = mutableStateListOf<Screen>(Screen.List(View.Unified(Role.INBOX)))
     val screen: Screen get() = stack.last()
 
     var signedIn by mutableStateOf(prefs.signedIn)
+
+    /** Search on Fastmail (classic, words only) instead of the Opensolr Index; chosen in Settings. */
+    var useFastmailSearch by mutableStateOf(prefs.fastmailSearch)
+        private set
+
+    fun chooseFastmailSearch(on: Boolean) {
+        useFastmailSearch = on
+        prefs.fastmailSearch = on
+        // A list left by the other search is not shown again.
+        searchSnapshot = null
+    }
 
     /** The Opensolr plan and its usage; null without an Opensolr account or before the first read. */
     var limits by mutableStateOf(prefs.limits)

@@ -37,6 +37,8 @@ fun SetupScreen(vm: AppViewModel) {
         Text(stringResource(R.string.setup_step2_body), style = MaterialTheme.typography.bodyMedium, color = p.muted)
         Spacer(Modifier.height(20.dp))
         com.opensolr.mail.ui.ToolRow(listOf(com.opensolr.mail.ui.Tool(R.drawable.ic_tool_signin, stringResource(R.string.tool_fastmail), accent = true) { vm.startFastmailSignIn(context) }))
+        // With Fastmail's own search chosen, the Opensolr step is not offered.
+        if (vm.useFastmailSearch) return@Column
         Spacer(Modifier.height(36.dp))
         Text(stringResource(R.string.setup_search), style = MaterialTheme.typography.titleMedium, color = p.ink)
         Spacer(Modifier.height(6.dp))

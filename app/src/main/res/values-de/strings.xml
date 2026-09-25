@@ -93,7 +93,7 @@
     <string name="action_delete">Löschen</string>
     <string name="action_reply_all">Allen antworten</string>
     <string name="indexing">Mails werden für die Suche indexiert</string>
-    <string name="idx_title">Suchindex</string>
+    <string name="idx_title">Opensolr Index</string>
     <string name="idx_running">Läuft</string>
     <string name="zone_updates">Updates</string>
     <string name="idx_error_title">Letzter Fehler</string>
@@ -159,8 +159,7 @@
     <string name="setup_search">Suche (optional)</string>
     <string name="setup_opensolr_connected">Mit Opensolr verbunden als %1$s</string>
     <string name="connect_opensolr">Opensolr-Konto verbinden</string>
-    <string name="search_needs_account_title">Die Suche braucht ein Opensolr-Konto</string>
-    <string name="search_needs_account_text">Deine Mails werden in einem Opensolr Index in deinem Opensolr-Konto durchsucht. Ohne Konto gibt es keine Suche und keine KI-Antworten, und neue Mails werden alle 15 Minuten abgerufen statt sofort zu kommen. Lesen, Schreiben, Notizen und Kalender funktionieren wie immer.</string>
+    <string name="search_needs_account_text">Deine Mails werden nach Bedeutung und mit KI-Antworten in einem Opensolr Index in deinem Opensolr-Konto durchsucht. Ohne Konto wähle in den Einstellungen die Fastmail-Suche: eine klassische Suche nach Wörtern. Neue Mails werden alle 15 Minuten abgerufen statt sofort zu kommen. Lesen, Schreiben, Notizen und Kalender funktionieren wie immer.</string>
     <string name="search_closed_title">Die Suche ist gestoppt</string>
     <string name="search_closed_text">Dein Opensolr Index hat keinen Speicherplatz oder kein Datenvolumen für diesen Monat mehr, daher sind Suche und Indexierung gestoppt. Beim Datenvolumen laufen sie zum Monatswechsel wieder.</string>
     <string name="search_ai_off_quota">KI-Suche ist aus, bis deine monatlichen KI-Anfragen zurückgesetzt werden: nur Wörter.</string>
@@ -366,10 +365,19 @@
     <string name="one_notjunk_text">Sie kommt in den Posteingang, Fastmail lernt, dass sie kein Spam ist, und ihre Absender sind auf diesem Telefon nicht mehr blockiert.</string>
     <string name="cd_show_details">Details anzeigen</string>
     <string name="cd_hide_details">Details ausblenden</string>
-    <string name="suggest_history">Aus Ihrem E-Mail-Verlauf</string>
-    <string name="suggest_history_contacts">Aus Ihrem E-Mail-Verlauf und Ihren Kontakten</string>
-    <string name="suggest_contacts">Aus Ihren Kontakten</string>
     <string name="suggest_allow_contacts">Zugriff auf Kontakte erlauben, für vollständigere Vorschläge</string>
     <string name="att_already_title">Bereits heruntergeladen</string>
     <string name="att_already_text">%1$s ist bereits in Downloads. Zum Öffnen tippen.</string>
+    <string name="search_where">Suchen in</string>
+    <string name="engine_opensolr_sub">Suche nach Wörtern und Bedeutung, KI-Antworten, Text aus Bildern und Anhängen, Filter und Gruppierung. Braucht ein Opensolr-Konto: Deine Mails werden in deinem eigenen Opensolr Index indexiert. Hat der Index keinen Speicher oder keine Bandbreite mehr oder ist er nicht erreichbar, sucht Fastmail.</string>
+    <string name="engine_fastmail_sub">Klassische Suche nach Wörtern, neueste zuerst, auf den Servern von Fastmail. Braucht nur dein Fastmail-Konto.</string>
+    <string name="fallback_closed">Dein Opensolr Index hat keinen Speicher oder keine Bandbreite mehr, daher läuft diese Suche bei Fastmail: nur Wörter, neueste zuerst.</string>
+    <string name="fallback_unreachable">Dein Opensolr Index ist gerade nicht erreichbar, daher läuft diese Suche bei Fastmail: nur Wörter, neueste zuerst. Zum erneuten Versuch nach unten ziehen.</string>
+    <string name="contacts_title">Kontakte</string>
+    <string name="contacts_search">Kontakte durchsuchen</string>
+    <string name="contacts_none">Keine Kontakte gefunden.</string>
+    <string name="contacts_write">Schreiben an</string>
+    <string name="opensolr_pitch_title">Opensolr: KI-Suche für deine Mails</string>
+    <string name="opensolr_pitch_text">Deine Mails kommen in einen eigenen Opensolr Index: Suche nach Bedeutung statt nur nach Wörtern, KI-Antworten aus deinen Mails, Text aus Bildern und Anhängen, Filter und Gruppierung, und neue Mails kommen sofort. Kostenlos für kleine und mittlere Postfächer.</string>
+    <string name="tool_go_opensolr">Zu Opensolr</string>
 </resources>

@@ -28,6 +28,7 @@ import java.util.Locale
 
 object PlanInfo {
     const val DASHBOARD_URL = "https://opensolr.com/admin/solr_manager/dashboard"
+    const val PRODUCT_URL = "https://opensolr.com/opensolr-mail"
     const val PRIVACY_URL = "https://opensolr.com/opensolr-mail-docs/privacy"
     const val DELETE_ACCOUNT_URL = "https://opensolr.com/delete-account"
 
@@ -102,9 +103,13 @@ fun UsageRow(label: String, used: String, limit: String, fraction: Float?) {
 fun NeedsOpensolr(vm: AppViewModel) {
     val context = LocalContext.current
     Column {
-        Notice(stringResource(R.string.search_needs_account_text), title = stringResource(R.string.search_needs_account_title))
+        // What Opensolr adds to this app, briefly, then the sign-in and the product page; no plans or prices.
+        Notice(stringResource(R.string.opensolr_pitch_text), title = stringResource(R.string.opensolr_pitch_title))
         Spacer(Modifier.height(14.dp))
-        ToolRow(listOf(Tool(R.drawable.ic_tool_signin, stringResource(R.string.tool_connect), accent = true) { vm.startOpensolrSignIn(context) }))
+        ToolRow(listOf(
+            Tool(R.drawable.ic_tool_signin, stringResource(R.string.tool_connect), accent = true) { vm.startOpensolrSignIn(context) },
+            Tool(R.drawable.ic_tool_open, stringResource(R.string.tool_go_opensolr)) { PlanInfo.open(context, PlanInfo.PRODUCT_URL) },
+        ))
     }
 }
 

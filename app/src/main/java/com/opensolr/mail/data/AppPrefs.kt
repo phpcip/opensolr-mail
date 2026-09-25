@@ -125,6 +125,11 @@ class AppPrefs(context: Context) {
         get() = sp.getString("ai_instructions", "") ?: ""
         set(v) = sp.edit().putString("ai_instructions", v.trim().take(2000)).apply()
 
+    /** Search on Fastmail's servers instead of the Opensolr Index; without an Opensolr account it is the only one. */
+    var fastmailSearch: Boolean
+        get() = sp.getBoolean("fastmail_search", false)
+        set(v) = sp.edit().putBoolean("fastmail_search", v).apply()
+
     var freshSearch: Boolean
         get() = sp.getBoolean("fresh_search", false)
         set(v) = sp.edit().putBoolean("fresh_search", v).apply()

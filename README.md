@@ -4,8 +4,12 @@
 
 Opensolr Mail is a free, open source Android mail client for Fastmail. One unified inbox for all your
 accounts, conversations in threads, push notifications you can act on, Fastmail Notes, and your Fastmail
-calendars in the phone's calendar app. Connect an Opensolr account and every message you ever received,
-with the text inside its attachments, becomes searchable by words and by meaning, with AI answers on top.
+calendars in the phone's calendar app, search and contacts, all with a Fastmail account alone.
+
+**The app does not need an Opensolr account for anything.** Mail, notifications, notes, calendars, search
+and contacts all work with Fastmail only. An Opensolr account is an optional extra: connect one and every
+message you ever received, with the text inside its attachments, becomes searchable by words and by meaning,
+with AI answers on top, and new mail is pushed at once.
 
 **[Download the APK](https://github.com/phpcip/opensolr-mail/releases/latest/download/opensolr-mail.apk)** ·
 [Website](https://opensolr.com/opensolr-mail) ·
@@ -25,22 +29,28 @@ with the text inside its attachments, becomes searchable by words and by meaning
 | **Housekeeping** | Mark all as read, on any view or mailbox. Long press Trash or Junk to empty it for good. |
 | **Notes** | Fastmail Notes, read and written from the app. |
 | **Calendars** | Each account's Fastmail calendars sync both ways into Android's calendar store, so they show up in Google Calendar or any calendar app. |
-| **Search** | With an Opensolr account: words and meaning blended, an AI answer drawn from your own mail, a Fresh switch that favours recent mail, filters (from, to, company, account, folder, year, attachment type, weekday, dates, unread, flagged, answered, attachments), and grouping by date, sender, company or account. |
-| **Attachments searched too** | On Wi-Fi, pictures are read with OCR and documents (PDF, Office, OpenDocument, RTF, text, HTML) are turned into text, so a search finds the invoice by the number printed inside it. Archives are never opened. |
+| **Search** | Two searches, chosen in **Settings → Search**. **Fastmail**: a classic search by words, newest first, on Fastmail's own servers, with nothing else to connect. **Opensolr**, with an Opensolr account: words and meaning blended, an AI answer drawn from your own mail, a Fresh switch that favours recent mail, filters (from, to, company, account, folder, year, attachment type, weekday, dates, unread, flagged, answered, attachments), and grouping by date, sender, company or account. |
+| **Contacts** | Everyone you can write to, in one list: your Fastmail address books, the phone's contacts (only if you allow it), and, with an Opensolr account, everyone in your mail. Merged into one card per person, under A to Z, with names, addresses, phone numbers and postal addresses, pictures from the phone, from Fastmail or from Gravatar, a search box, and Compose on each card. Nothing is ever edited or deleted. The same people are suggested as you type in To, Cc and Bcc. |
+| **Attachments searched too** | With an Opensolr account, on Wi-Fi, pictures are read with OCR and documents (PDF, Office, OpenDocument, RTF, text, HTML) are turned into text, so a search finds the invoice by the number printed inside it. Archives are never opened. |
 | **Updates itself** | Once a day the app looks at the latest release on GitHub, and **Check for updates** in Settings asks on the spot. The app downloads the APK, checks that it is signed with the same key and is really newer, and hands it to Android's installer. A copy installed from Google Play is updated by Play instead. |
 | **Seven languages** | English, Deutsch, Français, Español, Română, 日本語, 中文. |
 
-## Search needs an Opensolr account
+## AI search needs an Opensolr account
 
-Mail, notes and calendars work with a Fastmail account alone. Search lives in an **Opensolr Index** that
-the app creates in your Opensolr account, one per phone (`mail_<device id>__dense`), so without an
-Opensolr account there is no search and no AI answers, and new mail is checked every 15 minutes instead
-of arriving at once, because instant push goes through the relay on opensolr.com.
+Mail, notes and calendars work with a Fastmail account alone, and so does search by words: choose
+**Fastmail** in **Settings → Search** and the app searches on Fastmail's own servers (JMAP `Email/query`),
+newest first, with the same `+word`, `-word` and `"phrase"` operators and no filters, groups or AI.
 
-What your plan decides, shown in **Settings → Opensolr account**:
+Search by meaning, AI answers, text inside attachments, filters and grouping live in an **Opensolr Index**
+that the app creates in your Opensolr account, one per phone (`mail_<device id>__dense`). Without an
+Opensolr account, new mail is checked every 15 minutes instead of arriving at once, because instant push
+goes through the relay on opensolr.com. When the Opensolr Index is out of disk or bandwidth, or cannot be
+reached, the search falls back to Fastmail on its own and says why.
 
-- **Disk space or bandwidth used up:** Opensolr closes the index, and search and indexing stop until you
-  upgrade, or until the month resets for bandwidth.
+What your plan decides, shown in **Settings → Opensolr Account**:
+
+- **Disk space or bandwidth used up:** Opensolr closes the index: indexing stops and search falls back to
+  Fastmail until you upgrade, or until the month resets for bandwidth.
 - **Monthly AI requests used up:** search goes on by words only, without search by meaning and without AI
   answers, until the allowance resets. New mail gets its meaning later.
 - **A plan without vector search:** search by words only.

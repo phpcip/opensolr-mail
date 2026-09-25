@@ -35,7 +35,180 @@ class MailDb private constructor(context: Context) : SQLiteOpenHelper(context.ap
         db.execSQL("CREATE TABLE IF NOT EXISTS blocked (acc TEXT NOT NULL, email TEXT NOT NULL, at INTEGER NOT NULL, PRIMARY KEY (acc, email))")
         // Recipient suggestions read from the mail index, per typed prefix.
         db.execSQL("CREATE TABLE IF NOT EXISTS suggest_cache (k TEXT NOT NULL PRIMARY KEY, json TEXT NOT NULL, at INTEGER NOT NULL)")
+        // Fastmail address books (their ctag: an unchanged book is not read again) and their cards.
+        db.execSQL("CREATE TABLE IF NOT EXISTS fm_book (acc TEXT NOT NULL, href TEXT NOT NULL, ctag TEXT NOT NULL, PRIMARY KEY (acc, href))")
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS fm_card (acc TEXT NOT NULL, href TEXT NOT NULL, book TEXT NOT NULL, etag TEXT NOT NULL, name TEXT NOT NULL, " +
+                "emails TEXT NOT NULL, phones TEXT NOT NULL, addrs TEXT NOT NULL, photo BLOB, PRIMARY KEY (acc, href))"
+        )
+        // Everyone to write to, merged from every source: read by the contacts in pages, in name order, searched through FTS.
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS person (id INTEGER PRIMARY KEY, name TEXT NOT NULL, sort TEXT NOT NULL, letter TEXT NOT NULL, " +
+                "emails TEXT NOT NULL, phones TEXT NOT NULL, addrs TEXT NOT NULL, photo TEXT)"
+        )
+        db.execSQL("CREATE INDEX IF NOT EXISTS person_sort ON person (sort, id)")
+        db.execSQL("CREATE INDEX IF NOT EXISTS person_letter ON person (letter)")
+        db.execSQL("CREATE TABLE IF NOT EXISTS person_email (email TEXT NOT NULL PRIMARY KEY, person INTEGER NOT NULL)")
+        db.execSQL("CREATE VIRTUAL TABLE IF NOT EXISTS person_fts USING fts4(search)")
     }
+
+    /** One person as the contacts show them. */
+    data class PersonRow(val id: Long, val name: String, val emails: List<String>, val phones: List<String>, val addresses: List<String>, val photo: String?)
+
+    private fun jsonList(json: String): List<String> = runCatching { org.json.JSONArray(json).let { a -> (0 until a.length()).map { a.getString(it) } } }.getOrDefault(emptyList())
+
+    /**
+     * Rebuilds the people in one transaction: [fill] adds everyone, and a person sharing an address with one
+     * already added is merged into it, the first to arrive keeping its name and picture. Readers keep the old
+     * list until the new one is committed.
+     */
+    fun rebuildPeople(fill: (add: (name: String, emails: List<String>, phones: List<String>, addrs: List<String>, photo: String?) -> Unit) -> Unit) {
+        val db = writableDatabase
+        db.beginTransaction()
+        try {
+            db.delete("person", null, null)
+            db.delete("person_email", null, null)
+            db.delete("person_fts", null, null)
+            fill { name, emails, phones, addrs, photo ->
+                val keys = emails.map { it.trim().lowercase() }.filter { it.contains('@') }.distinct()
+                if (keys.isEmpty()) return@fill
+                val existing = keys.firstNotNullOfOrNull { k ->
+                    db.rawQuery("SELECT person FROM person_email WHERE email = ?", arrayOf(k)).use { c -> if (c.moveToFirst()) c.getLong(0) else null }
+                }
+                if (existing == null) {
+                    val cleanEmails = emails.map { it.trim() }.filter { it.contains('@') }.distinctBy { it.lowercase() }
+                    val id = db.insert("person", null, personValues(name, cleanEmails, phones.distinct(), addrs.distinct(), photo))
+                    keys.forEach { k -> db.insertWithOnConflict("person_email", null, ContentValues().apply { put("email", k); put("person", id) }, SQLiteDatabase.CONFLICT_IGNORE) }
+                    db.insert("person_fts", null, ContentValues().apply { put("docid", id); put("search", searchText(name, cleanEmails, phones)) })
+                } else {
+                    val old = db.rawQuery("SELECT name, emails, phones, addrs, photo FROM person WHERE id = ?", arrayOf(existing.toString())).use { c ->
+                        if (c.moveToFirst()) listOf(c.getString(0), c.getString(1), c.getString(2), c.getString(3), c.getString(4)) else null
+                    } ?: return@fill
+                    val n = old[0]!!.ifBlank { name }
+                    val e = (jsonList(old[1]!!) + emails.map { it.trim() }.filter { it.contains('@') }).distinctBy { it.lowercase() }
+                    val ph = (jsonList(old[2]!!) + phones).distinctBy { it.filter(Char::isDigit) }
+                    val ad = (jsonList(old[3]!!) + addrs).distinct()
+                    db.update("person", personValues(n, e, ph, ad, old[4] ?: photo), "id = ?", arrayOf(existing.toString()))
+                    keys.forEach { k -> db.insertWithOnConflict("person_email", null, ContentValues().apply { put("email", k); put("person", existing) }, SQLiteDatabase.CONFLICT_IGNORE) }
+                    db.update("person_fts", ContentValues().apply { put("search", searchText(n, e, ph)) }, "docid = ?", arrayOf(existing.toString()))
+                }
+            }
+            db.setTransactionSuccessful()
+        } finally {
+            db.endTransaction()
+        }
+    }
+
+    private fun personValues(name: String, emails: List<String>, phones: List<String>, addrs: List<String>, photo: String?): ContentValues {
+        val folded = fold(name.ifBlank { emails.firstOrNull().orEmpty() })
+        val first = folded.firstOrNull()
+        val letter = if (first != null && first in 'a'..'z') first.uppercaseChar().toString() else "#"
+        return ContentValues().apply {
+            put("name", name)
+            // Letters first, A to Z; everything else (digits, symbols, other scripts) after Z under #.
+            put("sort", if (letter == "#") "{" + folded else folded)
+            put("letter", letter)
+            put("emails", org.json.JSONArray(emails).toString())
+            put("phones", org.json.JSONArray(phones).toString())
+            put("addrs", org.json.JSONArray(addrs).toString())
+            put("photo", photo)
+        }
+    }
+
+    private fun searchText(name: String, emails: List<String>, phones: List<String>): String =
+        (listOf(fold(name)) + emails.map { fold(it) } + phones.map { it.filter(Char::isDigit) }).joinToString(" ")
+
+    /** An FTS query from typed words: every word a prefix, only letters and digits (no FTS syntax from the reader). */
+    private fun ftsQuery(typed: String): String? =
+        fold(typed).split(Regex("[^\\p{L}\\p{N}]+")).filter { it.isNotEmpty() }.take(8).joinToString(" ") { "$it*" }.ifBlank { null }
+
+    /** How many people each letter holds, in list order; [typed] narrows them. */
+    fun peopleLetters(typed: String): List<Pair<String, Int>> {
+        val q = ftsQuery(typed)
+        val where = if (q != null) " WHERE id IN (SELECT docid FROM person_fts WHERE search MATCH ?)" else ""
+        val out = ArrayList<Pair<String, Int>>()
+        readableDatabase.rawQuery("SELECT letter, COUNT(*) FROM person$where GROUP BY letter ORDER BY letter = '#', letter", if (q != null) arrayOf(q) else null).use { c ->
+            while (c.moveToNext()) out += c.getString(0) to c.getInt(1)
+        }
+        return out
+    }
+
+    /** One page of people in name order, [typed] narrowing them the same way as [peopleLetters]. */
+    fun peoplePage(typed: String, offset: Int, limit: Int): List<PersonRow> {
+        val q = ftsQuery(typed)
+        val where = if (q != null) " WHERE id IN (SELECT docid FROM person_fts WHERE search MATCH ?)" else ""
+        val args = (if (q != null) listOf(q) else emptyList()) + listOf(limit.coerceIn(1, 500).toString(), offset.coerceAtLeast(0).toString())
+        val out = ArrayList<PersonRow>()
+        readableDatabase.rawQuery("SELECT id, name, emails, phones, addrs, photo FROM person$where ORDER BY sort, id LIMIT ? OFFSET ?", args.toTypedArray()).use { c ->
+            while (c.moveToNext()) out += PersonRow(c.getLong(0), c.getString(1), jsonList(c.getString(2)), jsonList(c.getString(3)), jsonList(c.getString(4)), c.getString(5))
+        }
+        return out
+    }
+
+    fun peopleCount(): Int = readableDatabase.rawQuery("SELECT COUNT(*) FROM person", null).use { c -> if (c.moveToFirst()) c.getInt(0) else 0 }
+
+    /** Lower case, accents off: how names and addresses are sorted and searched. */
+    private fun fold(s: String): String =
+        java.text.Normalizer.normalize(s.lowercase(), java.text.Normalizer.Form.NFD).replace(Regex("\\p{M}+"), "").trim()
+
+    /** Moves whenever the stored Fastmail cards change, so a copy read from them knows it is out of date. */
+    @Volatile var fmStamp = 0L
+        private set
+
+    /** One Fastmail card as the contacts read it: the photo stays in the table until a row shows it. */
+    data class FmCard(val acc: String, val href: String, val name: String, val emails: List<String>, val phones: List<String>, val addresses: List<String>, val hasPhoto: Boolean)
+
+    fun fmBookCtag(acc: String, href: String): String? =
+        readableDatabase.rawQuery("SELECT ctag FROM fm_book WHERE acc = ? AND href = ?", arrayOf(acc, href)).use { c -> if (c.moveToFirst()) c.getString(0) else null }
+
+    fun fmCardEtags(acc: String, book: String): Map<String, String> {
+        val out = HashMap<String, String>()
+        readableDatabase.rawQuery("SELECT href, etag FROM fm_card WHERE acc = ? AND book = ?", arrayOf(acc, book)).use { c -> while (c.moveToNext()) out[c.getString(0)] = c.getString(1) }
+        return out
+    }
+
+    /** Stores what changed in one book, drops what went, and records the book's ctag, in one transaction. */
+    fun fmStoreBook(acc: String, book: String, ctag: String, cards: List<Pair<Pair<String, String>, com.opensolr.mail.dav.VCard.Card>>, removed: Collection<String>) {
+        val db = writableDatabase
+        db.beginTransaction()
+        try {
+            removed.forEach { db.delete("fm_card", "acc = ? AND href = ?", arrayOf(acc, it)) }
+            cards.forEach { (key, c) ->
+                db.insertWithOnConflict("fm_card", null, ContentValues().apply {
+                    put("acc", acc); put("href", key.first); put("book", book); put("etag", key.second); put("name", c.name)
+                    put("emails", org.json.JSONArray(c.emails).toString()); put("phones", org.json.JSONArray(c.phones).toString())
+                    put("addrs", org.json.JSONArray(c.addresses).toString()); put("photo", c.photo)
+                }, SQLiteDatabase.CONFLICT_REPLACE)
+            }
+            db.insertWithOnConflict("fm_book", null, ContentValues().apply { put("acc", acc); put("href", book); put("ctag", ctag) }, SQLiteDatabase.CONFLICT_REPLACE)
+            db.setTransactionSuccessful()
+        } finally {
+            db.endTransaction()
+        }
+        fmStamp++
+    }
+
+    /** Books of [acc] that are gone on the server leave, with their cards. */
+    fun fmKeepBooks(acc: String, books: Collection<String>) {
+        val gone = ArrayList<String>()
+        readableDatabase.rawQuery("SELECT href FROM fm_book WHERE acc = ?", arrayOf(acc)).use { c -> while (c.moveToNext()) if (c.getString(0) !in books) gone += c.getString(0) }
+        if (gone.isEmpty()) return
+        val db = writableDatabase
+        gone.forEach { b -> db.delete("fm_card", "acc = ? AND book = ?", arrayOf(acc, b)); db.delete("fm_book", "acc = ? AND href = ?", arrayOf(acc, b)) }
+        fmStamp++
+    }
+
+    fun fmCards(): List<FmCard> {
+        fun list(json: String) = runCatching { org.json.JSONArray(json).let { a -> (0 until a.length()).map { a.getString(it) } } }.getOrDefault(emptyList())
+        val out = ArrayList<FmCard>()
+        readableDatabase.rawQuery("SELECT acc, href, name, emails, phones, addrs, photo IS NOT NULL FROM fm_card", null).use { c ->
+            while (c.moveToNext()) out += FmCard(c.getString(0), c.getString(1), c.getString(2), list(c.getString(3)), list(c.getString(4)), list(c.getString(5)), c.getInt(6) == 1)
+        }
+        return out
+    }
+
+    fun fmPhoto(acc: String, href: String): ByteArray? =
+        readableDatabase.rawQuery("SELECT photo FROM fm_card WHERE acc = ? AND href = ?", arrayOf(acc, href)).use { c -> if (c.moveToFirst() && !c.isNull(0)) c.getBlob(0) else null }
 
     fun suggestCached(key: String, notBefore: Long): String? =
         readableDatabase.rawQuery("SELECT json FROM suggest_cache WHERE k = ? AND at >= ?", arrayOf(key, notBefore.toString())).use { c ->
@@ -225,13 +398,14 @@ class MailDb private constructor(context: Context) : SQLiteOpenHelper(context.ap
         val db = writableDatabase
         db.beginTransaction()
         try {
-            listOf("mailbox", "message", "msg_box", "state", "identity", "ops", "index_queue", "notified", "hidden", "blocked").forEach {
+            listOf("mailbox", "message", "msg_box", "state", "identity", "ops", "index_queue", "notified", "hidden", "blocked", "fm_book", "fm_card").forEach {
                 db.delete(it, "acc = ?", arrayOf(acc))
             }
             db.setTransactionSuccessful()
         } finally {
             db.endTransaction()
         }
+        fmStamp++
         touch()
     }
 

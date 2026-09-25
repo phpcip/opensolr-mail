@@ -103,6 +103,8 @@ fun ComposeScreen(vm: AppViewModel, init: ComposeInit) {
 
     // Recipient suggestions under the field being typed in: the mail index and the phone's contacts, one list.
     val suggester = remember { com.opensolr.mail.search.RecipientSuggest(context) }
+    // The Fastmail address books, read again when last read long enough ago.
+    LaunchedEffect(Unit) { runCatching { com.opensolr.mail.dav.ContactsSync.refresh(context) } }
     var active by remember { mutableStateOf<String?>(null) }
     var contactsOk by remember { mutableStateOf(suggester.contactsAllowed()) }
     var suggestions by remember { mutableStateOf<List<com.opensolr.mail.search.RecipientSuggest.Suggestion>>(emptyList()) }
@@ -271,7 +273,7 @@ private fun RecipientField(value: String, onChange: (String) -> Unit, modifier: 
     }
 }
 
-/** The suggestions under an address field: a title, the people, and first of all the way to add the contacts when they are not allowed yet. */
+/** The suggestions under an address field: the people, and first of all the way to add the contacts when they are not allowed yet. Never where each one came from. */
 @Composable
 private fun SuggestionList(
     list: List<com.opensolr.mail.search.RecipientSuggest.Suggestion>,
@@ -292,47 +294,17 @@ private fun SuggestionList(
             if (list.isNotEmpty()) Hairline()
         }
         if (list.isNotEmpty()) {
-            val history = list.any { !it.fromContacts }
-            val contacts = list.any { it.fromContacts }
-            Text(
-                stringResource(when { history && contacts -> R.string.suggest_history_contacts; contacts -> R.string.suggest_contacts; else -> R.string.suggest_history }),
-                style = MaterialTheme.typography.labelSmall, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold, color = p.muted,
-                modifier = Modifier.padding(start = 12.dp, end = 12.dp, top = 8.dp, bottom = 2.dp),
-            )
             list.forEach { s ->
                 Row(Modifier.fillMaxWidth().hapticClickable { onPick(s) }.padding(horizontal = 12.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                    ContactPhoto(s.photo, s.name, s.email)
+                    com.opensolr.mail.ui.PersonPhoto(s.photo, s.name, s.email)
                     Spacer(Modifier.width(12.dp))
                     Column(Modifier.weight(1f)) {
                         if (s.name.isNotEmpty()) Text(s.name, style = MaterialTheme.typography.bodyMedium, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold, color = p.ink, maxLines = 1, overflow = TextOverflow.Ellipsis)
                         Text(s.email, style = MaterialTheme.typography.bodySmall, fontWeight = androidx.compose.ui.text.font.FontWeight.Medium, color = if (s.name.isEmpty()) p.ink else p.muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }
-                    if (s.fromContacts) {
-                        Spacer(Modifier.width(8.dp))
-                        Icon(painterResource(R.drawable.ic_contact), null, tint = p.muted, modifier = Modifier.size(16.dp))
-                    }
                 }
             }
         }
-    }
-}
-
-/** The contact's own picture when the phone has one for the address, otherwise the same initials as in the mail list. */
-@Composable
-private fun ContactPhoto(uri: String?, name: String, email: String) {
-    val context = LocalContext.current
-    val bitmap by androidx.compose.runtime.produceState<androidx.compose.ui.graphics.ImageBitmap?>(null, uri) {
-        value = if (uri == null) null else withContext(Dispatchers.IO) {
-            runCatching {
-                context.contentResolver.openInputStream(Uri.parse(uri))?.use { android.graphics.BitmapFactory.decodeStream(it) }?.asImageBitmap()
-            }.getOrNull()
-        }
-    }
-    val b = bitmap
-    if (b != null) {
-        androidx.compose.foundation.Image(b, null, contentScale = androidx.compose.ui.layout.ContentScale.Crop, modifier = Modifier.size(34.dp).clip(androidx.compose.foundation.shape.CircleShape))
-    } else {
-        com.opensolr.mail.ui.Avatar(name, email, 34.dp)
     }
 }
 

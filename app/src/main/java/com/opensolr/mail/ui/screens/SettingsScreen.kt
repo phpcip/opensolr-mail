@@ -6,6 +6,9 @@ import android.content.ContextWrapper
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.ui.res.painterResource
+import androidx.compose.material3.Icon
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -34,6 +37,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.draw.clip
@@ -162,7 +166,9 @@ fun SettingsScreen(vm: AppViewModel) {
         }
 
         val warnings = remember(vm.limits) { vm.limits?.let { com.opensolr.mail.ui.PlanInfo.warnings(it) } ?: emptyList() }
-        Zone(stringResource(R.string.opensolr_account), if (!vm.signedIn) 1 else warnings.size, "opensolr" in open, { vm.toggleZone("opensolr") }) {
+        // With Fastmail's own search chosen and no Opensolr account, nothing here asks to connect one.
+        val showOpensolr = vm.signedIn || !vm.useFastmailSearch
+        if (showOpensolr) Zone(stringResource(R.string.opensolr_account), if (!vm.signedIn) 1 else warnings.size, "opensolr" in open, { vm.toggleZone("opensolr") }) {
             Column {
                 if (!vm.signedIn) {
                     com.opensolr.mail.ui.NeedsOpensolr(vm)
@@ -173,7 +179,7 @@ fun SettingsScreen(vm: AppViewModel) {
             }
         }
 
-        Zone(stringResource(R.string.idx_title), if (!vm.signedIn || s.error != null || s.noRoom || vm.limits?.closed == true) 1 else 0, "index" in open, { vm.toggleZone("index") }) {
+        if (showOpensolr) Zone(stringResource(R.string.idx_title), if (!vm.signedIn || s.error != null || s.noRoom || vm.limits?.closed == true) 1 else 0, "index" in open, { vm.toggleZone("index") }) {
             Column {
                 if (!vm.signedIn) {
                     com.opensolr.mail.ui.NeedsOpensolr(vm)
@@ -245,6 +251,33 @@ fun SettingsScreen(vm: AppViewModel) {
             Column {
                 SubZone(stringResource(R.string.zone_search), "pref_search" in open, { vm.toggleZone("pref_search") }) {
                 Column {
+                    // Where search runs: the Opensolr Index, or Fastmail's classic search by words.
+                    Text(stringResource(R.string.search_where), style = MaterialTheme.typography.titleSmall, color = p.ink)
+                    // Just the two names; what one does shows under it once it is tapped.
+                    var explained by remember { mutableStateOf<Boolean?>(null) }
+                    listOf(false to (R.string.engine_opensolr to R.string.engine_opensolr_sub), true to (R.string.engine_fastmail to R.string.engine_fastmail_sub)).forEach { (fm, labels) ->
+                        // The chosen one stands out: a soft accent ground, an accent bar on its edge and a filled tick.
+                        val chosen = vm.useFastmailSearch == fm
+                        Row(
+                            Modifier.fillMaxWidth().height(androidx.compose.foundation.layout.IntrinsicSize.Min)
+                                .background(if (chosen) p.accent.copy(alpha = 0.12f) else androidx.compose.ui.graphics.Color.Transparent)
+                                .hapticClickable { vm.chooseFastmailSearch(fm); explained = fm },
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Box(Modifier.width(4.dp).fillMaxHeight().background(if (chosen) p.accentFill else androidx.compose.ui.graphics.Color.Transparent))
+                            Column(Modifier.weight(1f).padding(start = 10.dp, end = 8.dp, top = 10.dp, bottom = 10.dp)) {
+                                Text(stringResource(labels.first), style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Bold, color = if (chosen) p.accent else p.ink)
+                                if (explained == fm) Text(stringResource(labels.second), style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Medium, color = p.muted)
+                            }
+                            if (chosen) Box(Modifier.padding(end = 10.dp).size(28.dp).background(p.accentFill, androidx.compose.foundation.shape.CircleShape), contentAlignment = Alignment.Center) {
+                                Icon(painterResource(R.drawable.ic_check), null, tint = p.onAccentFill, modifier = Modifier.size(18.dp))
+                            }
+                        }
+                        Hairline()
+                    }
+                    // The words/meaning balance belongs to the Opensolr search only.
+                    if (!vm.useFastmailSearch) {
+                    Spacer(Modifier.height(12.dp))
                     var lw by remember { mutableStateOf(vm.prefs.lexicalWeight) }
                     Text(stringResource(R.string.alpha_title), style = MaterialTheme.typography.titleSmall, color = p.ink)
                     // Semantic on the left, lexical on the right, as in every Opensolr app: to the right means more words.
@@ -260,6 +293,7 @@ fun SettingsScreen(vm: AppViewModel) {
                             modifier = Modifier.weight(1f).padding(horizontal = 8.dp),
                         )
                         Text(stringResource(R.string.alpha_words), style = MaterialTheme.typography.bodySmall, color = p.muted)
+                    }
                     }
                 }
                 }
