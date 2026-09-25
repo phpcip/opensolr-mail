@@ -380,4 +380,5 @@
     <string name="opensolr_pitch_title">Opensolr: KI-Suche für deine Mails</string>
     <string name="opensolr_pitch_text">Deine Mails kommen in einen eigenen Opensolr Index: Suche nach Bedeutung statt nur nach Wörtern, KI-Antworten aus deinen Mails, Text aus Bildern und Anhängen, Filter und Gruppierung, und neue Mails kommen sofort. Kostenlos für kleine und mittlere Postfächer.</string>
     <string name="tool_go_opensolr">Zu Opensolr</string>
+    <string name="ai_no_answer">Nichts in deinen Mails beantwortet das.</string>
 </resources>

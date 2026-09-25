@@ -335,15 +335,15 @@ class MailSearch(private val context: Context) {
     }
 
     /**
-     * The AI answer from exactly the results the reader sees: [top] are the first rows of the list on
-     * screen, in that order. Those under half the best score stay out; a result that is a conversation
+     * The AI answer from exactly the results the reader sees: [top] are the first [ANSWER_ROWS] rows of the list
+     * on screen, in that order. Those under half the best score stay out; a result that is a conversation
      * goes whole, each message a document of its own with only the words its writer added. No other search is made.
      */
     suspend fun answer(question: String, top: List<AiPrompt.Doc>, highlights: Map<String, Map<String, List<String>>>, onChunk: (String) -> Unit) {
         // No AI answer without AI in the plan or with the month's allowance spent: no request is made.
         if (!(prefs.limits?.aiUsable ?: prefs.vectorAllowed)) return
-        val best = top.take(AiPrompt.TOP_N).mapNotNull { it.score }.maxOrNull() ?: 0.0
-        val chosen = top.take(AiPrompt.TOP_N).filter { best <= 0 || it.score == null || it.score >= best * 0.5 }
+        val best = top.take(ANSWER_ROWS).mapNotNull { it.score }.maxOrNull() ?: 0.0
+        val chosen = top.take(ANSWER_ROWS).filter { best <= 0 || it.score == null || it.score >= best * 0.5 }
         if (chosen.isEmpty()) return
         val connection = MailIndex(context).ensure()
         val solr = SolrClient(connection)
@@ -530,9 +530,11 @@ class MailSearch(private val context: Context) {
         private val vectors = object : LinkedHashMap<String, FloatArray>(64, 0.75f, true) {
             override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, FloatArray>?) = size > 100
         }
-        private const val QF = "subject_t^3 from_t to_tm cc_tm attachment_names_tm body_t^2 attachment_text_t^0.01 words_ng^0.01 address_ngk^0.01"
+        private const val QF = "subject_t^3 from_t to_tm cc_tm date_t attachment_names_tm body_t^2 attachment_text_t^0.01 words_ng^0.01 address_ngk^0.01"
         private const val MM = "2<65% 4<50% 8<40%"
         private const val TOP_K = 790
+        /** How many of the first results on screen the AI answer looks at; those under half the best score stay out. */
+        const val ANSWER_ROWS = 20
         private const val GROUP_LIMIT = 5
         private const val GROUP_ROWS = 20
         /** Words one message may give the AI answer, and characters for all of them together: what fits the model with room to answer. */

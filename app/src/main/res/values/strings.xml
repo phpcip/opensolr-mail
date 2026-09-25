@@ -390,4 +390,5 @@
     <string name="opensolr_pitch_title">Opensolr: AI search for your mail</string>
     <string name="opensolr_pitch_text">Your mail goes into an Opensolr Index of your own: search by meaning as well as words, AI answers from your mail, text read from pictures and attachments, filters and grouping, and new mail arriving at once. Free for small and mid-sized mailboxes.</string>
     <string name="tool_go_opensolr">Go to Opensolr</string>
+    <string name="ai_no_answer">Nothing in your mail answers this.</string>
 </resources>

@@ -380,4 +380,5 @@
     <string name="opensolr_pitch_title">Opensolr:为你的邮件提供 AI 搜索</string>
     <string name="opensolr_pitch_text">你的邮件会进入你自己的 Opensolr Index:不仅按字词,还按含义搜索,基于你的邮件给出 AI 回答,读取图片和附件中的文字,支持筛选和分组,新邮件即时送达。中小型邮箱免费。</string>
     <string name="tool_go_opensolr">前往 Opensolr</string>
+    <string name="ai_no_answer">你的邮件中没有能回答这个问题的内容。</string>
 </resources>

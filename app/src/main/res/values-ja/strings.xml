@@ -380,4 +380,5 @@
     <string name="opensolr_pitch_title">Opensolr:メールの AI 検索</string>
     <string name="opensolr_pitch_text">メールはあなた専用の Opensolr Index に入ります。単語だけでなく意味でも検索でき、メールに基づく AI の回答、写真や添付ファイルから読み取った文字、フィルターとグループ化が使え、新着メールはすぐに届きます。小規模・中規模のメールボックスは無料です。</string>
     <string name="tool_go_opensolr">Opensolr へ</string>
+    <string name="ai_no_answer">メールの中に、これに答えるものは見つかりませんでした。</string>
 </resources>

@@ -503,7 +503,20 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         aiJob = viewModelScope.launch(Guard) {
             val me = coroutineContext[Job]
             try {
-                search.answer(question, top, highlights) { chunk -> if (aiJob === me) aiText = (aiText ?: "") + chunk }
+                // NO_ANSWER from the model is shown as the app's own sentence, in the reader's language;
+                // while it is still arriving, nothing of it is shown.
+                val raw = StringBuilder()
+                val none = ctx.getString(R.string.ai_no_answer)
+                search.answer(question, top, highlights) { chunk ->
+                    if (aiJob !== me) return@answer
+                    raw.append(chunk)
+                    val t = raw.trim()
+                    aiText = when {
+                        t.startsWith(com.opensolr.mail.search.AiPrompt.NO_ANSWER) -> none
+                        com.opensolr.mail.search.AiPrompt.NO_ANSWER.startsWith(t) -> ""
+                        else -> raw.toString()
+                    }
+                }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: com.opensolr.mail.net.QuotaExceededException) {

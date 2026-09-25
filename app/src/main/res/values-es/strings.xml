@@ -380,4 +380,5 @@
     <string name="opensolr_pitch_title">Opensolr: búsqueda con IA para tu correo</string>
     <string name="opensolr_pitch_text">Tu correo va a un Opensolr Index propio: búsqueda por significado y no solo por palabras, respuestas de IA sobre tu correo, texto leído de fotos y adjuntos, filtros y agrupación, y el correo nuevo llega al instante. Gratis para buzones pequeños y medianos.</string>
     <string name="tool_go_opensolr">Ir a Opensolr</string>
+    <string name="ai_no_answer">Nada en tu correo responde a esto.</string>
 </resources>

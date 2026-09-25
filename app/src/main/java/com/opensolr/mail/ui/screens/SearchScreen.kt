@@ -578,7 +578,7 @@ fun SearchScreen(vm: AppViewModel, sheet: String?, screen: Screen? = null) {
                     val rows = if (groupBy.field != null) shownGroups.flatMap { it.hits } else shownHits
                     val byId = res.docs.associateBy { it.id }
                     val top = rows.distinctBy { it.acc + ":" + it.threadId.ifEmpty { it.emailId } }
-                        .mapNotNull { byId[it.docId] }.take(com.opensolr.mail.search.AiPrompt.TOP_N)
+                        .mapNotNull { byId[it.docId] }.take(MailSearch.ANSWER_ROWS)
                     vm.askAi(submitted, top, res.highlights)
                 }
             }

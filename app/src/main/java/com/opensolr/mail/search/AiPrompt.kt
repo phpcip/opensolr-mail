@@ -40,6 +40,9 @@ object AiPrompt {
         return sb.toString()
     }
 
+    /** What the model answers when no document is about the query; the app shows it in the reader's language. */
+    const val NO_ANSWER = "NO_ANSWER"
+
     /** [extra] are the reader's own instructions, placed right before the question; none leaves the prompt as canonical. */
     fun instruction(context: String, query: String, extra: String = ""): String {
         val count = maxOf(1, Regex("===== DOCUMENT ").findAll(context).count())

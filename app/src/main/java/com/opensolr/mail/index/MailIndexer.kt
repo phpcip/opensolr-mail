@@ -723,6 +723,8 @@ class MailIndexer(private val context: Context) {
         if (receivers.isNotEmpty()) o.put("to_label_ss", JSONArray(receivers))
         o.put("month_s", String.format(Locale.US, "%04d-%02d", cal.get(Calendar.YEAR), cal.get(Calendar.MONTH) + 1))
         o.put("day_s", String.format(Locale.US, "%04d-%02d-%02d", cal.get(Calendar.YEAR), cal.get(Calendar.MONTH) + 1, cal.get(Calendar.DAY_OF_MONTH)))
+        // The date in words ("06 March 2025", the phone's own time), searched like any text: "march 2025" finds it.
+        o.put("date_t", java.text.SimpleDateFormat("dd MMMM yyyy", Locale.US).apply { timeZone = TimeZone.getDefault() }.format(m.received))
         o.put("weekday_i", cal.get(Calendar.DAY_OF_WEEK))
         o.put("hour_i", cal.get(Calendar.HOUR_OF_DAY))
         if (vector != null) o.put(VECTOR, JSONArray(vector.toList())).put("vec_b", true) else o.put("vec_b", false)

@@ -380,4 +380,5 @@
     <string name="opensolr_pitch_title">Opensolr: căutare AI pentru mailul tău</string>
     <string name="opensolr_pitch_text">Mailul tău intră într-un Opensolr Index al tău: căutare după sens, nu doar după cuvinte, răspunsuri AI din mailurile tale, text citit din poze și atașamente, filtre și grupare, iar mailul nou sosește imediat. Gratuit pentru căsuțe mici și medii.</string>
     <string name="tool_go_opensolr">Mergi la Opensolr</string>
+    <string name="ai_no_answer">Nimic din mailurile tale nu răspunde la asta.</string>
 </resources>
