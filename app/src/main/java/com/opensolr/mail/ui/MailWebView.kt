@@ -55,9 +55,22 @@ fun MailWebView(html: String, acc: String, attachments: List<Attachment>, remote
                 var lastY = 0f
                 var edge = false
                 var tracker: android.view.VelocityTracker? = null
+                // Double tap zooms in where it lands and, zoomed, back out to the whole message. The page is marked
+                // mobile-sized, and the WebView gives such pages no double tap of its own.
+                val doubleTap = android.view.GestureDetector(ctx, object : android.view.GestureDetector.SimpleOnGestureListener() {
+                    override fun onDoubleTapEvent(e: android.view.MotionEvent): Boolean {
+                        if (e.actionMasked == android.view.MotionEvent.ACTION_UP) {
+                            val x = e.x
+                            val y = e.y
+                            post { doubleTapZoom(x, y) }
+                        }
+                        return true
+                    }
+                })
                 setOnTouchListener { v, e ->
+                    if (!(v as FitWebView).synthetic) doubleTap.onTouchEvent(e)
                     if (e.actionMasked == android.view.MotionEvent.ACTION_POINTER_DOWN) v.parent?.requestDisallowInterceptTouchEvent(true)
-                    if (!(v as FitWebView).zoomed) return@setOnTouchListener false
+                    if (!v.zoomed) return@setOnTouchListener false
                     v.parent?.requestDisallowInterceptTouchEvent(true)
                     when (e.actionMasked) {
                         android.view.MotionEvent.ACTION_DOWN -> {
@@ -166,6 +179,47 @@ private class FitWebView(context: Context) : WebView(context) {
         postDelayed({ fitWidth() }, 400)
         @Suppress("DEPRECATION")
         postDelayed({ if (baseScale == 0f) baseScale = scale }, 800)
+    }
+
+    /** True while the pinch of a double tap is being played, so it is not taken for taps of its own. */
+    var synthetic = false
+        private set
+
+    /** Zoomed in: back to the size the message opened at. Otherwise twice as close, around the point tapped. */
+    fun doubleTapZoom(x: Float, y: Float) {
+        @Suppress("DEPRECATION")
+        val now = scale
+        val target = if (zoomed && baseScale > 0f) baseScale / now else 2f
+        pinch(x, y, target.coerceIn(0.1f, 4f))
+    }
+
+    /** A two-finger pinch around ([x], [y]) that scales by [factor]: the same zoom a reader's own fingers make. */
+    private fun pinch(x: Float, y: Float, factor: Float) {
+        val start = 60f * resources.displayMetrics.density
+        val props = Array(2) { i -> android.view.MotionEvent.PointerProperties().apply { id = i; toolType = android.view.MotionEvent.TOOL_TYPE_FINGER } }
+        fun coords(half: Float) = arrayOf(
+            android.view.MotionEvent.PointerCoords().apply { this.x = x - half; this.y = y; pressure = 1f; size = 1f },
+            android.view.MotionEvent.PointerCoords().apply { this.x = x + half; this.y = y; pressure = 1f; size = 1f },
+        )
+        val down = android.os.SystemClock.uptimeMillis()
+        var at = down
+        fun send(action: Int, pointers: Int, half: Float) {
+            val ev = android.view.MotionEvent.obtain(down, at, action, pointers, props, coords(half), 0, 0, 1f, 1f, 0, 0, android.view.InputDevice.SOURCE_TOUCHSCREEN, 0)
+            dispatchTouchEvent(ev)
+            ev.recycle()
+        }
+        val second = 1 shl android.view.MotionEvent.ACTION_POINTER_INDEX_SHIFT
+        synthetic = true
+        try {
+            send(android.view.MotionEvent.ACTION_DOWN, 1, start)
+            at += 8; send(android.view.MotionEvent.ACTION_POINTER_DOWN or second, 2, start)
+            val steps = 10
+            for (i in 1..steps) { at += 12; send(android.view.MotionEvent.ACTION_MOVE, 2, start * (1f + (factor - 1f) * i / steps)) }
+            at += 8; send(android.view.MotionEvent.ACTION_POINTER_UP or second, 2, start * factor)
+            at += 8; send(android.view.MotionEvent.ACTION_UP, 1, start * factor)
+        } finally {
+            synthetic = false
+        }
     }
 
     fun scaleChanged(newScale: Float) {

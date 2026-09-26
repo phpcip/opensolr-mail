@@ -109,7 +109,11 @@ class MailSearch(private val context: Context) {
     suspend fun search(text: String, filters: Filters, groupBy: GroupBy, start: Int = 0, rows: Int = 40, byRelevance: Boolean = false): Result {
         val connection = MailIndex(context).ensure()
         val solr = SolrClient(connection)
-        val q = text.trim().take(500)
+        val typed = text.trim().take(500)
+        // The words search sees the words only: punctuation that is query syntax to Solr ("?" and "*" wildcards,
+        // "~", "^", brackets, "!", "\\", "/") is a space there, so "number?" still finds "number". Quotes and
+        // +/- stay: they are the operators the search offers. The meaning is taken from the text as typed.
+        val q = LEXICAL_SYNTAX.replace(typed, " ").replace(SPACES, " ").trim()
         val p = ArrayList<Pair<String, String>>()
 
         var smart = false
@@ -121,11 +125,13 @@ class MailSearch(private val context: Context) {
             // +word / -word / +"phrase" / -"phrase": with vectors they leave the text and become filters, so both
             // legs obey them; with nothing left to embed, words only, as typed.
             val ops = SearchOperators.parse(q)
-            val embedText = if (ops.hasOps) ops.base else q
+            val embedText = if (ops.hasOps) SearchOperators.parse(typed).base else typed
             p += "qf" to QF
             p += "mm" to MM
             p += "df" to "subject_t"
-            val lexical = "{!edismax qf=\"$QF\" mm=\"$MM\" v=\$uq}"
+            // sow=true: each word is looked for in every field and the words' scores add up, so "hetzner" in the subject
+            // and "august 2026" in the date count together; the words must match anywhere, not all in one field.
+            val lexical = "{!edismax qf=\"$QF\" mm=\"$MM\" sow=true v=\$uq}"
             // Meaning only when the plan has it and the month's AI allowance is not spent; otherwise words only.
             val aiOk = prefs.limits?.aiUsable ?: prefs.vectorAllowed
             val vector = if (prefs.aiSearch && aiOk && embedText.trim().length >= 2) runCatching { vectorOf(connection.indexName, embedText) }.getOrNull() else null
@@ -193,10 +199,10 @@ class MailSearch(private val context: Context) {
         if (filters.attachments) p += "fq" to "has_attachment_b:true"
         if (filters.attachmentText) p += "fq" to "attachment_text_t:[* TO *]"
 
-        // A search with words is ordered by its score, as on search.opensolr.com; recency comes from Fresh.
-        // Only a list with no words is ordered newest first.
+        // A search with words is ordered by its score alone, never by a sort; only a list with no words (filters
+        // alone) has no score to order by and shows the newest first.
         val newest = q.isEmpty()
-        p += "sort" to if (newest) "received_dt desc, id asc" else "score desc, received_dt desc"
+        if (newest) p += "sort" to "received_dt desc, id asc"
         p += "fl" to "id,score,account_s,email_id_s,thread_id_s,subject_t,from_t,from_s,from_name_s,to_tm,received_dt,preview_t,seen_b,flagged_b,has_attachment_b,mailbox_role_ss,mailbox_name_ss,message_id_s"
         p += "facet" to "true"
         Filters.FACETS.forEach { f -> p += "facet.field" to "{!ex=$f}$f" }
@@ -210,7 +216,7 @@ class MailSearch(private val context: Context) {
             p += "hl" to "true"
             // With vectors the highlighter gets the words with mm=0, so a match found by meaning still shows its words.
             // The words always reach the highlighter as a bound parameter, never parsed as query syntax.
-            p += "hl.q" to "{!edismax qf=\"$QF\" mm=0 v=\$uq}"
+            p += "hl.q" to "{!edismax qf=\"$QF\" mm=0 sow=true v=\$uq}"
             p += "hl.fl" to "subject_t,body_t,attachment_text_t"
             p += "hl.method" to "unified"
             p += "hl.defaultSummary" to "true"
@@ -240,10 +246,10 @@ class MailSearch(private val context: Context) {
             p += "group.field" to field
             p += "group.limit" to GROUP_LIMIT.toString()
             p += "group.ngroups" to "true"
-            p += "group.sort" to if (newest) "received_dt desc" else "score desc"
+            if (newest) p += "group.sort" to "received_dt desc"
             p += "start" to start.coerceIn(0, 5000).toString()
             p += "rows" to GROUP_ROWS.toString()
-            if (field == "month_s" || field == "day_s") p += "sort" to "$field desc"
+            if (newest && (field == "month_s" || field == "day_s")) p += "sort" to "$field desc"
         } else {
             p += "start" to start.coerceIn(0, 5000).toString()
             p += "rows" to rows.coerceIn(1, 100).toString()
@@ -335,19 +341,19 @@ class MailSearch(private val context: Context) {
         return Result(threadHits, threadGroups, total, smart, facets, names.mapValues { it.value.first }, aiDocs, hlMap, fetched = hits.size)
     }
 
-    /** A document given to the AI answer, by its number there: what the answer shows for it, taken from the mail itself. */
-    data class AnswerDoc(val subject: String, val received: Long, val acc: String, val threadId: String)
+    /** A name the answer may mention: an attachment (opened on a tap) or a mail's subject (its conversation opened). */
+    data class AnswerRef(val label: String, val acc: String, val emailId: String, val threadId: String, val attachment: Boolean)
 
     /**
      * The AI answer from exactly the results the reader sees: [top] are the first [ANSWER_ROWS] rows of the list
-     * on screen, in that order. Those under half the best score stay out; a result that is a conversation
+     * on screen, in that order. Those under [ANSWER_SHARE] of the best score stay out; a result that is a conversation
      * goes whole, each message a document of its own with only the words its writer added. No other search is made.
      */
-    suspend fun answer(question: String, top: List<AiPrompt.Doc>, highlights: Map<String, Map<String, List<String>>>, onDocs: (List<AnswerDoc>) -> Unit = {}, onChunk: (String) -> Unit) {
+    suspend fun answer(question: String, top: List<AiPrompt.Doc>, highlights: Map<String, Map<String, List<String>>>, onRefs: (List<AnswerRef>) -> Unit = {}, onChunk: (String) -> Unit) {
         // No AI answer without AI in the plan or with the month's allowance spent: no request is made.
         if (!(prefs.limits?.aiUsable ?: prefs.vectorAllowed)) return
         val best = top.take(ANSWER_ROWS).mapNotNull { it.score }.maxOrNull() ?: 0.0
-        val chosen = top.take(ANSWER_ROWS).filter { best <= 0 || it.score == null || it.score >= best * 0.5 }
+        val chosen = top.take(ANSWER_ROWS).filter { best <= 0 || it.score == null || it.score >= best * ANSWER_SHARE }
         if (chosen.isEmpty()) return
         val connection = MailIndex(context).ensure()
         val solr = SolrClient(connection)
@@ -357,13 +363,13 @@ class MailSearch(private val context: Context) {
                 "fq" to "{!terms f=id v=\$ids}",
                 "ids" to chosen.joinToString(",") { it.id },
                 // Subject and date too: the answer shows them for each document it picks.
-                "fl" to "id,account_s,email_id_s,thread_id_s,subject_t,received_dt,body_t,attachment_names_tm",
+                "fl" to "id,account_s,email_id_s,thread_id_s,subject_t,from_t,to_tm,received_dt,body_t,attachment_names_tm,attachment_text_t",
                 "rows" to chosen.size.toString(),
             )
         )
         val docs = r.optJSONObject("response")?.optJSONArray("docs") ?: JSONArray()
         val own = (0 until docs.length()).map { docs.getJSONObject(it) }.associateBy { it.optString("id") }
-        // Every message of every conversation among the results, oldest first, in one query.
+        // The newest [THREAD_MESSAGES] messages of every conversation among the results, in one grouped query, then oldest first.
         val threads = own.values.mapNotNull { d -> d.optString("thread_id_s").takeIf { it.isNotBlank() }?.let { d.optString("account_s") to it } }.distinct()
         val whole = HashMap<Pair<String, String>, List<JSONObject>>()
         if (threads.isNotEmpty()) {
@@ -374,15 +380,21 @@ class MailSearch(private val context: Context) {
                     "tids" to threads.joinToString(",") { it.second },
                     "fq" to "{!terms f=account_s v=\$accs}",
                     "accs" to threads.map { it.first }.distinct().joinToString(","),
-                    "fl" to "id,account_s,email_id_s,thread_id_s,subject_t,from_t,to_tm,received_dt,body_t,attachment_names_tm",
-                    "sort" to "received_dt asc, id asc",
-                    "rows" to "300",
+                    "fl" to "id,account_s,email_id_s,thread_id_s,subject_t,from_t,to_tm,received_dt,body_t,attachment_names_tm,attachment_text_t",
+                    "group" to "true",
+                    "group.field" to "thread_id_s",
+                    "group.limit" to THREAD_MESSAGES.toString(),
+                    "group.sort" to "received_dt desc, id desc",
+                    "rows" to threads.size.toString(),
                 )
             )
-            val all = t.optJSONObject("response")?.optJSONArray("docs") ?: JSONArray()
-            (0 until all.length()).map { all.getJSONObject(it) }
-                .groupBy { it.optString("account_s") to it.optString("thread_id_s") }
-                .forEach { (k, v) -> whole[k] = v }
+            val groups = t.optJSONObject("grouped")?.optJSONObject("thread_id_s")?.optJSONArray("groups") ?: JSONArray()
+            for (g in 0 until groups.length()) {
+                val docs = groups.getJSONObject(g).optJSONObject("doclist")?.optJSONArray("docs") ?: continue
+                (0 until docs.length()).map { docs.getJSONObject(it) }.reversed()
+                    .groupBy { it.optString("account_s") to it.optString("thread_id_s") }
+                    .forEach { (k, v) -> whole[k] = v }
+            }
         }
         val localKey = store.all().associate { MailIndexer.indexKey(it) to it.key }
         // The bodies this phone holds, one read per account: their HTML shows where each quote starts.
@@ -392,9 +404,9 @@ class MailSearch(private val context: Context) {
             runCatching { db.messages(acc, ms.map { it.optString("email_id_s") }.distinct()) }.getOrDefault(emptyList()).forEach { held[acc + ":" + it.id] = it }
         }
         fun heldOf(m: JSONObject) = localKey[m.optString("account_s")]?.let { held[it + ":" + m.optString("email_id_s")] }
-        // Each message goes as its own words; its attachments are only named, never read to the model.
+        // Each message goes as its own words, with its attachments named and the start of what was read in them.
         val out = ArrayList<AiPrompt.Doc>()
-        val numbered = ArrayList<AnswerDoc>()
+        val refs = LinkedHashMap<String, AnswerRef>()
         val used = HashSet<String>()
         // The budget is in characters, what the model's tokens follow: mail text (numbers, addresses, links,
         // diacritics) runs close to 2.5 characters a token, and the answer needs its own 8k tokens of the window.
@@ -402,20 +414,32 @@ class MailSearch(private val context: Context) {
         fun add(doc: AiPrompt.Doc, m: JSONObject, body: String) {
             if (left <= 0 || !used.add(doc.id)) return
             val names = m.optJSONArray("attachment_names_tm")?.let { a -> (0 until a.length()).map { a.optString(it) }.filter { it.isNotBlank() } }.orEmpty()
-            val text = cutWords(body, AI_DOC_WORDS) + if (names.isNotEmpty()) "\nAttachments: " + names.joinToString(", ") else ""
+            val read = forModel(m.optString("attachment_text_t"))
+            val text = cutWords(body, AI_DOC_WORDS) + (if (names.isNotEmpty()) "\nAttachments: " + names.joinToString(", ") else "") +
+                (if (read.isNotEmpty()) "\nText of the attachments:\n" + cutWords(read, AI_ATTACHMENT_WORDS) else "")
             val head = doc.title.length + doc.description.length + DOC_OVERHEAD
             val fitted = cutChars(text, left - head)
             left -= head + fitted.length
             out += doc.copy(text = fitted, score = null)
-            numbered += AnswerDoc(
-                m.optString("subject_t"), MailSync.parseDate(m.optString("received_dt")),
-                localKey[m.optString("account_s")].orEmpty(), m.optString("thread_id_s"),
-            )
+            // What of this mail the answer can point to: its attachments by name, and its subject.
+            val acc = localKey[m.optString("account_s")]
+            if (acc != null) {
+                val emailId = m.optString("email_id_s")
+                val thread = m.optString("thread_id_s")
+                names.filter { it.length >= 5 && '[' !in it && ']' !in it }.forEach { n ->
+                    refs.putIfAbsent(n.lowercase(), AnswerRef(n, acc, emailId, thread, attachment = true))
+                }
+                val subject = m.optString("subject_t").replace(REPLY_PREFIX, "").trim()
+                if (subject.length >= 8 && '[' !in subject && ']' !in subject) refs.putIfAbsent(subject.lowercase(), AnswerRef(subject, acc, emailId, thread, attachment = false))
+            }
         }
         for (d in chosen) {
             val hit = own[d.id]
-            val conversation = hit?.let { whole[it.optString("account_s") to it.optString("thread_id_s")] }.orEmpty()
             if (hit == null) continue
+            // The result itself always goes, also when it is older than the newest messages of its conversation.
+            val conversation = whole[hit.optString("account_s") to hit.optString("thread_id_s")].orEmpty().let { c ->
+                if (c.isEmpty() || c.any { it.optString("id") == d.id }) c else (c + hit).sortedBy { it.optString("received_dt") }
+            }
             if (conversation.size <= 1) {
                 add(d, hit, messageText(hit, heldOf(hit), emptyList()))
                 continue
@@ -442,8 +466,10 @@ class MailSearch(private val context: Context) {
         // Each mail goes once, as it is: no highlight excerpts, which in a short mail are most of the mail again.
         val ctx = AiPrompt.context(out, emptyMap(), topN = out.size, maxWords = AI_DOC_WORDS)
         if (ctx.isEmpty()) return
-        onDocs(numbered)
-        api.aiAnswer(connection.indexName, AiPrompt.picksInstruction(ctx, question, prefs.aiInstructions), onChunk)
+        // A name the question itself contains is the question echoed back, not a pointer to that mail: it is never a link.
+        val asked = question.lowercase()
+        onRefs(refs.values.filterNot { asked.contains(it.label.lowercase()) })
+        api.aiAnswer(connection.indexName, AiPrompt.answerInstruction(ctx, question, prefs.aiInstructions), onChunk)
     }
 
     /**
@@ -455,7 +481,39 @@ class MailSearch(private val context: Context) {
         val html = local?.bodyHtml.orEmpty()
         val fresh = if (html.isNotBlank()) freshPart(com.opensolr.mail.jmap.Html.withoutQuotes(html))
         else freshPart(local?.bodyText?.takeIf { it.isNotBlank() } ?: d.optString("body_t"))
-        return flatten(notRepeated(fresh, earlier))
+        return flatten(notRepeated(forModel(fresh), earlier))
+    }
+
+    /**
+     * What the model reads of a text, with nothing in it that carries no meaning: invisible and filler characters,
+     * entities broken in the mail itself ("&n bsp;"), the long tail of tracking links (their site stays), runs of
+     * separators, tokens that are only encoded data, and lines that are only symbols (scan noise). Words, numbers,
+     * amounts, dates, names and short links are left exactly as they are.
+     */
+    private fun forModel(text: String): String {
+        var t = text.replace("\r", "")
+        t = INVISIBLE_FILLER.replace(t, "")
+        t = BROKEN_ENTITY.replace(t) { m ->
+            val name = m.groupValues[1].filterNot { it.isWhitespace() }
+            val decoded = androidx.core.text.HtmlCompat.fromHtml("&$name;", androidx.core.text.HtmlCompat.FROM_HTML_MODE_LEGACY).toString()
+            if (decoded.isNotEmpty() && decoded != "&$name;") decoded.replace('\u00A0', ' ') else m.value
+        }
+        // A link that reads (a site and a few words of path) stays whole; one carrying a query or a long code keeps only its site.
+        t = URL.replace(t) { m ->
+            val url = m.value
+            val coded = url.length > 150 || '?' in url || '=' in url || URL_CODE.containsMatchIn(url.substringAfter("://"))
+            if (coded) m.groupValues[1] + "/\u2026" else url
+        }
+        t = ENCODED_TOKEN.replace(t, "")
+        t = SEPARATOR_RUN.replace(t) { m -> m.value.take(3) }
+        return t.lines().filter { line ->
+            val s = line.trim()
+            if (s.isEmpty()) return@filter true
+            val visible = s.count { !it.isWhitespace() }
+            val meaningful = s.count { it.isLetterOrDigit() }
+            // A line of symbols alone (a rule, scan noise) goes; one with a word, a number or an amount stays.
+            meaningful > 0 && (visible < 4 || meaningful * 3 >= visible)
+        }.joinToString("\n").replace(Regex("[ \t]{2,}"), " ").replace(Regex("\n{3,}"), "\n\n").trim()
     }
 
     private fun cutChars(text: String, max: Int): String {
@@ -542,11 +600,16 @@ class MailSearch(private val context: Context) {
         private val vectors = object : LinkedHashMap<String, FloatArray>(64, 0.75f, true) {
             override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, FloatArray>?) = size > 100
         }
-        private const val QF = "subject_t^3 from_t to_tm cc_tm date_t attachment_names_tm body_t^2 attachment_text_t^0.01 words_ng^0.01 address_ngk^0.01"
+        private const val QF = "subject_t^3 from_t to_tm cc_tm date_t^8 attachment_names_tm body_t^2 attachment_text_t^0.01 words_ng^0.01 address_ngk^0.01"
         private const val MM = "2<65% 4<50% 8<40%"
         private const val TOP_K = 790
-        /** How many of the first results on screen the AI answer looks at; those under half the best score stay out. */
-        const val ANSWER_ROWS = 20
+        /** How many of the first results on screen the AI answer looks at, and the share of the best score one needs to go in. */
+        const val ANSWER_ROWS = 10
+        /** The most messages of one conversation the AI answer reads: its newest ones. */
+        private const val THREAD_MESSAGES = 20
+        private const val ANSWER_SHARE = 0.75
+        /** Words of the text read from a message's attachments (documents, OCR) that go to the AI answer. */
+        private const val AI_ATTACHMENT_WORDS = 1_000
         private const val GROUP_LIMIT = 5
         private const val GROUP_ROWS = 20
         /** Words one message may give the AI answer, and characters for all of them together: what fits the model with room to answer. */
@@ -559,7 +622,21 @@ class MailSearch(private val context: Context) {
         private val OUTLOOK_FROM = Regex("^(From|De la|Von|De|Van|Da):\\s.+")
         private val OUTLOOK_SENT = Regex("^(Sent|Date|Trimis|Gesendet|Envoy\u00e9|Data|Verzonden):\\s.+")
         private val WORD = Regex("\\S+")
+        /** Characters that show nothing: format marks, joiners, preview fillers of newsletters, blank look-alikes. */
+        private val INVISIBLE_FILLER = Regex("[\\p{Cf}\\u034F\\u115F\\u1160\\u17B4\\u17B5\\u180E\\u2800\\u3164\\uFFA0\\uFFFC]")
+        /** An entity with spaces cut into its name by the sender's mail program: "&n bsp;", "&nbs p;". */
+        private val BROKEN_ENTITY = Regex("&((?:[A-Za-z]\\s?){2,8});")
+        /** A web link, its scheme and site apart. */
+        private val URL = Regex("(https?://[^\\s/?#]+)[^\\s]*")
+        /** A run of letters and digits mixed, long enough to be an id and not a word. */
+        private val URL_CODE = Regex("(?=[A-Za-z0-9_-]{20,})(?=[^/]*\\d)[A-Za-z0-9_-]{20,}")
+        /** Encoded data standing as a word (base64, hashes, tracking ids): 40 characters and more of letters and digits mixed. */
+        private val ENCODED_TOKEN = Regex("(?<![\\p{L}\\p{N}/.@:])(?=[A-Za-z0-9+/=_-]{40,})(?=[^\\s]*[0-9])(?=[^\\s]*[A-Za-z])[A-Za-z0-9+/=_-]{40,}(?![\\p{L}\\p{N}])")
+        /** The same separator repeated: kept at three. */
+        private val SEPARATOR_RUN = Regex("([-=_*~#.•·|])\\1{3,}")
+        private val REPLY_PREFIX = Regex("^((re|fw|fwd|aw|tr|r|răspuns)(\\[\\d+\\])?\\s*:\\s*)+", RegexOption.IGNORE_CASE)
         private val SPACES = Regex("\\s+")
+        private val LEXICAL_SYNTAX = Regex("[?*~^(){}\\[\\]!\\\\/]")
         private val QUOTE_HEAD = Regex("(?i)^(On .{4,200}wrote:|Le .{4,200}a \u00e9crit\\s?:|Am .{4,200}schrieb .{1,120}:|\u00cen .{4,200}a scris:|-{2,}\\s*(Original Message|Mesaj original|Urspr\u00fcngliche Nachricht)\\s*-{2,}|_{10,})$")
 
         /** Fresh: 1.0 today, 0.5 at a month, 0.33 at two — a strong pull towards recent mail. */

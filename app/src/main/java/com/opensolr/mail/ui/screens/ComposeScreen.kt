@@ -88,8 +88,7 @@ fun ComposeScreen(vm: AppViewModel, init: ComposeInit) {
     var subject by remember { mutableStateOf(init.subject) }
     val signature = identity?.signature?.takeIf { it.isNotBlank() }?.let { "\n\n-- \n$it" }.orEmpty()
     // The cursor starts at the very top, above the signature and the quoted message, ready to type.
-    var bodyValue by remember { mutableStateOf(androidx.compose.ui.text.input.TextFieldValue(if (init.draftId != null) init.body else signature + init.body, androidx.compose.ui.text.TextRange(0))) }
-    val body = bodyValue.text
+    var body by remember { mutableStateOf(if (init.draftId != null) init.body else signature + init.body) }
     val toFocus = remember { androidx.compose.ui.focus.FocusRequester() }
     val bodyFocus = remember { androidx.compose.ui.focus.FocusRequester() }
     val keyboard = androidx.compose.ui.platform.LocalSoftwareKeyboardController.current
@@ -215,7 +214,7 @@ fun ComposeScreen(vm: AppViewModel, init: ComposeInit) {
                     IconBtn(R.drawable.ic_close, { files.remove(f); File(f.path).delete() })
                 }
             }
-            BodyField(bodyValue, { bodyValue = it }, stringResource(R.string.message_hint), vm.prefs.textScale / 100f, Modifier.fillMaxWidth(), focus = bodyFocus)
+            BodyField(body, { body = it }, stringResource(R.string.message_hint), vm.prefs.textScale / 100f, Modifier.fillMaxWidth(), focus = bodyFocus)
             Spacer(Modifier.height(bottomInset()))
         }
     }
@@ -260,11 +259,9 @@ fun ComposeScreen(vm: AppViewModel, init: ComposeInit) {
 @Composable
 private fun RecipientField(value: String, onChange: (String) -> Unit, modifier: Modifier, focus: androidx.compose.ui.focus.FocusRequester? = null, onFocus: (Boolean) -> Unit) {
     val p = LocalPalette.current
-    var field by remember { mutableStateOf(androidx.compose.ui.text.input.TextFieldValue(value, androidx.compose.ui.text.TextRange(value.length))) }
-    if (field.text != value) field = androidx.compose.ui.text.input.TextFieldValue(value, androidx.compose.ui.text.TextRange(value.length))
     Box(modifier.heightIn(min = 44.dp).padding(horizontal = 12.dp, vertical = 11.dp)) {
-        androidx.compose.foundation.text.BasicTextField(
-            value = field, onValueChange = { field = it; onChange(it.text) }, singleLine = true,
+        com.opensolr.mail.ui.TextBox(
+            value = value, onValueChange = onChange, singleLine = true,
             textStyle = MaterialTheme.typography.bodyMedium.copy(color = p.ink),
             cursorBrush = androidx.compose.ui.graphics.SolidColor(p.accent),
             keyboardOptions = com.opensolr.mail.ui.textKeyboard(true),

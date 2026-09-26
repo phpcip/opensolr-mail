@@ -57,7 +57,7 @@ private val TABLE_SEP = Regex("^\\s*\\|?\\s*:?-{2,}:?\\s*(\\|\\s*:?-{2,}:?\\s*)*
 
 /** The Markdown the AI answer is written in: headings, lists at any depth, quotes, code, tables, rules, links. */
 @Composable
-fun Markdown(text: String, modifier: Modifier = Modifier) {
+fun Markdown(text: String, modifier: Modifier = Modifier, onRef: ((Int) -> Unit)? = null) {
     val p = LocalPalette.current
     val blocks = remember(text) { parse(text) }
     val body = MaterialTheme.typography.bodyMedium
@@ -65,26 +65,26 @@ fun Markdown(text: String, modifier: Modifier = Modifier) {
         blocks.forEach { b ->
             when (b) {
                 is Block.Gap -> Spacer(Modifier.height(6.dp))
-                is Block.Para -> Text(inline(b.text, p.accent, p.band), style = body, color = p.ink)
+                is Block.Para -> Text(inline(b.text, p.accent, p.band, onRef), style = body, color = p.ink)
                 is Block.Heading -> Text(
-                    inline(b.text, p.accent, p.band),
+                    inline(b.text, p.accent, p.band, onRef),
                     style = if (b.level <= 2) MaterialTheme.typography.titleMedium else MaterialTheme.typography.titleSmall,
                     color = p.ink, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 6.dp, bottom = 2.dp),
                 )
                 is Block.Item -> Row(Modifier.padding(start = (4 + 16 * b.depth).dp, top = 2.dp)) {
                     if (b.mark == null) Text(if (b.depth == 0) "•" else "◦", style = body, color = p.accent, modifier = Modifier.width(14.dp))
                     else Text(b.mark, style = body, color = p.accent, modifier = Modifier.width(24.dp))
-                    Text(inline(b.text, p.accent, p.band), style = body, color = p.ink)
+                    Text(inline(b.text, p.accent, p.band, onRef), style = body, color = p.ink)
                 }
                 is Block.Quote -> Row(Modifier.padding(vertical = 4.dp).height(IntrinsicSize.Min)) {
                     Box(Modifier.width(3.dp).fillMaxHeight().background(p.accent))
-                    Text(inline(b.text, p.accent, p.band), style = body, color = p.muted, fontStyle = FontStyle.Italic, modifier = Modifier.padding(start = 10.dp))
+                    Text(inline(b.text, p.accent, p.band, onRef), style = body, color = p.muted, fontStyle = FontStyle.Italic, modifier = Modifier.padding(start = 10.dp))
                 }
                 is Block.Code -> Box(
                     Modifier.fillMaxWidth().padding(vertical = 4.dp).background(p.paper, Corner).border(1.dp, p.hairline, Corner)
                         .horizontalScroll(rememberScrollState()).padding(10.dp),
                 ) { Text(b.text, style = body, fontFamily = FontFamily.Monospace, color = p.ink, softWrap = false) }
-                is Block.Table -> MdTable(b.rows)
+                is Block.Table -> MdTable(b.rows, onRef)
                 is Block.Rule -> Box(Modifier.fillMaxWidth().padding(vertical = 8.dp).height(1.dp).background(p.hairline))
             }
         }
@@ -93,7 +93,7 @@ fun Markdown(text: String, modifier: Modifier = Modifier) {
 
 /** A table on a plain grid; columns sized by their longest cell, wider than the screen scrolls sideways. */
 @Composable
-private fun MdTable(rows: List<List<String>>) {
+private fun MdTable(rows: List<List<String>>, onRef: ((Int) -> Unit)?) {
     val p = LocalPalette.current
     val cols = rows.maxOf { it.size }
     val widths = (0 until cols).map { c -> (rows.maxOf { it.getOrNull(c)?.length ?: 0 } * 8).coerceIn(56, 260).dp }
@@ -103,7 +103,7 @@ private fun MdTable(rows: List<List<String>>) {
                 Row(Modifier.background(if (r == 0) p.band else Color.Transparent).height(IntrinsicSize.Min)) {
                     (0 until cols).forEach { c ->
                         Text(
-                            inline(row.getOrNull(c).orEmpty(), p.accent, p.band), style = MaterialTheme.typography.bodySmall, color = p.ink,
+                            inline(row.getOrNull(c).orEmpty(), p.accent, p.band, onRef), style = MaterialTheme.typography.bodySmall, color = p.ink,
                             fontWeight = if (r == 0) FontWeight.Bold else null,
                             modifier = Modifier.width(widths[c]).fillMaxHeight().border(0.5.dp, p.hairline).padding(horizontal = 8.dp, vertical = 6.dp),
                         )
@@ -181,9 +181,9 @@ private fun safeUrl(url: String): String? {
 }
 
 /** Bold, italic, strike, inline code, [links](url) and bare web addresses; a backslash keeps the next mark literal. */
-private fun inline(s: String, link: Color, codeFill: Color): AnnotatedString = buildAnnotatedString { appendInline(s, link, codeFill) }
+private fun inline(s: String, link: Color, codeFill: Color, onRef: ((Int) -> Unit)? = null): AnnotatedString = buildAnnotatedString { appendInline(s, link, codeFill, onRef) }
 
-private fun AnnotatedString.Builder.appendInline(s: String, link: Color, codeFill: Color) {
+private fun AnnotatedString.Builder.appendInline(s: String, link: Color, codeFill: Color, onRef: ((Int) -> Unit)? = null) {
     val linkStyle = TextLinkStyles(SpanStyle(color = link, textDecoration = TextDecoration.Underline))
     var i = 0
     val plain = StringBuilder()
@@ -221,7 +221,7 @@ private fun AnnotatedString.Builder.appendInline(s: String, link: Color, codeFil
                 val end = closing(mark, i + 2)
                 if (end < 0) { plain.append(mark); i += 2 } else {
                     flushPlain()
-                    withStyle(SpanStyle(fontWeight = FontWeight.Bold)) { appendInline(s.substring(i + 2, end), link, codeFill) }
+                    withStyle(SpanStyle(fontWeight = FontWeight.Bold)) { appendInline(s.substring(i + 2, end), link, codeFill, onRef) }
                     i = end + 2
                 }
             }
@@ -229,7 +229,7 @@ private fun AnnotatedString.Builder.appendInline(s: String, link: Color, codeFil
                 val end = closing("~~", i + 2)
                 if (end < 0) { plain.append("~~"); i += 2 } else {
                     flushPlain()
-                    withStyle(SpanStyle(textDecoration = TextDecoration.LineThrough)) { appendInline(s.substring(i + 2, end), link, codeFill) }
+                    withStyle(SpanStyle(textDecoration = TextDecoration.LineThrough)) { appendInline(s.substring(i + 2, end), link, codeFill, onRef) }
                     i = end + 2
                 }
             }
@@ -237,7 +237,7 @@ private fun AnnotatedString.Builder.appendInline(s: String, link: Color, codeFil
                 val end = closing(c.toString(), i + 1)
                 if (end < 0 || s[end - 1].isWhitespace()) { plain.append(c); i++ } else {
                     flushPlain()
-                    withStyle(SpanStyle(fontStyle = FontStyle.Italic)) { appendInline(s.substring(i + 1, end), link, codeFill) }
+                    withStyle(SpanStyle(fontStyle = FontStyle.Italic)) { appendInline(s.substring(i + 1, end), link, codeFill, onRef) }
                     i = end + 1
                 }
             }
@@ -248,8 +248,11 @@ private fun AnnotatedString.Builder.appendInline(s: String, link: Color, codeFil
                 if (url == null) { plain.append(c); i++ } else {
                     flushPlain()
                     val label = s.substring(i + 1, close)
-                    if (safe != null) withLink(LinkAnnotation.Url(safe, linkStyle)) { appendInline(label, link, codeFill) }
-                    else appendInline(label, link, codeFill)
+                    // "ref:n" points into the answer's own list of attachments and mails, opened by the screen.
+                    val ref = url.first.removePrefix("ref:").takeIf { url.first.startsWith("ref:") }?.toIntOrNull()
+                    if (ref != null && onRef != null) withLink(LinkAnnotation.Clickable("ref", linkStyle) { onRef(ref) }) { append(label) }
+                    else if (safe != null) withLink(LinkAnnotation.Url(safe, linkStyle)) { appendInline(label, link, codeFill, onRef) }
+                    else appendInline(label, link, codeFill, onRef)
                     i = url.second + 1
                 }
             }

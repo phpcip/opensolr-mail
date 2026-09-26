@@ -25,8 +25,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.BasicTextField
-import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -416,16 +414,16 @@ fun SearchScreen(vm: AppViewModel, sheet: String?, screen: Screen? = null) {
             Row(Modifier.weight(1f).padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
             Box(Modifier.weight(1f)) {
                 if (query.isEmpty()) Text(stringResource(R.string.search_hint), style = MaterialTheme.typography.bodyLarge, color = p.muted)
-                BasicTextField(
+                com.opensolr.mail.ui.TextBox(
                     value = query, onValueChange = { query = it }, singleLine = true,
                     textStyle = MaterialTheme.typography.bodyLarge.copy(color = p.ink), cursorBrush = SolidColor(p.accent),
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-                    keyboardActions = KeyboardActions(onSearch = {
+                    onImeAction = {
                         Haptics.tick(view, true)
                         focusManager.clearFocus()
                         // A new text starts a search through the effect; the same text searched again is a refresh.
                         if (submitted != query.trim()) submitted = query.trim() else run()
-                    }),
+                    },
                     modifier = Modifier.fillMaxWidth().focusRequester(focus),
                 )
             }
@@ -572,7 +570,7 @@ fun SearchScreen(vm: AppViewModel, sheet: String?, screen: Screen? = null) {
             if (hasAnswerCard) item(key = "ai") {
                 // The answer shown belongs to the question typed now; another question offers a new one.
                 val mine = vm.aiQuestion == submitted
-                AnswerCard(if (mine) vm.aiText else null, mine && vm.aiRunning, onClose = { vm.stopAi() }) {
+                AnswerCard(if (mine) vm.aiText else null, mine && vm.aiRunning, if (mine) vm.aiRefs else emptyList(), onRef = { vm.openAnswerRef(view.context, it) }, onClose = { vm.stopAi() }) {
                     // The first rows of the list on screen, in their order, go to the answer: nothing else.
                     val res = r ?: return@AnswerCard
                     val rows = if (groupBy.field != null) shownGroups.flatMap { it.hits } else shownHits
@@ -717,7 +715,7 @@ private fun InstructionsDialog(current: String, onSave: (String) -> Unit, onDism
             }
         },
         text = {
-            androidx.compose.material3.OutlinedTextField(
+            com.opensolr.mail.ui.OutlinedTextBox(
                 value = text, onValueChange = { text = it.take(2000) },
                 placeholder = { Text(stringResource(R.string.ai_instructions_hint), color = p.muted) },
                 minLines = 4, maxLines = 10,
@@ -847,6 +845,33 @@ private fun groupLabel(g: MailSearch.GroupBy): Int = when (g) {
     MailSearch.GroupBy.SENDER -> R.string.group_sender
     MailSearch.GroupBy.COMPANY -> R.string.group_company
     MailSearch.GroupBy.ACCOUNT -> R.string.group_account
+}
+
+/**
+ * [text] with every mention of a name in [refs] turned into a "ref:n" link, longest names first so a file name wins
+ * over a subject inside it; code spans and links already in the text are left alone.
+ */
+private fun linkRefs(text: String, refs: List<MailSearch.AnswerRef>): String {
+    if (refs.isEmpty()) return text
+    val taken = ArrayList<IntRange>()
+    Regex("`[^`]*`|\\[[^\\]]*\\]\\([^)]*\\)").findAll(text).forEach { taken += it.range }
+    val hits = ArrayList<Pair<IntRange, Int>>()
+    refs.indices.sortedByDescending { refs[it].label.length }.forEach { i ->
+        Regex(Regex.escape(refs[i].label), RegexOption.IGNORE_CASE).findAll(text).forEach { m ->
+            if (taken.none { it.first <= m.range.last && m.range.first <= it.last }) {
+                taken += m.range
+                hits += m.range to i
+            }
+        }
+    }
+    if (hits.isEmpty()) return text
+    val out = StringBuilder()
+    var at = 0
+    hits.sortedBy { it.first.first }.forEach { (r, i) ->
+        out.append(text, at, r.first).append('[').append(text, r.first, r.last + 1).append("](ref:").append(i).append(')')
+        at = r.last + 1
+    }
+    return out.append(text.substring(at)).toString()
 }
 
 /** The facet a group's "show all" filters on. */
@@ -1059,7 +1084,14 @@ private val FOLDER_COLORS = listOf(
 )
 
 @Composable
-private fun AnswerCard(answer: String?, answering: Boolean, onClose: () -> Unit, onAsk: () -> Unit) {
+private fun AnswerCard(
+    answer: String?,
+    answering: Boolean,
+    refs: List<MailSearch.AnswerRef>,
+    onRef: (MailSearch.AnswerRef) -> Unit,
+    onClose: () -> Unit,
+    onAsk: () -> Unit,
+) {
     val p = LocalPalette.current
     val view = LocalView.current
     Column(Modifier.fillMaxWidth().padding(10.dp).background(p.band, Corner).border(1.dp, p.hairline, Corner).padding(12.dp)) {
@@ -1082,7 +1114,11 @@ private fun AnswerCard(answer: String?, answering: Boolean, onClose: () -> Unit,
             }
             Spacer(Modifier.height(2.dp))
             if (answer.isNullOrBlank()) Text(stringResource(R.string.thinking), style = MaterialTheme.typography.bodyMedium, color = p.muted)
-            else androidx.compose.foundation.text.selection.SelectionContainer { Markdown(answer) }
+            else {
+                // The attachments and subjects the answer names become links: a tap opens the file or the conversation.
+                val linked = remember(answer, refs) { linkRefs(answer, refs) }
+                androidx.compose.foundation.text.selection.SelectionContainer { Markdown(linked, onRef = { i -> refs.getOrNull(i)?.let(onRef) }) }
+            }
         }
     }
 }
@@ -1206,7 +1242,7 @@ private fun FacetValues(field: String, values: List<MailSearch.Facet>, chosen: S
     if (list.size > PREVIEW) {
         Box(Modifier.fillMaxWidth().border(1.dp, p.hairline, Corner).padding(horizontal = 10.dp, vertical = 8.dp)) {
             if (filter.isEmpty()) Text(stringResource(R.string.f_find), style = MaterialTheme.typography.bodyMedium, color = p.muted)
-            BasicTextField(filter, { filter = it }, singleLine = true, textStyle = MaterialTheme.typography.bodyMedium.copy(color = p.ink), cursorBrush = SolidColor(p.accent), modifier = Modifier.fillMaxWidth())
+            com.opensolr.mail.ui.TextBox(filter, { filter = it }, singleLine = true, textStyle = MaterialTheme.typography.bodyMedium.copy(color = p.ink), cursorBrush = SolidColor(p.accent), modifier = Modifier.fillMaxWidth())
         }
         Spacer(Modifier.height(8.dp))
     }

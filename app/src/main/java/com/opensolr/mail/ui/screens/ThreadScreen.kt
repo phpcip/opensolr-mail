@@ -302,22 +302,7 @@ fun ThreadScreen(vm: AppViewModel, acc: String, threadId: String) {
                             }) { a ->
                                 // Open: the whole file is downloaded into Downloads first, then that file is opened.
                                 val a0 = vm.store.get(acc) ?: return@Attachments
-                                scope.launch(com.opensolr.mail.ui.Guard) {
-                                    // A copy already in Downloads opens at once, without downloading it again.
-                                    val there = com.opensolr.mail.ui.AttachmentDownloads.already(context, a0, a)
-                                    if (there != null) {
-                                        if (!com.opensolr.mail.ui.AttachmentDownloads.open(context, there, com.opensolr.mail.ui.AttachmentDownloads.typeOf(a))) vm.toast(R.string.att_no_app_saved, com.opensolr.mail.ui.AttachmentDownloads.fileName(a))
-                                        return@launch
-                                    }
-                                    vm.toast(R.string.att_downloading, com.opensolr.mail.ui.AttachmentDownloads.fileName(a))
-                                    when (val r = com.opensolr.mail.ui.AttachmentDownloads.download(context, a0, a)) {
-                                        is com.opensolr.mail.ui.AttachmentDownloads.Result.Done -> {
-                                            if (com.opensolr.mail.ui.AttachmentDownloads.open(context, r.uri, r.type)) vm.message = null
-                                            else vm.toast(R.string.att_no_app_saved, com.opensolr.mail.ui.AttachmentDownloads.fileName(a))
-                                        }
-                                        is com.opensolr.mail.ui.AttachmentDownloads.Result.Failed -> vm.message = r.reason
-                                    }
-                                }
+                                scope.launch(com.opensolr.mail.ui.Guard) { vm.openAttachment(context, a0, a) }
                             }
                         }
                     }

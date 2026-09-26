@@ -502,27 +502,28 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         private set
     var aiRunning by mutableStateOf(false)
         private set
+    /** What the answer may name and a tap opens: the attachments and subjects of the mails it was given. */
+    var aiRefs by mutableStateOf<kotlin.collections.List<com.opensolr.mail.search.MailSearch.AnswerRef>>(emptyList())
+        private set
     private var aiJob: Job? = null
 
     fun askAi(question: String, top: kotlin.collections.List<com.opensolr.mail.search.AiPrompt.Doc>, highlights: Map<String, Map<String, kotlin.collections.List<String>>>) {
         aiJob?.cancel()
         aiQuestion = question
         aiText = ""
+        aiRefs = emptyList()
         aiRunning = true
         aiJob = viewModelScope.launch(Guard) {
             val me = coroutineContext[Job]
             try {
-                // The answer comes as JSON picks; nothing of it shows until it is whole, then the sentence and, per
-                // document picked, the mail's own date and subject with the fact the model read in it.
+                // The answer shows as it is written, word by word.
                 val raw = StringBuilder()
-                var docs: kotlin.collections.List<com.opensolr.mail.search.MailSearch.AnswerDoc> = emptyList()
-                // Read as it arrives: the sentence grows word by word and each document joins the list as it comes.
-                search.answer(question, top, highlights, onDocs = { docs = it }) { chunk ->
+                search.answer(question, top, highlights, onRefs = { if (aiJob === me) aiRefs = it }) { chunk ->
                     if (aiJob !== me) return@answer
                     raw.append(chunk)
-                    aiText = picksToMarkdown(raw.toString(), docs, done = false)
+                    aiText = raw.toString()
                 }
-                if (aiJob === me) aiText = picksToMarkdown(raw.toString(), docs, done = true)
+                if (aiJob === me && raw.isBlank()) aiText = ctx.getString(R.string.ai_no_answer)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: com.opensolr.mail.net.QuotaExceededException) {
@@ -540,68 +541,51 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    /**
-     * The JSON picks as the answer card shows them, also while they are still arriving: the answer string read up
-     * to where it has come, and each document with its own date and subject once its number is known. When [done]
-     * and no picks came, nothing in the mail answers the question.
-     */
-    private fun picksToMarkdown(raw: String, docs: kotlin.collections.List<com.opensolr.mail.search.MailSearch.AnswerDoc>, done: Boolean): String {
-        val answer = jsonStringAfter(raw, "\"answer\"").orEmpty().trim()
-        val day = java.text.SimpleDateFormat("MM/dd/yyyy", java.util.Locale.US)
-        val lines = ArrayList<String>()
-        Regex("\"items\"\\s*:\\s*\\[").find(raw)?.let { m ->
-            val seen = HashSet<Int>()
-            raw.substring(m.range.last + 1).split('{').forEach { seg ->
-                val n = Regex("\"doc\"\\s*:\\s*(\\d+)").find(seg)?.groupValues?.get(1)?.toIntOrNull() ?: return@forEach
-                val d = docs.getOrNull(n - 1) ?: return@forEach
-                if (!seen.add(n)) return@forEach
-                val subject = d.subject.replace(Regex("[*_`\\[\\]]"), "").ifBlank { ctx.getString(R.string.no_subject) }
-                val fact = jsonStringAfter(seg, "\"fact\"").orEmpty().trim()
-                lines += "- **" + day.format(java.util.Date(d.received)) + " \u00b7 " + subject + "**" + if (fact.isNotEmpty()) ": " + fact else ""
-            }
-        }
-        if (done && answer.isEmpty() && lines.isEmpty()) {
-            return if (raw.contains("\"answer\"")) ctx.getString(R.string.ai_no_answer) else ctx.getString(R.string.err_generic)
-        }
-        return (listOf(answer).filter { it.isNotEmpty() } + if (lines.isEmpty()) emptyList() else listOf(lines.joinToString("\n"))).joinToString("\n\n")
-    }
-
-    /** The JSON string value after [key], unescaped, read up to its closing quote or to wherever the text ends so far. */
-    private fun jsonStringAfter(s: String, key: String): String? {
-        val k = s.indexOf(key)
-        if (k < 0) return null
-        val colon = s.indexOf(':', k + key.length)
-        if (colon < 0) return null
-        val open = s.indexOf('"', colon + 1)
-        if (open < 0) return null
-        val out = StringBuilder()
-        var i = open + 1
-        while (i < s.length) {
-            val c = s[i]
-            if (c == '"') break
-            if (c == '\\') {
-                if (i + 1 >= s.length) break
-                when (val e = s[i + 1]) {
-                    'n' -> out.append('\n'); 't' -> out.append('\t'); 'r' -> {}
-                    'u' -> { if (i + 5 < s.length) { s.substring(i + 2, i + 6).toIntOrNull(16)?.let { out.append(it.toChar()) }; i += 4 } else break }
-                    else -> out.append(e)
-                }
-                i += 2
-                continue
-            }
-            out.append(c)
-            i++
-        }
-        return out.toString()
-    }
-
     /** Stops the answer being written and clears it: a refresh or another question never keeps the old stream going. */
     fun stopAi() {
         aiJob?.cancel()
         aiJob = null
         aiQuestion = null
         aiText = null
+        aiRefs = emptyList()
         aiRunning = false
+    }
+
+    /** A name in the answer tapped: an attachment opens (downloaded first when needed), a subject opens its conversation. */
+    fun openAnswerRef(context: Context, ref: com.opensolr.mail.search.MailSearch.AnswerRef) {
+        if (!ref.attachment) { go(Screen.Thread(ref.acc, ref.threadId)); return }
+        val account = store.get(ref.acc) ?: return
+        viewModelScope.launch(Guard) {
+            // The file's blob comes with the mail's body: the mail is read from Fastmail when this phone does not hold it yet.
+            val a = withContext(Dispatchers.IO) {
+                fun find() = db.message(ref.acc, ref.emailId)?.attachments?.firstOrNull { it.name.equals(ref.label, ignoreCase = true) }
+                find() ?: runCatching {
+                    if (db.message(ref.acc, ref.emailId) == null) db.upsertMessages(sync.getHeaders(com.opensolr.mail.jmap.Jmap(ctx, account), listOf(ref.emailId)))
+                    sync.fetchBody(account, ref.emailId)
+                    find()
+                }.getOrNull()
+            }
+            if (a == null) { toast(R.string.err_generic); return@launch }
+            openAttachment(context, account, a)
+        }
+    }
+
+    /** Opens an attachment: a copy already in Downloads at once, otherwise downloaded there first, then opened. */
+    suspend fun openAttachment(context: Context, account: MailAccount, a: com.opensolr.mail.data.Attachment) {
+        val dl = com.opensolr.mail.ui.AttachmentDownloads
+        val there = dl.already(context, account, a)
+        if (there != null) {
+            if (!dl.open(context, there, dl.typeOf(a))) toast(R.string.att_no_app_saved, dl.fileName(a))
+            return
+        }
+        toast(R.string.att_downloading, dl.fileName(a))
+        when (val r = dl.download(context, account, a)) {
+            is com.opensolr.mail.ui.AttachmentDownloads.Result.Done -> {
+                if (dl.open(context, r.uri, r.type)) message = null
+                else toast(R.string.att_no_app_saved, dl.fileName(a))
+            }
+            is com.opensolr.mail.ui.AttachmentDownloads.Result.Failed -> message = r.reason
+        }
     }
 
     /** The last swipe, still undoable: a delete waits here unsent until the bar goes, a flag is undone by flagging back. */

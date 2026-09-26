@@ -20,7 +20,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
@@ -150,7 +149,7 @@ fun ContactsScreen(vm: AppViewModel) {
             Spacer(Modifier.width(10.dp))
             Box(Modifier.weight(1f)) {
                 if (query.isEmpty()) Text(stringResource(R.string.contacts_search), style = MaterialTheme.typography.bodyLarge, color = p.muted)
-                BasicTextField(
+                com.opensolr.mail.ui.TextBox(
                     query, { query = it }, singleLine = true,
                     textStyle = MaterialTheme.typography.bodyLarge.copy(color = p.ink), cursorBrush = SolidColor(p.accent),
                     modifier = Modifier.fillMaxWidth(),

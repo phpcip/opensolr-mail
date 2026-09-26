@@ -132,7 +132,9 @@ class MailIndexer(private val context: Context) {
         if (wipe) solr.resetAll()
         db.clearIndexQueue()
         store.all().forEach { db.setState(it.key, MailSync.STATE_BACKFILL, "start") }
-        context.getSharedPreferences("index_status", Context.MODE_PRIVATE).edit().putInt("doc_version", DOC_VERSION).putBoolean("reindex_all", false).commit()
+        // From now on only what is written again counts as done, so the progress of a reindex starts from zero.
+        context.getSharedPreferences("index_status", Context.MODE_PRIVATE).edit().putInt("doc_version", DOC_VERSION).putBoolean("reindex_all", false)
+            .putLong("rewrite_since", System.currentTimeMillis()).commit()
         prefs.indexStopped = !restart
         refreshCounts(solr)
         _status.value = _status.value.copy(running = false, phase = Phase.IDLE, error = null, at = System.currentTimeMillis())
@@ -174,7 +176,10 @@ class MailIndexer(private val context: Context) {
         var current = s.upToDate
         if (solr != null) runCatching {
             val mine = localFilter() ?: return
-            val r = solr.select(listOf("q" to "*:*", "fq" to mine.first, "acc" to mine.second, "rows" to "0", "facet" to "true", "facet.query" to "{!key=v}vec_b:true", "facet.query" to "{!key=a}att_todo_b:true", "facet.query" to "{!key=h}has_attachment_b:true", "facet.query" to "{!key=c}dv_i:$DOC_VERSION"))
+            // Done means written the current way and, after a reindex, written again since it started.
+            val since = context.getSharedPreferences("index_status", Context.MODE_PRIVATE).getLong("rewrite_since", 0L)
+            val doneQuery = "{!key=c}dv_i:$DOC_VERSION" + if (since > 0) " AND indexed_at_dt:[" + MailSync.iso(since) + " TO *]" else ""
+            val r = solr.select(listOf("q" to "*:*", "fq" to mine.first, "acc" to mine.second, "rows" to "0", "facet" to "true", "facet.query" to "{!key=v}vec_b:true", "facet.query" to "{!key=a}att_todo_b:true", "facet.query" to "{!key=h}has_attachment_b:true", "facet.query" to doneQuery))
             indexed = r.getJSONObject("response").getLong("numFound")
             val fq = r.optJSONObject("facet_counts")?.optJSONObject("facet_queries")
             meaning = fq?.optLong("v") ?: meaning
@@ -905,8 +910,8 @@ class MailIndexer(private val context: Context) {
         val error: String? = null,
         val at: Long = 0,
     ) {
-        /** Messages at Fastmail not yet in the index. */
-        val messagesLeft: Long get() = if (mailTotal < 0 || upToDate < 0) -1 else (mailTotal - upToDate).coerceAtLeast(0)
+        /** Messages at Fastmail not yet in the index as they should be, or still queued to be written (a repair). */
+        val messagesLeft: Long get() = if (mailTotal < 0 || upToDate < 0) -1 else maxOf(mailTotal - upToDate, pending.toLong()).coerceAtLeast(0)
 
         /** Messages whose attachments are still to be read: those in the index plus those with attachments not indexed yet. */
         val attLeft: Long get() = if (attachmentsLeft < 0) -1 else attachmentsLeft + if (mailWithAtt < 0 || indexedWithAtt < 0) 0 else (mailWithAtt - indexedWithAtt).coerceAtLeast(0)

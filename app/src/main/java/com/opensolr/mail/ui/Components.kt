@@ -23,7 +23,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -223,7 +222,7 @@ fun Field(
     val p = LocalPalette.current
     Box(modifier = modifier.heightIn(min = minHeight.dp).padding(PaddingValues(horizontal = 12.dp, vertical = 11.dp))) {
         if (value.isEmpty()) Text(hint, style = MaterialTheme.typography.bodyMedium, color = p.muted)
-        BasicTextField(
+        TextBox(
             value = value, onValueChange = onChange, singleLine = singleLine,
             textStyle = MaterialTheme.typography.bodyMedium.copy(color = p.ink),
             cursorBrush = SolidColor(p.accent),
@@ -241,8 +240,8 @@ fun textKeyboard(email: Boolean): KeyboardOptions =
 /** The message being written: its cursor set where the reader starts typing, its text at the reading size. */
 @Composable
 fun BodyField(
-    value: androidx.compose.ui.text.input.TextFieldValue,
-    onChange: (androidx.compose.ui.text.input.TextFieldValue) -> Unit,
+    value: String,
+    onChange: (String) -> Unit,
     hint: String,
     textScale: Float,
     modifier: Modifier = Modifier,
@@ -251,9 +250,9 @@ fun BodyField(
     val p = LocalPalette.current
     val style = MaterialTheme.typography.bodyMedium.let { it.copy(color = p.ink, fontSize = it.fontSize * textScale, lineHeight = it.lineHeight * textScale) }
     Box(modifier = modifier.heightIn(min = 320.dp).padding(PaddingValues(horizontal = 12.dp, vertical = 11.dp))) {
-        if (value.text.isEmpty()) Text(hint, style = style.copy(color = p.muted))
-        BasicTextField(
-            value = value, onValueChange = onChange, singleLine = false,
+        if (value.isEmpty()) Text(hint, style = style.copy(color = p.muted))
+        TextBox(
+            value = value, onValueChange = onChange, cursorAtStart = true,
             textStyle = style,
             cursorBrush = SolidColor(p.accent),
             keyboardOptions = textKeyboard(false),
