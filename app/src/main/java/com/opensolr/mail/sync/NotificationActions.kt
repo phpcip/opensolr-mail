@@ -43,10 +43,17 @@ class NotificationActions : BroadcastReceiver() {
                 runCatching { com.opensolr.mail.jmap.MailSync(context).fetchBody(a, id) }
             }
         }
-        val m = db.message(acc, id) ?: return
+        val m = db.message(acc, id) ?: run {
+            Notifier.sendFailed(context, com.opensolr.mail.ui.AppLanguage.wrap(context).getString(com.opensolr.mail.R.string.err_generic))
+            return
+        }
         val identities = db.identities(acc)
         val d = Replies.build(Replies.Kind.REPLY_ALL, m, identities)
-        val identity = d.identity ?: return
+        // The reply is never dropped without a word: with no address to send from, the reader is told.
+        val identity = d.identity ?: run {
+            Notifier.sendFailed(context, com.opensolr.mail.ui.AppLanguage.wrap(context).getString(com.opensolr.mail.R.string.no_identity))
+            return
+        }
         val actions = MailActions(context)
         actions.send(
             MailActions.Outgoing(

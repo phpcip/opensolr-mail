@@ -58,11 +58,11 @@ object Work {
         )
     }
 
-    /** Starts the indexer now: a run waiting out a retry delay is replaced, a running one is left alone. Call off the main thread. */
-    fun indexNow(context: Context) {
+    /** Starts the indexer now: a run waiting out a retry delay is replaced, a running one is left alone unless [force]. Call off the main thread. */
+    fun indexNow(context: Context, force: Boolean = false) {
         AppPrefs(context).indexStopped = false
         val infos = runCatching { WorkManager.getInstance(context).getWorkInfosForUniqueWork("index").get() }.getOrDefault(emptyList())
-        if (infos.any { it.state == androidx.work.WorkInfo.State.RUNNING }) return
+        if (!force && infos.any { it.state == androidx.work.WorkInfo.State.RUNNING }) return
         // Expedited: the system starts it at once instead of when it sees fit.
         WorkManager.getInstance(context).enqueueUniqueWork(
             "index", ExistingWorkPolicy.REPLACE,
@@ -83,6 +83,12 @@ object Work {
     /** Stops indexing now and keeps it stopped. */
     fun stopIndex(context: Context) {
         AppPrefs(context).indexStopped = true
+        pauseIndex(context)
+    }
+
+    /** Ends the running pass without keeping indexing stopped. */
+    fun pauseIndex(context: Context) {
+        com.opensolr.mail.index.MailIndexer.stopRun()
         WorkManager.getInstance(context).cancelUniqueWork("index")
     }
 

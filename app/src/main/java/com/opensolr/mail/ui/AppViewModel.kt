@@ -217,7 +217,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch(Dispatchers.IO + Guard) {
             try {
                 com.opensolr.mail.index.MailIndexer(ctx).startOver(wipe, restart)
-                if (restart) Work.indexNow(ctx)
+                // Forced: the pass stopped a moment ago may still show as running, and must not stop this one from starting.
+                if (restart) Work.indexNow(ctx, force = true)
                 withContext(Dispatchers.Main) { toast(if (!restart) R.string.idx_reset_done else R.string.idx_reindex_started) }
             } catch (e: CancellationException) {
                 throw e
@@ -295,11 +296,14 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     fun signOutOpensolr() {
         viewModelScope.launch(Guard) {
+            Work.pauseIndex(ctx)
             runCatching { com.opensolr.mail.net.OpensolrApi(prefs).pushUnregister(null) }
             // The relay addresses are gone: every account subscribes again at the next sign-in instead of trusting a dead one.
             store.all().forEach { a -> store.update(a.key) { it.copy(pushExpires = 0, pushVerified = false) } }
-            prefs.clearSession()
-            MailIndex(ctx).forget()
+            com.opensolr.mail.index.MailIndexer.exclusive {
+                prefs.clearSession()
+                MailIndex(ctx).forget()
+            }
             signedIn = false
             limits = null
         }
@@ -308,14 +312,19 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     fun removeAccount(a: MailAccount) {
         viewModelScope.launch(Guard) {
             runCatching { MailPush.remove(ctx, a) }
-            if (prefs.signedIn) runCatching {
-                val c = MailIndex(ctx).ensure()
-                SolrClient(c).deleteQuery("account_s:" + com.opensolr.mail.index.MailIndexer.indexKey(a))
+            // A pass in progress would write the account's mail back after it is deleted.
+            Work.pauseIndex(ctx)
+            com.opensolr.mail.index.MailIndexer.exclusive {
+                if (prefs.signedIn) runCatching {
+                    val c = MailIndex(ctx).ensure()
+                    SolrClient(c).deleteQuery("account_s:" + com.opensolr.mail.index.MailIndexer.indexKey(a))
+                }
+                runCatching { FastmailAuth.revoke(ctx, a.key) }
+                runCatching { CalendarSync.removeAccount(ctx, a.username) }
+                withContext(Dispatchers.IO) { db.forgetAccount(a.key) }
+                store.remove(a.key)
             }
-            runCatching { FastmailAuth.revoke(ctx, a.key) }
-            runCatching { CalendarSync.removeAccount(ctx, a.username) }
-            withContext(Dispatchers.IO) { db.forgetAccount(a.key) }
-            store.remove(a.key)
+            if (prefs.signedIn) Work.index(ctx)
             home(Screen.List(View.Unified(Role.INBOX)))
         }
     }
@@ -503,20 +512,17 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         aiJob = viewModelScope.launch(Guard) {
             val me = coroutineContext[Job]
             try {
-                // NO_ANSWER from the model is shown as the app's own sentence, in the reader's language;
-                // while it is still arriving, nothing of it is shown.
+                // The answer comes as JSON picks; nothing of it shows until it is whole, then the sentence and, per
+                // document picked, the mail's own date and subject with the fact the model read in it.
                 val raw = StringBuilder()
-                val none = ctx.getString(R.string.ai_no_answer)
-                search.answer(question, top, highlights) { chunk ->
+                var docs: kotlin.collections.List<com.opensolr.mail.search.MailSearch.AnswerDoc> = emptyList()
+                // Read as it arrives: the sentence grows word by word and each document joins the list as it comes.
+                search.answer(question, top, highlights, onDocs = { docs = it }) { chunk ->
                     if (aiJob !== me) return@answer
                     raw.append(chunk)
-                    val t = raw.trim()
-                    aiText = when {
-                        t.startsWith(com.opensolr.mail.search.AiPrompt.NO_ANSWER) -> none
-                        com.opensolr.mail.search.AiPrompt.NO_ANSWER.startsWith(t) -> ""
-                        else -> raw.toString()
-                    }
+                    aiText = picksToMarkdown(raw.toString(), docs, done = false)
                 }
+                if (aiJob === me) aiText = picksToMarkdown(raw.toString(), docs, done = true)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: com.opensolr.mail.net.QuotaExceededException) {
@@ -532,6 +538,61 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 if (aiJob === me) aiRunning = false
             }
         }
+    }
+
+    /**
+     * The JSON picks as the answer card shows them, also while they are still arriving: the answer string read up
+     * to where it has come, and each document with its own date and subject once its number is known. When [done]
+     * and no picks came, nothing in the mail answers the question.
+     */
+    private fun picksToMarkdown(raw: String, docs: kotlin.collections.List<com.opensolr.mail.search.MailSearch.AnswerDoc>, done: Boolean): String {
+        val answer = jsonStringAfter(raw, "\"answer\"").orEmpty().trim()
+        val day = java.text.SimpleDateFormat("MM/dd/yyyy", java.util.Locale.US)
+        val lines = ArrayList<String>()
+        Regex("\"items\"\\s*:\\s*\\[").find(raw)?.let { m ->
+            val seen = HashSet<Int>()
+            raw.substring(m.range.last + 1).split('{').forEach { seg ->
+                val n = Regex("\"doc\"\\s*:\\s*(\\d+)").find(seg)?.groupValues?.get(1)?.toIntOrNull() ?: return@forEach
+                val d = docs.getOrNull(n - 1) ?: return@forEach
+                if (!seen.add(n)) return@forEach
+                val subject = d.subject.replace(Regex("[*_`\\[\\]]"), "").ifBlank { ctx.getString(R.string.no_subject) }
+                val fact = jsonStringAfter(seg, "\"fact\"").orEmpty().trim()
+                lines += "- **" + day.format(java.util.Date(d.received)) + " \u00b7 " + subject + "**" + if (fact.isNotEmpty()) ": " + fact else ""
+            }
+        }
+        if (done && answer.isEmpty() && lines.isEmpty()) {
+            return if (raw.contains("\"answer\"")) ctx.getString(R.string.ai_no_answer) else ctx.getString(R.string.err_generic)
+        }
+        return (listOf(answer).filter { it.isNotEmpty() } + if (lines.isEmpty()) emptyList() else listOf(lines.joinToString("\n"))).joinToString("\n\n")
+    }
+
+    /** The JSON string value after [key], unescaped, read up to its closing quote or to wherever the text ends so far. */
+    private fun jsonStringAfter(s: String, key: String): String? {
+        val k = s.indexOf(key)
+        if (k < 0) return null
+        val colon = s.indexOf(':', k + key.length)
+        if (colon < 0) return null
+        val open = s.indexOf('"', colon + 1)
+        if (open < 0) return null
+        val out = StringBuilder()
+        var i = open + 1
+        while (i < s.length) {
+            val c = s[i]
+            if (c == '"') break
+            if (c == '\\') {
+                if (i + 1 >= s.length) break
+                when (val e = s[i + 1]) {
+                    'n' -> out.append('\n'); 't' -> out.append('\t'); 'r' -> {}
+                    'u' -> { if (i + 5 < s.length) { s.substring(i + 2, i + 6).toIntOrNull(16)?.let { out.append(it.toChar()) }; i += 4 } else break }
+                    else -> out.append(e)
+                }
+                i += 2
+                continue
+            }
+            out.append(c)
+            i++
+        }
+        return out.toString()
     }
 
     /** Stops the answer being written and clears it: a refresh or another question never keeps the old stream going. */
@@ -628,8 +689,6 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         toast(R.string.draft_saved)
     }
 
-    /** Messages of a thread held locally, for the thread's bulk actions. */
-    /** The messages of a conversation that belong to [view]: a move or delete never drags the Sent copies along. */
     /**
      * What a delete takes: the whole conversation, every copy in every folder, so it goes to Trash at once.
      * In Trash and Junk only what is there, which is then deleted for good.
@@ -732,6 +791,12 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             refresh()
             viewModelScope.launch(Guard) { delay(1500); runCatching { MailPush.ensure(ctx) } }
         }
+    }
+
+    /** Leaving the app with an undo bar still up: the swipe's action goes through, it is not lost with the screen. */
+    override fun onCleared() {
+        undo?.let { u -> undo = null; kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + Dispatchers.IO).launch(Guard) { u.commit() } }
+        super.onCleared()
     }
 
     fun signInRequired(e: Throwable) {

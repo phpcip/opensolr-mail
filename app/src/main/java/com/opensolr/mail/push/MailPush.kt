@@ -116,6 +116,7 @@ object MailPush {
     suspend fun remove(context: Context, a: MailAccount) {
         if (a.pushSubscriptionId.isNotEmpty()) runCatching { pushSet(Jmap(context, a), JSONObject().put("destroy", JSONArray().put(a.pushSubscriptionId))) }
         runCatching { OpensolrApi(AppPrefs(context)).pushUnregister(a.key) }
+        WebPush.forget(context, a.key)
     }
 
     /** PushSubscription/set is not scoped to a mail account, so it goes without accountId. */

@@ -55,7 +55,7 @@ class MailIndexer(private val context: Context) {
     @Volatile private var batchFailed = false
 
     suspend fun run(deadline: Long): Outcome = runLock.withLock {
-        if (prefs.indexStopped) return@withLock Outcome.DONE
+        if (prefs.indexStopped || !prefs.signedIn) return@withLock Outcome.DONE
         runUntil = deadline
         _status.value = _status.value.copy(running = true, error = null, pending = db.indexPending())
         var solrForCount: SolrClient? = null
@@ -91,9 +91,11 @@ class MailIndexer(private val context: Context) {
             if (!more && System.currentTimeMillis() < runUntil) more = !vectorBackfill(solr, name)
             if (!more && System.currentTimeMillis() < runUntil && unmetered()) more = !attachmentPass(solr, name)
             _status.value = _status.value.copy(error = null)
+            // Work queued or accounts added while this pass was past the mail are taken by the next pass at once.
+            val waiting = db.indexPending() > 0 || store.all().any { db.state(it.key, MailSync.STATE_BACKFILL).let { s -> s != null && s != "done" } }
             when {
                 batchFailed -> Outcome.RETRY
-                more -> Outcome.MORE
+                more || waiting -> Outcome.MORE
                 else -> Outcome.DONE
             }
         } catch (e: kotlinx.coroutines.CancellationException) {
@@ -502,7 +504,8 @@ class MailIndexer(private val context: Context) {
         val keeping = async(Dispatchers.IO) {
             val kept = HashMap<String, String>()
             val readBefore = HashSet<String>()
-            runCatching {
+            // Not read: the batch fails and waits, rather than rewriting the documents without their attachment text.
+            run {
                 val r0 = solr.select(listOf(
                     "q" to "*:*", "fq" to "{!terms f=id v=\$ids}", "ids" to ids.joinToString(",") { docId(account, it) },
                     "fl" to "email_id_s,attachment_text_t,att_todo_b", "rows" to ids.size.toString(),
@@ -603,7 +606,26 @@ class MailIndexer(private val context: Context) {
     suspend fun emptyBoxNow(account: MailAccount, boxId: String) {
         if (!prefs.signedIn) return
         val solr = SolrClient(MailIndex(context).ensure())
-        solr.deleteQuery("account_s:" + indexKey(account) + " AND mailbox_ss:\"" + boxId.replace("\\", "\\\\").replace("\"", "\\\"") + "\"", LIVE_ACTION_MS)
+        // Only what lay in this mailbox alone is gone; a message also filed elsewhere just left it and is written again.
+        val alone = ArrayList<String>()
+        val elsewhere = ArrayList<String>()
+        var cursor = "*"
+        while (true) {
+            val r = solr.select(listOf(
+                "q" to "*:*", "fq" to "{!term f=account_s v=\$acc}", "acc" to indexKey(account), "fq" to "{!term f=mailbox_ss v=\$box}", "box" to boxId,
+                "fl" to "email_id_s,mailbox_ss", "sort" to "id asc", "rows" to "1000", "cursorMark" to cursor,
+            ))
+            val docs = r.optJSONObject("response")?.optJSONArray("docs") ?: break
+            for (i in 0 until docs.length()) {
+                val d = docs.getJSONObject(i)
+                if ((d.optJSONArray("mailbox_ss")?.length() ?: 1) > 1) elsewhere += d.optString("email_id_s") else alone += d.optString("email_id_s")
+            }
+            val next = r.optString("nextCursorMark")
+            if (next.isEmpty() || next == cursor) break
+            cursor = next
+        }
+        alone.chunked(1000).forEach { solr.deleteIds(it.map { id -> docId(account, id) }, LIVE_ACTION_MS) }
+        db.queueIndex(account.key, elsewhere, MailSync.OP_UPSERT)
     }
 
     /** Stage three: the one write of a batch, and the messages that are no longer at Fastmail. */
@@ -744,6 +766,7 @@ class MailIndexer(private val context: Context) {
      * True when nothing is left to read (or the documents endpoint is not live yet).
      */
     private suspend fun attachmentPass(solr: SolrClient, name: String): Boolean {
+        if (prefs.embedPausedUntil > System.currentTimeMillis()) return true
         while (System.currentTimeMillis() < runUntil) {
             val mine = localFilter() ?: return true
             val res = solr.select(listOf("q" to "*:*", "fq" to "att_todo_b:true", "fq" to mine.first, "acc" to mine.second, "rows" to "5", "sort" to "received_dt desc", "fl" to "account_s,email_id_s"))
@@ -758,6 +781,12 @@ class MailIndexer(private val context: Context) {
                 val fresh = try {
                     readAttachments(account, name, ids)
                 } catch (e: com.opensolr.mail.net.EndpointMissingException) {
+                    return true
+                } catch (e: QuotaExceededException) {
+                    // The month's allowance is spent: the attachments wait for the next month, still marked to do.
+                    prefs.embedPausedUntil = nextMonth()
+                    return true
+                } catch (e: VectorNotAllowedException) {
                     return true
                 }
                 val boxes = db.mailboxes(account.key).associateBy { it.id }
@@ -782,8 +811,14 @@ class MailIndexer(private val context: Context) {
         val all = perMessage.flatMap { (id, atts) -> atts.map { id to it } }
         suspend fun download(a: com.opensolr.mail.data.Attachment): java.io.File? {
             val f = java.io.File(dir, a.blobId.filter { it.isLetterOrDigit() || it == '-' || it == '_' }.take(120))
-            return runCatching { jmap.download(a.blobId, a.name, a.type, f) }.map { f.takeIf { it.length() in 1..MAX_ATTACHMENT_BYTES } }
-                .getOrNull().also { if (it == null) f.delete() }
+            // An attachment Fastmail answers no for is skipped; no network fails the run, which tries again.
+            val got = try {
+                jmap.download(a.blobId, a.name, a.type, f)
+                f.takeIf { it.length() in 1..MAX_ATTACHMENT_BYTES }
+            } catch (e: com.opensolr.mail.net.ServiceException) {
+                null
+            }
+            return got.also { if (it == null) f.delete() }
         }
         val images = all.filter { isImage(it.second) }
         val documents = all - images.toSet()
@@ -794,7 +829,18 @@ class MailIndexer(private val context: Context) {
             val copies = coroutineScope { chunk.map { (_, a) -> async(Dispatchers.IO) { download(a)?.let { f -> shrink(f).also { f.delete() } } } }.awaitAll() }
             val sendable = chunk.indices.filter { copies[it] != null }
             if (sendable.isEmpty()) return@forEach
-            val read = runCatching { api.imageToText(index, sendable.map { copies[it]!! }) }.getOrDefault(emptyList())
+            // As with documents: a server error is tried once more after a pause, then each picture alone, and one
+            // that still fails is skipped. No network stops the run, which tries again.
+            val read: List<String?> = try {
+                api.imageToText(index, sendable.map { copies[it]!! })
+            } catch (e: com.opensolr.mail.net.ServiceException) {
+                kotlinx.coroutines.delay(3_000L)
+                try {
+                    api.imageToText(index, sendable.map { copies[it]!! })
+                } catch (e2: com.opensolr.mail.net.ServiceException) {
+                    sendable.map { i -> try { api.imageToText(index, listOf(copies[i]!!)).firstOrNull() } catch (x: com.opensolr.mail.net.ServiceException) { null } }
+                }
+            }
             sendable.forEachIndexed { j, i -> val (id, a) = chunk[i]; read.getOrNull(j)?.let { texts[id]?.append(a.name)?.append(":\n")?.append(it)?.append("\n\n") } }
         }
         // Documents go at most 5 and 25 MB to a call.
@@ -928,13 +974,15 @@ class MailIndexer(private val context: Context) {
         fun extendRun(until: Long) {
             if (until > runUntil) runUntil = until
         }
+
+        /** Ends a running pass at its next batch, so a start-over waiting for it gets the index at once. */
+        fun stopRun() { runUntil = 0L }
+
+        /** Runs [block] with no indexing pass in the middle of it. */
+        suspend fun <T> exclusive(block: suspend () -> T): T = runLock.withLock { block() }
         private val _status = MutableStateFlow(Status())
         val status: StateFlow<Status> = _status
 
-        /**
-         * The account as the shared index knows it: derived from the Fastmail address, so every phone
-         * of the same Opensolr account writes one copy of each message under the same id.
-         */
         /**
          * The account as the shared index knows it: its Fastmail mailbox, not the address it was signed in with.
          * The same mailbox on any phone writes one copy of each message, and two different mailboxes never mix,
@@ -959,7 +1007,6 @@ class MailIndexer(private val context: Context) {
 
         fun domainOf(email: String): String? = email.substringAfter('@', "").lowercase().trim().takeIf { it.contains('.') }
 
-        /** What the attachment pass can read: pictures (OCR) and documents (text), never archives. */
         /**
          * What the attachment pass reads, and nothing else: pictures (any format the phone decodes,
          * sent as a 1024 px copy) and text documents (PDF, Word, RTF, OpenDocument text, plain text,
@@ -1019,7 +1066,6 @@ class MailIndexer(private val context: Context) {
             out.toByteArray()
         }.getOrNull()
 
-        /** What the vector is made of: the subject and the whole body, both plain text; empty when the message has neither. */
         /**
          * What the vector is made of: the date the message came, as "August 05 2026" in the phone's own
          * time, then the subject and the whole body, all plain text. Empty when the message has neither

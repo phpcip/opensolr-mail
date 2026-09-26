@@ -135,11 +135,11 @@ object Notifier {
         val cancelled = HashSet<Pair<String, Int>>()
         active.groupBy { it.tag.removePrefix("mail:") }.forEach { (acc, list) ->
             val ids = list.mapNotNull { it.notification.extras.getString(NotificationActions.EXTRA_MSG) }
-            val held = db.messages(acc, ids).associateBy { it.id }
+            // Read, deleted, or moved out of the Inbox anywhere: the notification has nothing left to say.
+            val waiting = db.unreadInInbox(acc, ids)
             list.forEach { sbn ->
                 val msgId = sbn.notification.extras.getString(NotificationActions.EXTRA_MSG) ?: return@forEach
-                val m = held[msgId]
-                if (m == null || m.seen || m.mailboxIds.isEmpty()) {
+                if (msgId !in waiting) {
                     nm.cancel(sbn.tag, sbn.id)
                     cancelled += sbn.tag to sbn.id
                 }

@@ -14,8 +14,15 @@ class AppPrefs(context: Context) {
 
     val email: String get() = sp.getString(K_EMAIL, "") ?: ""
 
+    /** Opened through the Keystore once per stored value, not on every check of the session. */
     val apiKey: String
-        get() = sp.getString(K_KEY, null)?.let { SecureStore.decrypt(it) } ?: ""
+        get() {
+            val sealed = sp.getString(K_KEY, null) ?: return ""
+            opened?.takeIf { it.first == sealed }?.let { return it.second }
+            val plain = SecureStore.decrypt(sealed) ?: return ""
+            opened = sealed to plain
+            return plain
+        }
 
     @SuppressLint("ApplySharedPref")
     fun saveSession(email: String, apiKey: String, deviceKey: Boolean) {
@@ -73,12 +80,12 @@ class AppPrefs(context: Context) {
         get() = sp.getString(K_LIMITS, null)?.let { runCatching { AccountLimits.fromJson(org.json.JSONObject(it)) }.getOrNull() }
         set(v) = sp.edit().putString(K_LIMITS, v?.toJson()).apply()
 
-    /** Epoch ms until which embedding waits (monthly AI quota spent). */
     /** Indexing stopped by hand: nothing indexes until Index now or a reindex. */
     var indexStopped: Boolean
         get() = sp.getBoolean("index_stopped", false)
         set(v) = sp.edit().putBoolean("index_stopped", v).apply()
 
+    /** Epoch ms until which embedding waits (monthly AI quota spent). */
     var embedPausedUntil: Long
         get() = sp.getLong(K_EMBED_PAUSE, 0L)
         set(v) = sp.edit().putLong(K_EMBED_PAUSE, v).apply()
@@ -154,7 +161,6 @@ class AppPrefs(context: Context) {
         sp.edit().putStringSet("set_$name", HashSet(keys)).apply()
     }
 
-    /** How the mail lists are grouped; by day unless changed. */
     /** The order of the folders under All accounts, as keys: the roles and "flagged". */
     var unifiedOrder: List<String>
         get() = sp.getString("unified_order", null)?.split(",")?.filter { it.isNotBlank() }?.distinct() ?: emptyList()
@@ -165,6 +171,7 @@ class AppPrefs(context: Context) {
         get() = sp.getInt("text_scale", 100).coerceIn(80, 200)
         set(v) = sp.edit().putInt("text_scale", v.coerceIn(80, 200)).apply()
 
+    /** How the mail lists are grouped; by day unless changed. */
     var listGroup: String
         get() = sp.getString("list_group", "DAY") ?: "DAY"
         set(v) = sp.edit().putString("list_group", v).apply()
@@ -213,6 +220,9 @@ class AppPrefs(context: Context) {
         private const val K_IMAGES = "remote_images"
 
         private val random = SecureRandom()
+
+        @Volatile
+        private var opened: Pair<String, String>? = null
 
         fun randomHex(bytes: Int): String {
             val b = ByteArray(bytes).also { random.nextBytes(it) }

@@ -62,7 +62,9 @@ class MailSync(private val context: Context) {
                 res.get(chId)
             } catch (e: Jmap.JmapError) {
                 if (e.type == "cannotCalculateChanges") {
+                    // What was deleted meanwhile can no longer be told apart: the local copy starts again from Fastmail.
                     db.setState(acc, STATE_EMAIL, null)
+                    db.forgetMessages(acc)
                     initialWindow(jmap)
                     return@withLock Outcome(emptyList())
                 }
@@ -205,7 +207,6 @@ class MailSync(private val context: Context) {
         return out
     }
 
-    /** Older messages of [view] than the oldest held locally: 100 per account per call. Returns how many arrived. */
     /**
      * The next page of older mail for [view], per account. Pages go by position in the mailbox, saved per
      * box, with an overlap that covers messages deleted meanwhile: an old message held here for another
@@ -260,7 +261,7 @@ class MailSync(private val context: Context) {
         val r = jmap.call("Thread/get", JSONObject().put("ids", JSONArray().put(threadId)))
         val ids = r.getJSONArray("list").optJSONObject(0)?.optJSONArray("emailIds")?.strings().orEmpty()
         // Only the messages this phone does not hold yet: your replies in Sent, older ones, anything in another folder.
-        val held = db.messages(account.key, ids).map { it.id }.toHashSet()
+        val held = db.heldIds(account.key, ids)
         val missing = ids.filterNot { it in held }
         if (missing.isNotEmpty()) db.upsertMessages(getHeaders(jmap, missing))
     }

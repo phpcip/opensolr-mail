@@ -110,16 +110,19 @@ class CalendarSync(private val context: Context, private val account: MailAccoun
 
     // ---------------- down ----------------
 
-    private data class LocalEvent(val id: Long, val href: String?, val etag: String?, val dirty: Boolean, val deleted: Boolean, val original: String?)
+    /** [original] and [originalId] tell an exception from a master: an exception made here has only the local id of its master. */
+    private data class LocalEvent(val id: Long, val href: String?, val etag: String?, val dirty: Boolean, val deleted: Boolean, val original: String?, val originalId: Long?) {
+        val master: Boolean get() = original == null && originalId == null
+    }
 
     private fun localEvents(calId: Long): List<LocalEvent> {
         val out = ArrayList<LocalEvent>()
         resolver.query(
             syncUri(Events.CONTENT_URI),
-            arrayOf(Events._ID, Events._SYNC_ID, Events.SYNC_DATA1, Events.DIRTY, Events.DELETED, Events.ORIGINAL_SYNC_ID),
+            arrayOf(Events._ID, Events._SYNC_ID, Events.SYNC_DATA1, Events.DIRTY, Events.DELETED, Events.ORIGINAL_SYNC_ID, Events.ORIGINAL_ID),
             "${Events.CALENDAR_ID} = ?", arrayOf(calId.toString()), null,
         )?.use { c ->
-            while (c.moveToNext()) out += LocalEvent(c.getLong(0), c.getString(1), c.getString(2), c.getInt(3) == 1, c.getInt(4) == 1, c.getString(5))
+            while (c.moveToNext()) out += LocalEvent(c.getLong(0), c.getString(1), c.getString(2), c.getInt(3) == 1, c.getInt(4) == 1, c.getString(5), if (c.isNull(6)) null else c.getLong(6))
         }
         return out
     }
@@ -128,7 +131,7 @@ class CalendarSync(private val context: Context, private val account: MailAccoun
         val remote = dav.propfind(rc.href, 1, PROPFIND_ETAGS)
             .filter { !it.href.endsWith("/") && it.props["getetag"] != null }
             .associate { dav.resolve(rc.href, it.href) to it.props["getetag"]!! }
-        val masters = localEvents(calId).filter { it.original == null }
+        val masters = localEvents(calId).filter { it.master }
         val byHref = masters.filter { it.href != null }.associateBy { it.href!! }
 
         val gone = byHref.values.filter { it.href !in remote && !it.dirty }.map { it.href!! }
@@ -261,8 +264,8 @@ class CalendarSync(private val context: Context, private val account: MailAccoun
         val all = localEvents(calId)
         val dirtySeries = LinkedHashSet<Long>()
         all.filter { it.dirty }.forEach { e ->
-            if (e.original == null) dirtySeries += e.id
-            else all.firstOrNull { it.original == null && it.href == e.original }?.let { dirtySeries += it.id }
+            if (e.master) dirtySeries += e.id
+            else all.firstOrNull { it.master && (it.id == e.originalId || (e.original != null && it.href == e.original)) }?.let { dirtySeries += it.id }
         }
         for (id in dirtySeries) {
             val master = all.first { it.id == id }

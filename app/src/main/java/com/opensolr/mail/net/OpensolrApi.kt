@@ -236,7 +236,9 @@ class OpensolrApi(private val prefs: AppPrefs) {
     suspend fun aiAnswer(name: String, instruction: String, onChunk: (String) -> Unit) = withContext(Dispatchers.IO) {
         val form = FormBody.Builder()
             .add("email", email).add("api_key", key).add("index_name", name)
-            .add("language", "English").add("instruction", instruction).add("temperature", "0.1").add("stream", "yes")
+            .add("language", "English").add("instruction", instruction).add("temperature", "0.7").add("stream", "yes")
+            // The answer as JSON picks (one sentence, the documents and their key fact), held to its schema by the server.
+            .add("answer_format", "picks")
             .build()
         val req = Request.Builder().url(AI + "ai_summary").post(form).build()
         val call = Http.stream.newCall(req)

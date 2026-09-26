@@ -209,7 +209,8 @@ class MailSearch(private val context: Context) {
         if (q.isNotEmpty()) {
             p += "hl" to "true"
             // With vectors the highlighter gets the words with mm=0, so a match found by meaning still shows its words.
-            p += "hl.q" to if (smart) "{!edismax qf=\"$QF\" mm=0 v=\$uq}" else q
+            // The words always reach the highlighter as a bound parameter, never parsed as query syntax.
+            p += "hl.q" to "{!edismax qf=\"$QF\" mm=0 v=\$uq}"
             p += "hl.fl" to "subject_t,body_t,attachment_text_t"
             p += "hl.method" to "unified"
             p += "hl.defaultSummary" to "true"
@@ -334,12 +335,15 @@ class MailSearch(private val context: Context) {
         return Result(threadHits, threadGroups, total, smart, facets, names.mapValues { it.value.first }, aiDocs, hlMap, fetched = hits.size)
     }
 
+    /** A document given to the AI answer, by its number there: what the answer shows for it, taken from the mail itself. */
+    data class AnswerDoc(val subject: String, val received: Long, val acc: String, val threadId: String)
+
     /**
      * The AI answer from exactly the results the reader sees: [top] are the first [ANSWER_ROWS] rows of the list
      * on screen, in that order. Those under half the best score stay out; a result that is a conversation
      * goes whole, each message a document of its own with only the words its writer added. No other search is made.
      */
-    suspend fun answer(question: String, top: List<AiPrompt.Doc>, highlights: Map<String, Map<String, List<String>>>, onChunk: (String) -> Unit) {
+    suspend fun answer(question: String, top: List<AiPrompt.Doc>, highlights: Map<String, Map<String, List<String>>>, onDocs: (List<AnswerDoc>) -> Unit = {}, onChunk: (String) -> Unit) {
         // No AI answer without AI in the plan or with the month's allowance spent: no request is made.
         if (!(prefs.limits?.aiUsable ?: prefs.vectorAllowed)) return
         val best = top.take(ANSWER_ROWS).mapNotNull { it.score }.maxOrNull() ?: 0.0
@@ -352,7 +356,8 @@ class MailSearch(private val context: Context) {
                 "q" to "*:*",
                 "fq" to "{!terms f=id v=\$ids}",
                 "ids" to chosen.joinToString(",") { it.id },
-                "fl" to "id,account_s,email_id_s,thread_id_s,body_t,attachment_names_tm",
+                // Subject and date too: the answer shows them for each document it picks.
+                "fl" to "id,account_s,email_id_s,thread_id_s,subject_t,received_dt,body_t,attachment_names_tm",
                 "rows" to chosen.size.toString(),
             )
         )
@@ -389,6 +394,7 @@ class MailSearch(private val context: Context) {
         fun heldOf(m: JSONObject) = localKey[m.optString("account_s")]?.let { held[it + ":" + m.optString("email_id_s")] }
         // Each message goes as its own words; its attachments are only named, never read to the model.
         val out = ArrayList<AiPrompt.Doc>()
+        val numbered = ArrayList<AnswerDoc>()
         val used = HashSet<String>()
         // The budget is in characters, what the model's tokens follow: mail text (numbers, addresses, links,
         // diacritics) runs close to 2.5 characters a token, and the answer needs its own 8k tokens of the window.
@@ -401,6 +407,10 @@ class MailSearch(private val context: Context) {
             val fitted = cutChars(text, left - head)
             left -= head + fitted.length
             out += doc.copy(text = fitted, score = null)
+            numbered += AnswerDoc(
+                m.optString("subject_t"), MailSync.parseDate(m.optString("received_dt")),
+                localKey[m.optString("account_s")].orEmpty(), m.optString("thread_id_s"),
+            )
         }
         for (d in chosen) {
             val hit = own[d.id]
@@ -429,9 +439,11 @@ class MailSearch(private val context: Context) {
                 )
             }
         }
-        val ctx = AiPrompt.context(out, highlights, topN = out.size, maxWords = AI_DOC_WORDS)
+        // Each mail goes once, as it is: no highlight excerpts, which in a short mail are most of the mail again.
+        val ctx = AiPrompt.context(out, emptyMap(), topN = out.size, maxWords = AI_DOC_WORDS)
         if (ctx.isEmpty()) return
-        api.aiAnswer(connection.indexName, AiPrompt.instruction(ctx, question, prefs.aiInstructions), onChunk)
+        onDocs(numbered)
+        api.aiAnswer(connection.indexName, AiPrompt.picksInstruction(ctx, question, prefs.aiInstructions), onChunk)
     }
 
     /**

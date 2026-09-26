@@ -508,6 +508,45 @@ class MailDb private constructor(context: Context) : SQLiteOpenHelper(context.ap
         return withBoxes(out)
     }
 
+    /** Which of [ids] this phone holds, without reading any body. */
+    fun heldIds(acc: String, ids: Collection<String>): Set<String> {
+        val out = HashSet<String>()
+        ids.distinct().chunked(400).forEach { chunk ->
+            readableDatabase.rawQuery("SELECT id FROM message WHERE acc = ? AND id IN (${chunk.joinToString(",") { "?" }})", arrayOf(acc) + chunk).use { c ->
+                while (c.moveToNext()) out += c.getString(0)
+            }
+        }
+        return out
+    }
+
+    /** Of [ids], those still unread in an Inbox: the ones whose new-mail notification may stay. */
+    fun unreadInInbox(acc: String, ids: Collection<String>): Set<String> {
+        val out = HashSet<String>()
+        ids.distinct().chunked(400).forEach { chunk ->
+            readableDatabase.rawQuery(
+                "SELECT DISTINCT m.id FROM message m JOIN msg_box b ON b.acc = m.acc AND b.msg = m.id JOIN mailbox x ON x.acc = b.acc AND x.id = b.box " +
+                    "WHERE m.acc = ? AND m.seen = 0 AND x.role = 'inbox' AND m.id IN (${chunk.joinToString(",") { "?" }})",
+                arrayOf(acc) + chunk,
+            ).use { c -> while (c.moveToNext()) out += c.getString(0) }
+        }
+        return out
+    }
+
+    /** Every message of [acc] and where the paging back through its folders had reached: the copy is read again from scratch. */
+    fun forgetMessages(acc: String) {
+        val db = writableDatabase
+        db.beginTransaction()
+        try {
+            db.delete("message", "acc = ?", arrayOf(acc))
+            db.delete("msg_box", "acc = ?", arrayOf(acc))
+            db.delete("state", "acc = ? AND kind LIKE 'older:%'", arrayOf(acc))
+            db.setTransactionSuccessful()
+        } finally {
+            db.endTransaction()
+        }
+        touch()
+    }
+
     /** Fills in the mailboxes of [list] with one query per account. */
     private fun withBoxes(list: List<Message>): List<Message> {
         if (list.isEmpty()) return list

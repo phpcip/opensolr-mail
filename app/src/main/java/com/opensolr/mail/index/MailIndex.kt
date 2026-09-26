@@ -37,7 +37,9 @@ class MailIndex(private val context: Context) {
         }
         val connection = connectionWithRetry(name)
         val solr = SolrClient(connection)
-        val version = runCatching { solr.configVersion() }.getOrDefault(0)
+        // An index just made may not answer yet; an existing one that does not answer stops here instead of
+        // being sent its configuration again for nothing.
+        val version = if (exists) solr.configVersion() else runCatching { solr.configVersion() }.getOrDefault(0)
         if (version < CONFIG_VERSION) {
             // An index built under an older configuration is emptied FIRST, then the new one goes in, then everything is indexed again.
             if (exists && version > 0) {

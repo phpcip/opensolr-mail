@@ -40,9 +40,6 @@ object AiPrompt {
         return sb.toString()
     }
 
-    /** What the model answers when no document is about the query; the app shows it in the reader's language. */
-    const val NO_ANSWER = "NO_ANSWER"
-
     /** [extra] are the reader's own instructions, placed right before the question; none leaves the prompt as canonical. */
     fun instruction(context: String, query: String, extra: String = ""): String {
         val count = maxOf(1, Regex("===== DOCUMENT ").findAll(context).count())
@@ -67,6 +64,31 @@ object AiPrompt {
             "Only if not one of the " + count + " documents is about the question, reply with " +
             "a single sentence that starts \"There is no information about\" and then names " +
             "what they cover instead.\n\n" +
+            (if (extra.isNotBlank()) "Additional instructions: " + extra.trim() + "\n\n" else "") +
+            "Question: " + query + "\n" +
+            "Answer:"
+    }
+
+    /**
+     * The Mail answer as picks: the model replies in JSON (held to it by the server) with one sentence and, per
+     * document that answers the question, its number and the key fact it gives. The app shows each document's own
+     * date and subject next to the fact, so no date is ever retyped by the model.
+     */
+    fun picksInstruction(context: String, query: String, extra: String = ""): String {
+        val count = maxOf(1, Regex("===== DOCUMENT ").findAll(context).count())
+        return context + "\n\n" +
+            "Those were the " + count + " documents.\n\n" +
+            "Now answer the question below using only facts stated in those documents. " +
+            "First drill down: discard every document that does not mention what the question " +
+            "asks about, and when the question names a day, a month or a year, also every " +
+            "document not dated within it. Answer from the documents that are left, and from " +
+            "those alone.\n" +
+            "Reply in JSON. \"answer\": two to four sentences that answer the question directly and " +
+            "sum up what those documents say about it, in the language of the question. \"items\": one " +
+            "entry for each document that is left, never the same document twice, with \"doc\": its " +
+            "number and \"fact\": one short sentence with what it gives for the question (amounts, " +
+            "numbers, names, what happened), in the language of the question. If not one " +
+            "document is about the question, \"answer\" is an empty string and \"items\" is empty.\n\n" +
             (if (extra.isNotBlank()) "Additional instructions: " + extra.trim() + "\n\n" else "") +
             "Question: " + query + "\n" +
             "Answer:"

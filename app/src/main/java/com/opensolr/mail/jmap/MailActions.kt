@@ -130,6 +130,8 @@ class MailActions(private val context: Context) {
     fun saveDraft(o: Outgoing) = enqueue(o.acc, "draft", toJson(o))
 
     private fun toJson(o: Outgoing) = JSONObject()
+        // Its own Message-ID: a retry after an answer lost on the way finds the message already made.
+        .put("mid", java.util.UUID.randomUUID().toString() + "@opensolr-mail")
         .put("identity", o.identityId)
         .put("from", o.from.toJson())
         .put("to", JSONArray(o.to.map { it.toJson() }))
@@ -158,10 +160,12 @@ class MailActions(private val context: Context) {
         val changed = HashMap<String, LinkedHashSet<String>>()
         val destroyed = HashMap<String, LinkedHashSet<String>>()
         val emptied = ArrayList<Pair<String, String>>()
-        // Consecutive changes of the same kind on the same account go out as one Email/set.
-        val ops = db.ops()
+        // Consecutive changes of the same kind on the same account go out as one Email/set; the queue is read
+        // 200 at a time until it is empty or something has to wait.
+        var ops = db.ops()
         var i = 0
-        while (i < ops.size) {
+        while (ok && ops.isNotEmpty()) {
+            if (i >= ops.size) { ops = db.ops(); i = 0; continue }
             val op = ops[i]
             val merged = arrayListOf(op)
             if (op.kind in MERGEABLE) {
@@ -180,7 +184,7 @@ class MailActions(private val context: Context) {
                 "ids", JSONArray(merged.flatMap { JSONObject(it.payload).getJSONArray("ids").strings() }.distinct()),
             )
             try {
-                apply(jmap, op.kind, payload)
+                apply(jmap, op.kind, payload, op.tries)
                 merged.forEach { db.opDone(it.id) }
                 val ids = payload.optJSONArray("ids")?.strings().orEmpty()
                 when (op.kind) {
@@ -191,6 +195,11 @@ class MailActions(private val context: Context) {
             } catch (e: Jmap.JmapError) {
                 merged.forEach { db.opDone(it.id) }
                 if (op.kind == "send") Notifier.sendFailed(context, e.message.orEmpty())
+                // Refused by Fastmail: the local copy of those messages goes back to what Fastmail holds.
+                val ids = payload.optJSONArray("ids")?.strings().orEmpty()
+                if (ids.isNotEmpty()) runCatching { db.upsertMessages(MailSync(context).getHeaders(jmap, ids)) }
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
             } catch (e: Exception) {
                 if (op.tries >= 20) {
                     merged.forEach { db.opDone(it.id) }
@@ -201,6 +210,7 @@ class MailActions(private val context: Context) {
             }
             touched += op.acc
         }
+        if (ok) sweepOutbox()
         val sync = MailSync(context)
         touched.forEach { key -> store.get(key)?.let { a -> runCatching { sync.sync(a) } } }
         db.touch()
@@ -217,6 +227,13 @@ class MailActions(private val context: Context) {
         return ok
     }
 
+    /** Attachment copies no queued message needs any more (a compose left without sending) go after two days. */
+    private fun sweepOutbox() {
+        if (db.ops().isNotEmpty()) return
+        val old = System.currentTimeMillis() - 2 * 86_400_000L
+        File(context.filesDir, "outbox").listFiles()?.forEach { if (it.lastModified() < old) it.delete() }
+    }
+
     private fun mergeKey(op: MailDb.Op): String {
         val p = JSONObject(op.payload)
         return when (op.kind) {
@@ -226,7 +243,7 @@ class MailActions(private val context: Context) {
         }
     }
 
-    private suspend fun apply(jmap: Jmap, kind: String, p: JSONObject) {
+    private suspend fun apply(jmap: Jmap, kind: String, p: JSONObject, tries: Int) {
         when (kind) {
             "seen", "flag" -> {
                 val key = if (kind == "seen") "keywords/\$seen" else "keywords/\$flagged"
@@ -242,7 +259,7 @@ class MailActions(private val context: Context) {
                 checkSet(jmap.call("Email/set", JSONObject().put("update", update)))
             }
             "destroy" -> checkSet(jmap.call("Email/set", JSONObject().put("destroy", p.getJSONArray("ids"))))
-            "send", "draft" -> sendOrSave(jmap, kind == "send", p)
+            "send", "draft" -> sendOrSave(jmap, kind == "send", p, retry = tries > 0)
             "restore" -> {
                 val update = JSONObject()
                 val to = p.getString("to")
@@ -331,13 +348,21 @@ class MailActions(private val context: Context) {
         }
     }
 
-    private suspend fun sendOrSave(jmap: Jmap, send: Boolean, p: JSONObject) {
+    private suspend fun sendOrSave(jmap: Jmap, send: Boolean, p: JSONObject, retry: Boolean) {
         val acc = jmap.account.key
         val drafts = db.mailboxByRole(acc, Role.DRAFTS) ?: throw Jmap.JmapError("noDrafts", "no Drafts mailbox")
         val sent = db.mailboxByRole(acc, Role.SENT)
+        val mid = p.optString("mid")
+        val files = p.optJSONArray("files") ?: JSONArray()
+        // A try before this one may have reached Fastmail with its answer lost: a message already sent is done,
+        // a copy left as a draft is replaced by this try.
+        val earlier = if (retry && mid.isNotEmpty()) madeBefore(jmap, mid) else emptyList()
+        if (send && earlier.any { !it.second }) {
+            for (i in 0 until files.length()) runCatching { File(files.getJSONObject(i).getString("path")).delete() }
+            return
+        }
 
         val attachments = JSONArray()
-        val files = p.optJSONArray("files") ?: JSONArray()
         for (i in 0 until files.length()) {
             val f = files.getJSONObject(i)
             val file = File(f.getString("path"))
@@ -357,6 +382,7 @@ class MailActions(private val context: Context) {
         if (p.getJSONArray("cc").length() > 0) email.put("cc", p.getJSONArray("cc"))
         if (p.getJSONArray("bcc").length() > 0) email.put("bcc", p.getJSONArray("bcc"))
         if (attachments.length() > 0) email.put("attachments", attachments)
+        if (mid.isNotEmpty()) email.put("messageId", JSONArray().put(mid))
         p.optString("in_reply_to").takeIf { it.isNotBlank() }?.let { email.put("inReplyTo", JSONArray().put(it.trim('<', '>'))) }
         p.optString("references").takeIf { it.isNotBlank() }?.let { refs ->
             email.put("references", JSONArray(Regex("<([^>]+)>").findAll(refs).map { it.groupValues[1] }.toList()))
@@ -364,7 +390,8 @@ class MailActions(private val context: Context) {
 
         val b = Jmap.Batch(Jmap.SEND)
         val set = JSONObject().put("accountId", jmap.accountId).put("create", JSONObject().put("draft", email))
-        p.optString("replaces").takeIf { it.isNotBlank() }?.let { set.put("destroy", JSONArray().put(it)) }
+        val destroy = (listOfNotNull(p.optString("replaces").takeIf { it.isNotBlank() }) + earlier.map { it.first }).distinct()
+        if (destroy.isNotEmpty()) set.put("destroy", JSONArray(destroy))
         val answered = p.optString("answered").takeIf { it.isNotBlank() }
         if (send && answered != null) set.put("update", JSONObject().put(answered, JSONObject().put("keywords/\$answered", true)))
         val setId = b.add("Email/set", set)
@@ -386,6 +413,16 @@ class MailActions(private val context: Context) {
             res.get(id).optJSONObject("notCreated")?.optJSONObject("sub")?.let { throw Jmap.JmapError(it.optString("type"), it.optString("description")) }
         }
         for (i in 0 until files.length()) runCatching { File(files.getJSONObject(i).getString("path")).delete() }
+    }
+
+    /** Messages already made under [mid], each with whether it is still a draft. */
+    private suspend fun madeBefore(jmap: Jmap, mid: String): List<Pair<String, Boolean>> {
+        val b = Jmap.Batch()
+        val q = b.add("Email/query", JSONObject().put("accountId", jmap.accountId).put("filter", JSONObject().put("header", JSONArray().put("Message-ID").put("<$mid>"))))
+        val g = b.add("Email/get", JSONObject().put("accountId", jmap.accountId).put("properties", JSONArray().put("keywords"))
+            .put("#ids", JSONObject().put("resultOf", q).put("name", "Email/query").put("path", "/ids")))
+        val list = jmap.send(b).get(g).getJSONArray("list")
+        return (0 until list.length()).map { list.getJSONObject(it) }.map { it.getString("id") to (it.optJSONObject("keywords")?.optBoolean("\$draft") == true) }
     }
 
     private fun checkSet(r: JSONObject) {
