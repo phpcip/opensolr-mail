@@ -496,6 +496,22 @@ class MailDb private constructor(context: Context) : SQLiteOpenHelper(context.ap
             generateSequence { if (c.moveToNext()) readMessage(c) else null }.toList()
         })
 
+    /**
+     * One message per Message-ID: the copies a mail server keeps of the same message (the client's Sent copy
+     * and the one saved at sending) show once, as the fullest copy at the last copy's time (as the lists sort it), lying in every folder any copy lies in.
+     */
+    fun withoutCopies(list: List<Message>): List<Message> =
+        list.groupBy { if (it.messageId.isBlank()) "id:" + it.id else "mid:" + it.messageId }.values.map { copies ->
+            if (copies.size == 1) copies[0]
+            else copies.maxWith(compareBy<Message>({ it.size }, { it.received })).copy(
+                received = copies.maxOf { it.received },
+                mailboxIds = copies.flatMap { it.mailboxIds }.toSet(),
+                seen = copies.all { it.seen },
+                flagged = copies.any { it.flagged },
+                answered = copies.any { it.answered },
+            )
+        }.sortedBy { it.received }
+
     /** Many messages of one account, in chunks, with their mailboxes. */
     fun messages(acc: String, ids: List<String>): List<Message> {
         val out = ArrayList<Message>(ids.size)
@@ -616,7 +632,7 @@ class MailDb private constructor(context: Context) : SQLiteOpenHelper(context.ap
         // counts every message it holds; both read through the (acc, thread, received) index.
         val sql = "SELECT g.acc, g.thread, " +
             "(SELECT MAX(t.received) FROM message t WHERE t.acc = g.acc AND t.thread = g.thread) AS latest, " +
-            "(SELECT COUNT(*) FROM message t WHERE t.acc = g.acc AND t.thread = g.thread), g.s, g.f, g.a " +
+            "(SELECT COUNT(DISTINCT $ONE_COPY) FROM message t WHERE t.acc = g.acc AND t.thread = g.thread), g.s, g.f, g.a " +
             "FROM (SELECT acc, thread, MIN(seen) AS s, MAX(flagged) AS f, MAX(has_att) AS a FROM ($scope) GROUP BY acc, thread" +
             (when (flagged) { true -> " HAVING MAX(flagged) = 1"; false -> " HAVING MAX(flagged) = 0"; null -> "" }) +
             ") g ORDER BY latest DESC LIMIT $limit OFFSET $offset"
@@ -668,7 +684,7 @@ class MailDb private constructor(context: Context) : SQLiteOpenHelper(context.ap
         val out = HashMap<String, Int>()
         threads.distinct().chunked(400).forEach { chunk ->
             val marks = chunk.joinToString(",") { "?" }
-            readableDatabase.rawQuery("SELECT thread, COUNT(*) FROM message WHERE acc = ? AND thread IN ($marks) GROUP BY thread", arrayOf(acc) + chunk).use { c ->
+            readableDatabase.rawQuery("SELECT thread, COUNT(DISTINCT ${ONE_COPY.replace("t.", "")}) FROM message WHERE acc = ? AND thread IN ($marks) GROUP BY thread", arrayOf(acc) + chunk).use { c ->
                 while (c.moveToNext()) out[c.getString(0)] = c.getInt(1)
             }
         }
@@ -718,6 +734,15 @@ class MailDb private constructor(context: Context) : SQLiteOpenHelper(context.ap
             readableDatabase.rawQuery("SELECT DISTINCT thread FROM message WHERE acc = ? AND id IN (${chunk.joinToString(",") { "?" }})", arrayOf(acc) + chunk).use { c ->
                 while (c.moveToNext()) out += c.getString(0)
             }
+        }
+        return out
+    }
+
+    /** Every message id of [acc] this phone holds. */
+    fun localIds(acc: String): Set<String> {
+        val out = HashSet<String>()
+        readableDatabase.rawQuery("SELECT id FROM message WHERE acc = ?", arrayOf(acc)).use { c ->
+            while (c.moveToNext()) out += c.getString(0)
         }
         return out
     }
@@ -873,6 +898,8 @@ class MailDb private constructor(context: Context) : SQLiteOpenHelper(context.ap
     }
 
     companion object {
+        /** A message counted once however many copies of it the server keeps: its Message-ID, or its own id without one. */
+        private const val ONE_COPY = "COALESCE(NULLIF(t.message_id, ''), t.id)"
         /**
          * A message row carries its whole body, which can pass the 2 MB a cursor window holds by default and would
          * throw on reading: rows with bodies are read through a window large enough for them.

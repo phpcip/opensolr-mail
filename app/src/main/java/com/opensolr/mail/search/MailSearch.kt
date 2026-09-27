@@ -44,7 +44,7 @@ class MailSearch(private val context: Context) {
         val docId: String = "",
         /** "trash" or "junk" when the message lies there, else empty. */
         val bin: String = "",
-        /** The message's own Message-ID: the same mail held by two accounts shows once. */
+        /** The message's own Message-ID: copies of it in one account show once. */
         val messageId: String = "",
         /** The folders the message lies in, as the index knows them. */
         val folders: List<String> = emptyList(),
@@ -313,18 +313,25 @@ class MailSearch(private val context: Context) {
             hits += parse(response.optJSONArray("docs") ?: JSONArray())
         }
 
+        // Copies of one message (same Message-ID) show the last copy's time, as the lists and the opened conversation do.
+        val lastAt = HashMap<String, Long>()
+        hits.forEach { h -> if (h.messageId.isNotEmpty()) lastAt.merge(h.acc + ":" + h.messageId, h.received) { a, b -> maxOf(a, b) } }
+        hits.replaceAll { h -> lastAt[h.acc + ":" + h.messageId]?.takeIf { h.messageId.isNotEmpty() && it != h.received }?.let { h.copy(received = it) } ?: h }
+        groups.replaceAll { g -> g.copy(hits = g.hits.map { h -> lastAt[h.acc + ":" + h.messageId]?.takeIf { h.messageId.isNotEmpty() && it != h.received }?.let { h.copy(received = it) } ?: h }) }
+
         // One line per conversation, its newest match, with the size of the whole conversation.
         val sizes = HashMap<String, Map<String, Int>>()
         hits.groupBy { it.acc }.forEach { (acc, hs) -> sizes[acc] = runCatching { db.threadSizes(acc, hs.map { it.threadId }.filter { it.isNotEmpty() }) }.getOrDefault(emptyMap()) }
         fun byThread(list: List<Hit>): List<Hit> {
             val out = LinkedHashMap<String, Hit>()
-            val matches = HashMap<String, Int>()
+            // copies of one message (same Message-ID) count once
+            val matches = HashMap<String, HashSet<String>>()
             list.forEach { h ->
                 val k = h.acc + ":" + h.threadId.ifEmpty { h.emailId }
-                matches[k] = (matches[k] ?: 0) + 1
+                matches.getOrPut(k) { HashSet() } += h.messageId.ifEmpty { h.emailId }
                 if (!out.containsKey(k)) out[k] = h
             }
-            return out.map { (k, h) -> h.copy(threadCount = maxOf(sizes[h.acc]?.get(h.threadId) ?: 1, matches[k] ?: 1)) }
+            return out.map { (k, h) -> h.copy(threadCount = maxOf(sizes[h.acc]?.get(h.threadId) ?: 1, matches[k]?.size ?: 1)) }
         }
         val threadHits = if (byRelevance) hits else byThread(hits)
         val threadGroups = groups.map { it.copy(hits = byThread(it.hits)) }

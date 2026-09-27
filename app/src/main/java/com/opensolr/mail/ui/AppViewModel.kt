@@ -370,19 +370,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     /** Conversations of [view]; [flagged] true takes only the flagged ones (pinned on top), false leaves them out. */
     suspend fun threads(view: View, limit: Int, flagged: Boolean? = null): kotlin.collections.List<ThreadRow> = withContext(Dispatchers.IO) {
         val accounts = store.all().map { it.key }.toSet()
-        // One account's folder cannot hold a message twice; across accounts the same mail (an alias, a copy sent
-        // to both) shows once, by its Message-ID. Enough rows are read that the page stays full after that.
-        if (view is View.Box || accounts.size < 2) return@withContext db.threads(view, accounts, limit, 0, flagged)
-        var want = limit
-        var out: kotlin.collections.List<ThreadRow> = emptyList()
-        repeat(4) {
-            val rows = db.threads(view, accounts, want, 0, flagged)
-            val ids = rows.groupBy { it.acc }.flatMap { (acc, rs) -> db.messageIds(acc, rs.map { it.latestId }).map { (id, mid) -> "$acc:$id" to mid } }.toMap()
-            out = rows.distinctBy { r -> ids["${r.acc}:${r.latestId}"]?.takeIf { it.isNotBlank() } ?: "${r.acc}:${r.threadId}" }
-            if (out.size >= limit || rows.size < want) return@withContext out.take(limit)
-            want += limit - out.size
-        }
-        out.take(limit)
+        // Every account keeps its own line: the same mail in two accounts is two messages (Sent in one, Inbox in the other).
+        db.threads(view, accounts, limit, 0, flagged)
     }
 
     suspend fun loadOlder(view: View): Int = withContext(Dispatchers.IO) {
@@ -400,7 +389,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         // The whole conversation, every folder: the phone holds only the mail it synced (Inbox pages, recent
         // changes), so the server is asked which messages the thread has and only the missing ones are fetched.
         runCatching { sync.fetchThread(account, threadId) }
-        db.thread(acc, threadId)
+        db.withoutCopies(db.thread(acc, threadId))
     }
 
     /** Bodies of every message in [list] that has none yet, in one request per account. */

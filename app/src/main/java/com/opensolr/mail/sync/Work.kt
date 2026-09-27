@@ -58,6 +58,21 @@ object Work {
         )
     }
 
+    /** Mail queued for the index goes in at once: a run waiting out a retry delay is replaced, a running one takes the queue itself. Call off the main thread. */
+    fun indexQueued(context: Context) {
+        val prefs = AppPrefs(context)
+        if (prefs.indexStopped || !prefs.signedIn) return
+        if (com.opensolr.mail.data.MailDb.get(context).indexPending() == 0) { index(context); return }
+        val infos = runCatching { WorkManager.getInstance(context).getWorkInfosForUniqueWork("index").get() }.getOrDefault(emptyList())
+        if (infos.any { it.state == androidx.work.WorkInfo.State.RUNNING }) return
+        WorkManager.getInstance(context).enqueueUniqueWork(
+            "index", ExistingWorkPolicy.REPLACE,
+            OneTimeWorkRequestBuilder<IndexWorker>().setConstraints(online)
+                .setExpedited(OutOfQuotaPolicy.RUN_AS_NON_EXPEDITED_WORK_REQUEST)
+                .setBackoffCriteria(BackoffPolicy.LINEAR, 60, TimeUnit.SECONDS).build(),
+        )
+    }
+
     /** Starts the indexer now: a run waiting out a retry delay is replaced, a running one is left alone unless [force]. Call off the main thread. */
     fun indexNow(context: Context, force: Boolean = false) {
         AppPrefs(context).indexStopped = false
@@ -109,7 +124,7 @@ class SyncWorker(context: Context, params: WorkerParameters) : CoroutineWorker(c
         Notifier.showNew(ctx, arrived)
         runCatching { Notifier.cancelGone(ctx) }
         runCatching { MailPush.ensure(ctx) }
-        if (AppPrefs(ctx).signedIn) Work.index(ctx)
+        Work.indexQueued(ctx)
         return Result.success()
     }
 }

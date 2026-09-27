@@ -63,9 +63,11 @@ class MailSync(private val context: Context) {
             } catch (e: Jmap.JmapError) {
                 if (e.type == "cannotCalculateChanges") {
                     // What was deleted meanwhile can no longer be told apart: the local copy starts again from Fastmail.
+                    val known = db.localIds(acc)
                     db.setState(acc, STATE_EMAIL, null)
                     db.forgetMessages(acc)
-                    initialWindow(jmap)
+                    // mail that arrived in the gap was never seen as created: it goes to the index from here
+                    db.queueIndex(acc, initialWindow(jmap).filterNot { it in known }, OP_UPSERT)
                     return@withLock Outcome(emptyList())
                 }
                 throw e
@@ -159,7 +161,7 @@ class MailSync(private val context: Context) {
     }
 
     /** First sync of an account: the newest messages, plus the newest of each special mailbox, so every unified view starts full. */
-    private suspend fun initialWindow(jmap: Jmap) {
+    private suspend fun initialWindow(jmap: Jmap): List<String> {
         val acc = jmap.account.key
         val b = Jmap.Batch()
         val stateId = b.add("Email/get", JSONObject().put("accountId", jmap.accountId).put("ids", JSONArray()))
@@ -181,9 +183,11 @@ class MailSync(private val context: Context) {
         val state = res.get(stateId).getString("state")
         val ids = res.get(q).getJSONArray("ids").strings().toMutableList()
         perBox.forEach { id -> res.opt(id)?.getJSONArray("ids")?.strings()?.let { ids += it } }
-        db.upsertMessages(getHeaders(jmap, ids.distinct()))
+        val window = ids.distinct()
+        db.upsertMessages(getHeaders(jmap, window))
         db.setState(acc, STATE_EMAIL, state)
         if (db.state(acc, STATE_BACKFILL) == null) db.setState(acc, STATE_BACKFILL, "start")
+        return window
     }
 
     private suspend fun queryIds(jmap: Jmap, filter: JSONObject, limit: Int): List<String> {

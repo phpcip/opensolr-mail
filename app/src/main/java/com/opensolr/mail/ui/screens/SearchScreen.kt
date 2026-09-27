@@ -235,10 +235,10 @@ fun SearchScreen(vm: AppViewModel, sheet: String?, screen: Screen? = null) {
     val r = result
     r?.let { knownNames = knownNames + it.names }
     // Later pages can bring more matches from a conversation already listed: it stays one line.
-    // One line per conversation, and one per mail: the same message held by two accounts (an alias, a copy sent to both) shows once.
+    // One line per conversation, and one per mail in each account: every account keeps its own line (Sent in one, Inbox in the other).
     val shownHits = remember(r, extraHits) {
         ((r?.hits.orEmpty()) + extraHits).distinctBy { it.acc + ":" + it.threadId.ifEmpty { it.emailId } }
-            .distinctBy { it.messageId.ifEmpty { it.acc + ":" + it.emailId } }
+            .distinctBy { it.acc + ":" + it.messageId.ifEmpty { it.emailId } }
     }
     // A group comes once even if a later page repeats it: two items with one key would close the app.
     val shownGroups = ((r?.groups.orEmpty()) + extraGroups).distinctBy { it.value }
@@ -248,7 +248,7 @@ fun SearchScreen(vm: AppViewModel, sheet: String?, screen: Screen? = null) {
     val bestKeys = remember(r, groupBy, submitted) {
         val first = r?.hits.orEmpty()
             .distinctBy { it.acc + ":" + it.threadId.ifEmpty { it.emailId } }
-            .distinctBy { it.messageId.ifEmpty { it.acc + ":" + it.emailId } }
+            .distinctBy { it.acc + ":" + it.messageId.ifEmpty { it.emailId } }
         if (groupBy != MailSearch.GroupBy.BEST || submitted.isBlank()) null
         else first.take(scoreCut(first) ?: first.size).map { it.acc + ":" + it.emailId }.toSet()
     }
@@ -543,7 +543,7 @@ fun SearchScreen(vm: AppViewModel, sheet: String?, screen: Screen? = null) {
                 shownGroups.forEach { g ->
                     val key = groupBy.name + ":" + g.value
                     if (!vm.isFolded("search_folds", key)) g.hits.filter { vm.hiddenThreads[keyOf(it)] != true && gone[keyOf(it)] != true }
-                        .distinctBy { it.messageId.ifEmpty { it.acc + ":" + it.emailId } }
+                        .distinctBy { it.acc + ":" + it.messageId.ifEmpty { it.emailId } }
                         .forEach { add(("gh:$key:" + it.acc + ":" + it.emailId) to it) }
                 }
             }
@@ -605,7 +605,7 @@ fun SearchScreen(vm: AppViewModel, sheet: String?, screen: Screen? = null) {
                         Box(itemMotion()) { GroupHeader(groupValueLabel(groupBy, g.value, accounts), g.total, !folded) { vm.toggleFold("search_folds", key) } }
                     }
                     if (!folded) {
-                        items(g.hits.filter { vm.hiddenThreads[keyOf(it)] != true && gone[keyOf(it)] != true }.distinctBy { it.messageId.ifEmpty { it.acc + ":" + it.emailId } }, key = { "gh:$key:" + it.acc + ":" + it.emailId }) { h -> Box(itemMotion()) { ActionHit(h) } }
+                        items(g.hits.filter { vm.hiddenThreads[keyOf(it)] != true && gone[keyOf(it)] != true }.distinctBy { it.acc + ":" + it.messageId.ifEmpty { it.emailId } }, key = { "gh:$key:" + it.acc + ":" + it.emailId }) { h -> Box(itemMotion()) { ActionHit(h) } }
                         if (g.total > g.hits.size) item(key = "more:$key") {
                             val morePress = com.opensolr.mail.ui.rememberPress()
                             Text(

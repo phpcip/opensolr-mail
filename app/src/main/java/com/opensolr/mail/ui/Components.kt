@@ -277,19 +277,25 @@ fun SectionLabel(text: String) {
 
 /** Solr highlight fragments: <em> becomes bold, every other tag goes. */
 fun highlighted(fragment: String) = buildAnnotatedString {
-    val clean = fragment.replace(Regex("<(?!/?em>)[^>]*>"), "")
+    // The markers are set aside first, so a literal "<https://...>" in the mail text is kept and never eats one.
+    val clean = fragment.replace("<em>", EM_OPEN).replace("</em>", EM_CLOSE)
+        .replace(HTML_TAG, "")
         .replace("&lt;", "<").replace("&gt;", ">").replace("&amp;", "&").replace("&quot;", "\"").replace("&#39;", "'")
     var i = 0
     while (i < clean.length) {
-        val s = clean.indexOf("<em>", i)
-        if (s < 0) { append(clean.substring(i)); break }
-        append(clean.substring(i, s))
-        val e = clean.indexOf("</em>", s)
-        if (e < 0) { append(clean.substring(s + 4)); break }
-        withStyle(SpanStyle(fontWeight = FontWeight.Bold)) { append(clean.substring(s + 4, e)) }
-        i = e + 5
+        val s = clean.indexOf(EM_OPEN, i)
+        if (s < 0) { append(clean.substring(i).replace(EM_CLOSE, "")); break }
+        append(clean.substring(i, s).replace(EM_CLOSE, ""))
+        val e = clean.indexOf(EM_CLOSE, s)
+        if (e < 0) { append(clean.substring(s + 1)); break }
+        withStyle(SpanStyle(fontWeight = FontWeight.Bold)) { append(clean.substring(s + 1, e).replace(EM_OPEN, "")) }
+        i = e + 1
     }
 }
+
+private const val EM_OPEN = "\uE000"
+private const val EM_CLOSE = "\uE001"
+private val HTML_TAG = Regex("</?[A-Za-z][A-Za-z0-9-]*(\\s[^<>]*)?/?>")
 
 /** Every date the app shows: mm/dd/yyyy hh:mm:ss. */
 fun fmtDate(ms: Long): String = if (ms <= 0) "" else SimpleDateFormat("MM/dd/yyyy HH:mm:ss", Locale.US).format(Date(ms))

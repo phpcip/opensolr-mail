@@ -773,6 +773,8 @@ class MailIndexer(private val context: Context) {
     private suspend fun attachmentPass(solr: SolrClient, name: String): Boolean {
         if (prefs.embedPausedUntil > System.currentTimeMillis()) return true
         while (System.currentTimeMillis() < runUntil) {
+            // new mail waits for no attachment: the run hands over and the next one indexes it first
+            if (db.indexPending() > 0) return false
             val mine = localFilter() ?: return true
             val res = solr.select(listOf("q" to "*:*", "fq" to "att_todo_b:true", "fq" to mine.first, "acc" to mine.second, "rows" to "5", "sort" to "received_dt desc", "fl" to "account_s,email_id_s"))
             val docs = res.optJSONObject("response")?.optJSONArray("docs") ?: return true
