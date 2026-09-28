@@ -347,8 +347,9 @@ fun ThreadListScreen(vm: AppViewModel, view: View) {
                 onFlag = { run(vm, selected, view) { acc, ids -> vm.setFlagged(acc, ids, anyUnflagged) }; selectedKeys = emptySet() },
                 onArchive = { run(vm, selected, view) { acc, ids -> vm.archive(acc, ids) }; selectedKeys = emptySet() },
                 onDelete = {
-                    val rows = selected
-                    vm.viewModelScopeLaunch { rows.groupBy { it.acc }.forEach { (acc, rs) -> vm.delete(acc, rs.flatMap { vm.deleteIds(it, view) }) } }
+                    val rows = selected.toList()
+                    vm.blocking = vm.text(R.string.whole_working)
+                    vm.viewModelScopeLaunch { try { vm.deleteMany(rows) { view } } finally { vm.blocking = null } }
                     selectedKeys = emptySet()
                 },
                 onForward = { vm.forwardSelected(selected.toList()); selectedKeys = emptySet() },
@@ -370,8 +371,12 @@ fun ThreadListScreen(vm: AppViewModel, view: View) {
 
 /** Applies an action to every message of the selected conversations, grouped per account. */
 private fun run(vm: AppViewModel, rows: Set<ThreadRow>, view: View?, action: (String, List<String>) -> Unit) {
+    vm.blocking = vm.text(R.string.whole_working)
     vm.viewModelScopeLaunch {
-        rows.groupBy { it.acc }.forEach { (acc, rs) -> action(acc, rs.flatMap { vm.threadIds(it, view) }) }
+        try {
+            vm.holdThreads(rows.toList())
+            rows.groupBy { it.acc }.forEach { (acc, rs) -> action(acc, rs.flatMap { vm.threadIds(it, view) }) }
+        } finally { vm.blocking = null }
     }
 }
 

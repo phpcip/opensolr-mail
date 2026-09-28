@@ -3,6 +3,7 @@ package com.opensolr.mail.ui
 import androidx.compose.ui.graphics.luminance
 import androidx.annotation.DrawableRes
 import androidx.compose.foundation.background
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -63,14 +64,19 @@ fun rememberPress(): Press {
     val down by source.collectIsPressedAsState()
     var shown by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
     androidx.compose.runtime.LaunchedEffect(down) {
-        if (down) shown = true else { kotlinx.coroutines.delay(150); shown = false }
+        if (down) shown = true else { kotlinx.coroutines.delay(PRESS_HOLD_MS); shown = false }
     }
     return Press(source, shown)
 }
 
+/** How long a touch stays visible after the finger lifts: a quick tap still shows the whole flash. */
+const val PRESS_HOLD_MS = 260L
+/** How much a touched button grows. */
+const val PRESS_SCALE = 1.08f
+
 /**
- * Every button of the app: 2px corners, a quiet fill and a thin border at rest. On touch the fill flips to
- * the accent ([solid] buttons, already filled, flip to ink) and fades back.
+ * Every button of the app: 2px corners, a quiet fill and a thin border at rest. On touch it flips to ink on
+ * paper (black on white, white on black) with a thick rim, grows a little, and holds that for [PRESS_HOLD_MS].
  */
 @Composable
 fun Modifier.tile(
@@ -83,19 +89,20 @@ fun Modifier.tile(
     onClick: () -> Unit,
 ): Modifier {
     val p = LocalPalette.current
-    val hit = if (solid) p.ink else p.accentFill
-    val speed = androidx.compose.animation.core.tween<Color>(if (press.on) 40 else 220)
+    val hit = p.ink
+    val speed = androidx.compose.animation.core.tween<Color>(if (press.on) 30 else 200)
     val bg by androidx.compose.animation.animateColorAsState(if (press.on) hit else fill ?: p.buttonFill, speed, label = "tileFill")
-    val edge by androidx.compose.animation.animateColorAsState(if (press.on) hit else rim ?: p.hairline, speed, label = "tileRim")
-    return this.clip(SHAPE).background(bg).border(rimWidth, edge, SHAPE)
+    val edge by androidx.compose.animation.animateColorAsState(if (press.on) p.accent else rim ?: p.hairline, speed, label = "tileRim")
+    val scale by androidx.compose.animation.core.animateFloatAsState(if (press.on) PRESS_SCALE else 1f, androidx.compose.animation.core.tween(if (press.on) 60 else 200), label = "tileScale")
+    return this.graphicsLayer { scaleX = scale; scaleY = scale }.clip(SHAPE).background(bg).border(if (press.on) 2.dp else rimWidth, edge, SHAPE)
         .clickable(interactionSource = press.source, indication = null, enabled = enabled, onClick = onClick)
 }
 
-/** The colour of what sits on a [tile]: its own at rest, the one that reads on the pressed fill while touched. */
+/** The colour of what sits on a [tile]: its own at rest, paper on the ink fill while touched. */
 @Composable
 fun Press.tint(rest: Color, solid: Boolean = false): Color {
     val p = LocalPalette.current
-    return if (on) (if (solid) p.paper else p.onAccentFill) else rest
+    return if (on) p.paper else rest
 }
 
 /** The header row of every screen: fill, hairline under it, actions on the right. */
@@ -162,16 +169,23 @@ fun IconBtn(@DrawableRes icon: Int, onClick: () -> Unit, tint: Color? = null, en
 
 /** Filled accent button. */
 @Composable
-fun AccentButton(text: String, onClick: () -> Unit, modifier: Modifier = Modifier, enabled: Boolean = true) {
+fun AccentButton(text: String, onClick: () -> Unit, modifier: Modifier = Modifier, enabled: Boolean = true, @DrawableRes icon: Int? = null) {
     val p = LocalPalette.current
     val view = androidx.compose.ui.platform.LocalView.current
     val press = rememberPress()
     val fill = if (enabled) p.accentFill else p.hairline
-    Box(
+    Row(
         modifier = modifier.heightIn(min = 46.dp).tile(press, enabled, fill = fill, rim = fill, solid = true) { Haptics.tick(view, true); onClick() }
             .padding(horizontal = 18.dp, vertical = 12.dp),
-        contentAlignment = Alignment.Center,
-    ) { Text(text, style = MaterialTheme.typography.labelLarge, color = press.tint(p.onAccentFill, solid = true)) }
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.Center,
+    ) {
+        if (icon != null) {
+            Icon(painterResource(icon), null, tint = press.tint(p.onAccentFill, solid = true), modifier = Modifier.size(18.dp))
+            Spacer(Modifier.width(8.dp))
+        }
+        Text(text, style = MaterialTheme.typography.labelLarge, color = press.tint(p.onAccentFill, solid = true))
+    }
 }
 
 /** Bordered button on the quiet fill. */

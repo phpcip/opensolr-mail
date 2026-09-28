@@ -61,7 +61,6 @@ class MailSearch(private val context: Context) {
         val answered: Boolean = false,
         val attachments: Boolean = false,
         val attachmentText: Boolean = false,
-        val includeTrash: Boolean = false,
     ) {
         fun values(field: String): Set<String> = facets[field].orEmpty()
 
@@ -72,7 +71,7 @@ class MailSearch(private val context: Context) {
         }
 
         val count: Int
-            get() = facets.values.sumOf { it.size } + listOf(dates != null, unread, flagged, answered, attachments, attachmentText, includeTrash).count { it }
+            get() = facets.values.sumOf { it.size } + listOf(dates != null, unread, flagged, answered, attachments, attachmentText).count { it }
 
         companion object {
             /** Facet fields, in the order the filter sheet shows them. */
@@ -103,13 +102,18 @@ class MailSearch(private val context: Context) {
         val highlights: Map<String, Map<String, List<String>>>,
         /** How many messages this page read from the index, before they were folded into conversations: where the next page starts. */
         val fetched: Int = 0,
+        /** The select exactly as it went to the index: an action on the whole result set runs it again on the server. */
+        val params: List<Pair<String, String>> = emptyList(),
     )
 
 
-    suspend fun search(text: String, filters: Filters, groupBy: GroupBy, start: Int = 0, rows: Int = 40, byRelevance: Boolean = false): Result {
+    suspend fun search(text: String, filters: Filters, groupBy: GroupBy, start: Int = 0, rows: Int = 40, byRelevance: Boolean = false, timeWords: Boolean = true, wordsOnly: Boolean = false): Result {
         val connection = MailIndex(context).ensure()
         val solr = SolrClient(connection)
-        val typed = text.trim().take(500)
+        // Words of time ("last month", "2 years ago") leave the text and keep only the messages of the days they mean:
+        // in the text they would pull the meaning towards anything that looks like a date.
+        val time = if (timeWords) TimeWords.parse(text.trim().take(500), context.resources.configuration.locales[0].language) else null
+        val typed = time?.text ?: text.trim().take(500)
         // The words search sees the words only: punctuation that is query syntax to Solr ("?" and "*" wildcards,
         // "~", "^", brackets, "!", "\\", "/") is a space there, so "number?" still finds "number". Quotes and
         // +/- stay: they are the operators the search offers. The meaning is taken from the text as typed.
@@ -127,14 +131,16 @@ class MailSearch(private val context: Context) {
             val ops = SearchOperators.parse(q)
             val embedText = if (ops.hasOps) SearchOperators.parse(typed).base else typed
             p += "qf" to QF
-            p += "mm" to MM
+            val mm = MM_LEVELS[prefs.matchLevel]
+            p += "mm" to mm
             p += "df" to "subject_t"
-            // sow=true: each word is looked for in every field and the words' scores add up, so "hetzner" in the subject
+            // sow=true: each word is looked for in every field and the words' scores add up, so a sender in the subject
             // and "august 2026" in the date count together; the words must match anywhere, not all in one field.
-            val lexical = "{!edismax qf=\"$QF\" mm=\"$MM\" sow=true v=\$uq}"
+            val lexical = "{!edismax qf=\"$QF\" mm=\"$mm\" sow=true v=\$uq}"
             // Meaning only when the plan has it and the month's AI allowance is not spent; otherwise words only.
             val aiOk = prefs.limits?.aiUsable ?: prefs.vectorAllowed
-            val vector = if (prefs.aiSearch && aiOk && embedText.trim().length >= 2) runCatching { vectorOf(connection.indexName, embedText) }.getOrNull() else null
+            // Words only: an action on the whole result set must be deterministic, never a vector's neighbourhood.
+            val vector = if (!wordsOnly && prefs.aiSearch && aiOk && embedText.trim().length >= 2) runCatching { vectorOf(connection.indexName, embedText) }.getOrNull() else null
             if (vector != null && ops.hasOps) {
                 p += "uq" to ops.base
                 val fields = QF.split(' ').filter { it.isNotBlank() }.joinToString(" ") { it.substringBefore('^') }
@@ -172,11 +178,11 @@ class MailSearch(private val context: Context) {
         if (local.isEmpty()) return Result(emptyList(), emptyList(), 0, false, emptyMap(), emptyMap(), emptyList(), emptyMap())
         p += "fq" to "{!terms f=account_s v=\$f_acc}"
         p += "f_acc" to local.joinToString(",") { MailIndexer.indexKey(it) }
-        if (!filters.includeTrash) p += "fq" to "-mailbox_role_ss:(trash OR junk)"
         // Conversations deleted on this phone stay out even before the index has them in Trash; when Trash is
         // searched, only those deleted for good.
+        // Trash and Junk are searched like every folder; only what was deleted for good stays out until the index knows.
         val hide = com.opensolr.mail.data.MailDb.get(context).hidden()
-            .filter { (acc, _, forever) -> forever || !filters.includeTrash }
+            .filter { (acc, _, forever) -> forever }
             .filter { (acc, _, _) -> local.any { it.key == acc } }
             .map { it.second }.distinct()
         if (hide.isNotEmpty()) {
@@ -193,6 +199,10 @@ class MailSearch(private val context: Context) {
         }
         // The picker gives calendar days as UTC midnights; the range is those days in the phone's own time.
         filters.dates?.let { d -> p += "fq" to "received_dt:[${iso(localMidnight(d.from))} TO ${iso(localMidnight(d.to) + 86_399_999)}]" }
+        time?.span?.let { t ->
+            val zone = java.time.ZoneId.systemDefault()
+            p += "fq" to "received_dt:[${iso(t.from.atStartOfDay(zone).toInstant().toEpochMilli())} TO ${iso(t.until.atStartOfDay(zone).toInstant().toEpochMilli())}}"
+        }
         if (filters.unread) p += "fq" to "seen_b:false"
         if (filters.flagged) p += "fq" to "flagged_b:true"
         if (filters.answered) p += "fq" to "answered_b:true"
@@ -256,6 +266,16 @@ class MailSearch(private val context: Context) {
         }
 
         val json = solr.select(p)
+        com.opensolr.mail.util.Diag.init(context)
+        com.opensolr.mail.util.Diag.log("MailSearch", "params " + p.filter { it.first != "vectorQuery" }.joinToString(" | ") { it.first + "=" + it.second.take(120) } +
+            " || numFound=" + (json.optJSONObject("response")?.optLong("numFound") ?: json.optJSONObject("grouped")?.optJSONObject(groupBy.field ?: "")?.optLong("matches")) +
+            " folders=" + json.optJSONObject("facet_counts")?.optJSONObject("facet_fields")?.optJSONArray("mailbox_name_ss"))
+        // Nothing in those days: the same search without them, rather than an empty list.
+        if (time != null) {
+            val found = json.optJSONObject("response")?.optLong("numFound")
+                ?: field?.let { json.optJSONObject("grouped")?.optJSONObject(it)?.optLong("matches") } ?: -1L
+            if (found == 0L) return search(text, filters, groupBy, start, rows, byRelevance, timeWords = false)
+        }
         val localKey = local.associate { MailIndexer.indexKey(it) to it.key }
         val hl = json.optJSONObject("highlighting") ?: JSONObject()
         val aiDocs = ArrayList<AiPrompt.Doc>()
@@ -345,7 +365,7 @@ class MailSearch(private val context: Context) {
             val best = names[email]
             if (best == null || f.count > best.second) names[email] = m.groupValues[1] to f.count
         }
-        return Result(threadHits, threadGroups, total, smart, facets, names.mapValues { it.value.first }, aiDocs, hlMap, fetched = hits.size)
+        return Result(threadHits, threadGroups, total, smart, facets, names.mapValues { it.value.first }, aiDocs, hlMap, fetched = hits.size, params = p)
     }
 
     /** A name the answer may mention: an attachment (opened on a tap) or a mail's subject (its conversation opened). */
@@ -608,7 +628,8 @@ class MailSearch(private val context: Context) {
             override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, FloatArray>?) = size > 100
         }
         private const val QF = "subject_t^3 from_t to_tm cc_tm date_t^8 attachment_names_tm body_t^2 attachment_text_t^0.01 words_ng^0.01 address_ngk^0.01"
-        private const val MM = "2<65% 4<50% 8<40%"
+        /** Minimum match for flexible, balanced and strict. */
+        private val MM_LEVELS = listOf("2<65% 4<50% 8<40%", "2<90% 5<75% 8<60% 12<50%", "2<95% 5<90% 8<80%")
         private const val TOP_K = 790
         /** How many of the first results on screen the AI answer looks at, and the share of the best score one needs to go in. */
         const val ANSWER_ROWS = 10

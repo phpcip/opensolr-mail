@@ -23,6 +23,10 @@ import androidx.compose.ui.unit.dp
 import com.opensolr.mail.AppText
 import com.opensolr.mail.R
 import com.opensolr.mail.data.AccountLimits
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import com.opensolr.mail.ui.theme.LocalPalette
 import java.util.Locale
 
@@ -31,8 +35,6 @@ object PlanInfo {
     const val PRODUCT_URL = "https://opensolr.com/opensolr-mail"
     const val PRIVACY_URL = "https://opensolr.com/opensolr-mail-docs/privacy"
     const val DELETE_ACCOUNT_URL = "https://opensolr.com/delete-account"
-
-    fun indexPanelUrl(indexName: String): String = "https://opensolr.com/admin/solr_manager/tools/" + Uri.encode(indexName)
 
     data class Warning(val title: String, val text: String)
 
@@ -59,6 +61,18 @@ object PlanInfo {
             else if (share >= WARN_AT) out += Warning(AppText.s(R.string.pw_ai_90_title), AppText.s(R.string.pw_ai_90_text, count(l.aiRequestsUsed.toLong()), count(l.maxAiRequests.toLong())))
         }
         return out
+    }
+
+    /** The Opensolr app, which manages the indexes of the account; its product page links every way to install it. */
+    const val OPENSOLR_APP = "com.opensolr.main"
+    const val OPENSOLR_APP_URL = "https://opensolr.com/opensolr-app"
+
+    /** Opens the Opensolr app on [indexName]; false when it is not installed. */
+    fun openInOpensolrApp(context: Context, indexName: String): Boolean {
+        val launch = context.packageManager.getLaunchIntentForPackage(OPENSOLR_APP) ?: return false
+        launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+        if (indexName.isNotBlank()) launch.putExtra("open_index", indexName)
+        return runCatching { context.startActivity(launch) }.isSuccess
     }
 
     fun open(context: Context, url: String) {
@@ -146,9 +160,25 @@ fun PlanDetails(vm: AppViewModel, onSignOut: () -> Unit) {
             Notice(it, title = stringResource(R.string.acc_could_not_refresh))
         }
         Spacer(Modifier.height(12.dp))
+        // The index is managed, and deleted if wanted, in the Opensolr app, or in the control panel without it.
+        var getApp by remember { mutableStateOf(false) }
+        GhostButton(stringResource(R.string.manage_index), onClick = {
+            if (!PlanInfo.openInOpensolrApp(context, vm.prefs.indexName)) getApp = true
+        }, modifier = Modifier.fillMaxWidth())
+        if (getApp) {
+            val p = LocalPalette.current
+            androidx.compose.material3.AlertDialog(
+                onDismissRequest = { getApp = false },
+                title = { Text(stringResource(R.string.get_app_title)) },
+                text = { Text(stringResource(R.string.get_app_text)) },
+                confirmButton = { DialogButton(stringResource(R.string.get_app_install), { getApp = false; PlanInfo.open(context, PlanInfo.OPENSOLR_APP_URL) }, accent = true) },
+                dismissButton = { DialogButton(stringResource(R.string.get_app_browser), { getApp = false; PlanInfo.open(context, PlanInfo.DASHBOARD_URL) }) },
+                containerColor = p.paper, titleContentColor = p.ink, textContentColor = p.ink,
+            )
+        }
+        Spacer(Modifier.height(12.dp))
         ToolRow(listOfNotNull(
             Tool(R.drawable.ic_idx_reload, stringResource(if (vm.limitsLoading) R.string.acc_refreshing else R.string.acc_refresh), active = vm.limitsLoading) { vm.refreshLimits() },
-            if (vm.prefs.indexName.isNotBlank()) Tool(R.drawable.ic_tool_open, stringResource(R.string.tool_index)) { PlanInfo.open(context, PlanInfo.indexPanelUrl(vm.prefs.indexName)) } else null,
             Tool(R.drawable.ic_tool_dashboard, stringResource(R.string.tool_dashboard)) { PlanInfo.open(context, PlanInfo.DASHBOARD_URL) },
             Tool(R.drawable.ic_tool_signout, stringResource(R.string.sign_out), onClick = onSignOut),
             Tool(R.drawable.ic_trash, stringResource(R.string.tool_delete_account)) { PlanInfo.open(context, PlanInfo.DELETE_ACCOUNT_URL) },

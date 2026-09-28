@@ -35,7 +35,7 @@ class AppPrefs(context: Context) {
 
     @SuppressLint("ApplySharedPref")
     fun clearSession() {
-        sp.edit().remove(K_EMAIL).remove(K_KEY).remove(K_INDEX).remove(K_CONN).remove(K_VECTOR).remove(K_LIMITS).remove(K_DEVICE_KEY).commit()
+        sp.edit().remove(K_EMAIL).remove(K_KEY).remove(K_INDEX).remove(K_CONN).remove(K_VECTOR).remove(K_LIMITS).remove(K_DEVICE_KEY).remove("chosen_index").commit()
     }
 
     /** How Account > Devices knows the phone: the id its mail index is named after, so signing it out reaches that index. */
@@ -144,6 +144,16 @@ class AppPrefs(context: Context) {
     var lexicalWeight: Float
         get() = sp.getFloat("lexical_weight", 0.3f).coerceIn(0f, 1f)
         set(v) = sp.edit().putFloat("lexical_weight", v.coerceIn(0f, 1f)).apply()
+
+    /** The index this phone writes to, once known: its own, or one re-used from another phone. */
+    var chosenIndex: String?
+        get() = sp.getString("chosen_index", null)?.takeIf { it.isNotBlank() }
+        set(v) = sp.edit().putString("chosen_index", v ?: "").apply()
+
+    /** How many of the typed words must match: 0 flexible, 1 balanced, 2 strict. */
+    var matchLevel: Int
+        get() = sp.getInt("match_level", 1).coerceIn(0, 2)
+        set(v) = sp.edit().putInt("match_level", v.coerceIn(0, 2)).apply()
 
     var groupBy: String
         get() = sp.getString("search_group", "BEST") ?: "BEST"

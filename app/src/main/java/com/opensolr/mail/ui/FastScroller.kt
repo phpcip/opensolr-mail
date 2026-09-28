@@ -91,6 +91,9 @@ class ScrollIndex {
  * (headings and rows are learned apart), snaps to a nearby title, taps back at every title crossed,
  * and shows the title being passed next to the thumb.
  */
+/** How long the scroller stays visible after the list stops moving. */
+private const val SCROLLER_LINGER_MS = 1800L
+
 @Composable
 fun BoxScope.FastScroller(state: LazyListState, index: ScrollIndex, minItems: Int = 25) {
     val p = LocalPalette.current
@@ -102,12 +105,17 @@ fun BoxScope.FastScroller(state: LazyListState, index: ScrollIndex, minItems: In
     var job by remember { mutableStateOf<Job?>(null) }
     val indexNow by rememberUpdatedState(index)
     val learned = remember { mutableStateMapOf<Boolean, Float>() }
-    LaunchedEffect(state) {
+    // The exact height of every row once it has been on screen (the answer card, a group head, a stacked
+    // conversation all differ): the thumb is placed from real heights wherever they are known, and only the
+    // rows never seen yet are guessed from the averages.
+    val sizes = remember(index) { mutableStateMapOf<Int, Float>() }
+    LaunchedEffect(state, index) {
         snapshotFlow { state.layoutInfo.visibleItemsInfo }.collect { items ->
             val heads = indexNow.heads
             items.forEach { item ->
                 val h = item.size.toFloat()
                 if (h <= 0f || item.index >= heads.size) return@forEach
+                if (sizes[item.index] != h) sizes[item.index] = h
                 val heading = heads[item.index]
                 val old = learned[heading]
                 learned[heading] = if (old == null) h else old * 0.9f + h * 0.1f
@@ -115,28 +123,34 @@ fun BoxScope.FastScroller(state: LazyListState, index: ScrollIndex, minItems: In
         }
     }
     val n = index.labels.size
+    // The thumb stays a while after the list stops, so it is there to grab again.
+    val active = dragging || state.isScrollInProgress
+    var linger by remember { mutableStateOf(false) }
+    LaunchedEffect(active) { if (active) linger = true else { kotlinx.coroutines.delay(SCROLLER_LINGER_MS); linger = false } }
     val alpha by animateFloatAsState(
-        targetValue = if (dragging || state.isScrollInProgress) 1f else 0f,
+        targetValue = if (dragging || linger) 1f else 0f,
         animationSpec = tween(durationMillis = if (dragging) 0 else 450),
         label = "fastScrollerAlpha",
     )
     // A list that fits the screen has nothing to scroll to.
     if (n < minItems || !(state.canScrollForward || state.canScrollBackward)) return
 
-    // Heights stay frozen while dragging so the thumb never jumps under the finger.
+    // The averages stay frozen while the list moves or is dragged, so the thumb never jumps under the finger.
     var heights by remember { mutableStateOf<Map<Boolean, Float>>(emptyMap()) }
     val learnedNow = learned.toMap()
-    LaunchedEffect(learnedNow, dragging) { if (!dragging) heights = learnedNow }
+    val moving = dragging || state.isScrollInProgress
+    LaunchedEffect(learnedNow, moving) { if (!moving) heights = learnedNow }
+    val sizesNow = sizes.toMap()
     val density = LocalDensity.current
     val rowPx = heights[false] ?: with(density) { 72.dp.toPx() }
     val headPx = heights[true] ?: with(density) { 40.dp.toPx() }
 
-    val tops = remember(index, n, rowPx, headPx) {
+    val tops = remember(index, n, rowPx, headPx, sizesNow) {
         val out = FloatArray(n + 1)
         var y = 0f
         for (i in 0 until n) {
             out[i] = y
-            y += if (index.heads[i]) headPx else rowPx
+            y += sizesNow[i] ?: if (index.heads[i]) headPx else rowPx
         }
         out[n] = y
         out
@@ -251,8 +265,12 @@ fun BoxScope.FastScroller(state: ScrollState, marks: ScrollMarks, minScreens: Fl
     val scope = rememberCoroutineScope()
     var dragging by remember { mutableStateOf(false) }
     var aimedPx by remember { mutableIntStateOf(-1) }
+    // The thumb stays a while after the list stops, so it is there to grab again.
+    val active = dragging || state.isScrollInProgress
+    var linger by remember { mutableStateOf(false) }
+    LaunchedEffect(active) { if (active) linger = true else { kotlinx.coroutines.delay(SCROLLER_LINGER_MS); linger = false } }
     val alpha by animateFloatAsState(
-        targetValue = if (dragging || state.isScrollInProgress) 1f else 0f,
+        targetValue = if (dragging || linger) 1f else 0f,
         animationSpec = tween(durationMillis = if (dragging) 0 else 450),
         label = "columnScrollerAlpha",
     )

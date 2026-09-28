@@ -4,6 +4,7 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.WindowInsets
@@ -13,7 +14,9 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.ime
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -96,6 +99,64 @@ fun AppRoot(vm: AppViewModel) {
                 )
             }
         }
+
+        // Mail indexes of other phones on the account: re-use one, or start this phone's own.
+        val indexStatus by com.opensolr.mail.index.MailIndexer.status.collectAsState()
+        if (indexStatus.choices.isNotEmpty()) {
+            val v = androidx.compose.ui.platform.LocalView.current
+            androidx.compose.material3.AlertDialog(
+                onDismissRequest = {},
+                title = { Text(androidx.compose.ui.res.stringResource(com.opensolr.mail.R.string.reuse_title)) },
+                text = {
+                    Column(Modifier.fillMaxWidth().verticalScroll(androidx.compose.foundation.rememberScrollState())) {
+                        indexStatus.choices.sortedByDescending { maxOf(it.lastIndex, it.created) }.forEach { c ->
+                            Column(Modifier.fillMaxWidth().clickable { Haptics.tick(v, true); vm.chooseIndex(c.name) }.padding(vertical = 12.dp)) {
+                                val count = java.text.NumberFormat.getIntegerInstance().format(c.numDocs)
+                                Text(
+                                    androidx.compose.ui.res.stringResource(com.opensolr.mail.R.string.reuse_messages, count),
+                                    style = MaterialTheme.typography.bodyLarge, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold, color = p.ink,
+                                )
+                                val at = maxOf(c.lastIndex, c.created)
+                                if (at > 0) Text(
+                                    androidx.compose.ui.res.stringResource(com.opensolr.mail.R.string.reuse_last, fmtDate(at * 1000L)),
+                                    style = MaterialTheme.typography.bodySmall, fontWeight = androidx.compose.ui.text.font.FontWeight.Medium, color = p.muted,
+                                )
+                            }
+                            Hairline()
+                        }
+                    }
+                },
+                confirmButton = {},
+                dismissButton = { DialogButton(androidx.compose.ui.res.stringResource(com.opensolr.mail.R.string.reuse_new), { vm.chooseIndex(null) }) },
+                containerColor = p.paper, titleContentColor = p.ink, textContentColor = p.ink,
+            )
+        }
+
+        // An action that must finish first: the screen is covered, every touch and the back gesture are swallowed,
+        // a spinner and one line say what is going on.
+        vm.blocking?.let { text ->
+            BackHandler(enabled = true) {}
+            Box(
+                Modifier.fillMaxSize().background(p.ink.copy(alpha = 0.72f))
+                    .clickable(interactionSource = androidx.compose.runtime.remember { androidx.compose.foundation.interaction.MutableInteractionSource() }, indication = null) {},
+                contentAlignment = Alignment.Center,
+            ) {
+                Column(
+                    Modifier.background(p.paper).padding(horizontal = 28.dp, vertical = 24.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                ) {
+                    androidx.compose.material3.CircularProgressIndicator(Modifier.padding(bottom = 16.dp).size(36.dp), color = p.accent, trackColor = p.hairline, strokeWidth = 3.dp)
+                    Text(text, style = MaterialTheme.typography.titleSmall, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold, color = p.ink)
+                }
+            }
+        }
+
+        // The keyboard is open: the first back closes it and nothing else, wherever the reader is. Composed last, so it
+        // takes the back gesture before any screen's own handler.
+        val imeOpen = WindowInsets.ime.getBottom(androidx.compose.ui.platform.LocalDensity.current) > 0
+        val keyboard = androidx.compose.ui.platform.LocalSoftwareKeyboardController.current
+        val focus = androidx.compose.ui.platform.LocalFocusManager.current
+        BackHandler(enabled = imeOpen) { keyboard?.hide(); focus.clearFocus() }
 
         vm.message?.let { msg ->
             LaunchedEffect(msg) {

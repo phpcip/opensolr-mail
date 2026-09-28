@@ -161,11 +161,16 @@ class IndexWorker(context: Context, params: WorkerParameters) : CoroutineWorker(
         return try {
             // Without the foreground notification Android stops a job after 10 minutes, so a run ends by
             // itself before that and the next one carries on; one that got the notification goes on for 30.
-            when (MailIndexer(ctx).run(deadline = System.currentTimeMillis() + BACKGROUND_RUN_MS)) {
+            val outcome = MailIndexer(ctx).run(deadline = System.currentTimeMillis() + BACKGROUND_RUN_MS)
+            com.opensolr.mail.util.Diag.log("IndexWorker", "outcome " + outcome + " attempt " + runAttemptCount)
+            when (outcome) {
                 MailIndexer.Outcome.DONE -> Result.success()
                 MailIndexer.Outcome.MORE -> { Work.index(ctx, continuation = true); Result.success() }
                 MailIndexer.Outcome.RETRY -> Result.retry()
             }
+        } catch (e: Exception) {
+            com.opensolr.mail.util.Diag.log("IndexWorker", "doWork threw", e)
+            throw e
         } finally {
             watcher.cancel()
             ticker.cancel()

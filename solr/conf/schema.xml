@@ -18,7 +18,7 @@
   <dynamicField name="*_txt" type="text_general" indexed="true" stored="false" multiValued="true"/>
   <dynamicField name="*_ng" type="edgy_text_ws" indexed="true" stored="false" multiValued="true"/>
   <dynamicField name="*_ngk" type="edgy_text_kw" indexed="true" stored="false" multiValued="true"/>
-  <dynamicField name="*_vec" type="knn_vector" indexed="true" stored="false"/>
+  <dynamicField name="*_vec" type="knn_vector" indexed="true" stored="true"/>
 
   <copyField source="subject_t" dest="all_txt"/>
   <copyField source="from_t" dest="all_txt"/>

@@ -20,4 +20,7 @@ class IndexMissingException : IOException("The mail index does not exist")
 
 class IndexLimitException : IOException("No room for another index on this plan")
 
+/** Mail indexes of other phones exist on the account: the reader says whether to re-use one before anything is created. */
+class IndexChoiceException(val choices: List<com.opensolr.mail.net.OpensolrApi.IndexInfo>) : IOException("Choose an index in Opensolr Mail")
+
 class EndpointMissingException : java.io.IOException("Endpoint not available")

@@ -161,6 +161,15 @@ fun SearchScreen(vm: AppViewModel, sheet: String?, screen: Screen? = null) {
     var cursor by remember { mutableStateOf(snap?.cursor) }
     var skipFirst by remember { mutableStateOf(snap != null && snap.ai == ai && snap.fresh == fresh && snap.fastmail == fastmail) }
     var loading by remember { mutableStateOf(false) }
+    // A page that brought nothing (the rest hidden after a bulk action): no page after it is asked for until a new search.
+    var pagesDone by remember { mutableStateOf(false) }
+    var selectedKeys by remember { mutableStateOf<Set<String>>(emptySet()) }
+    // "Select all results": the whole result set as the index found it, nothing on it can be deselected; the action
+    // runs on the server from the exact select, one request from here.
+    var wholeSet by remember { mutableStateOf(false) }
+    var wholeBusy by remember { mutableStateOf(false) }
+    // The whole set is a words-only run of the same search: deterministic, so what is moved is exactly what the words match.
+    var wholeResult by remember { mutableStateOf<MailSearch.Result?>(null) }
     var loadingMore by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     // The sheet asked for opens once per entry, not again on the way back from a message.
@@ -195,6 +204,9 @@ fun SearchScreen(vm: AppViewModel, sheet: String?, screen: Screen? = null) {
                 extraHits = emptyList()
                 fetchedMore = 0
                 extraGroups = emptyList()
+                pagesDone = false
+                // A new search is a new list: the whole-set selection of the old one is gone.
+                wholeSet = false; wholeResult = null; selectedKeys = emptySet()
                 // A new result always opens at its top: the list would otherwise stay anchored on
                 // whatever row it showed before (the empty list's last row) and land mid-way down.
                 vm.positions["search"] = 0 to 0
@@ -304,12 +316,13 @@ fun SearchScreen(vm: AppViewModel, sheet: String?, screen: Screen? = null) {
             val read = res.fetched + fetchedMore
             val groupsRead = res.groups.size + extraGroups.size
             val more = if (grouped) groupsRead > 0 && groupsRead % 20 == 0 else read < res.total
-            if (!more) return@collect
+            if (!more || pagesDone) return@collect
             loadingMore = true
             try {
                 val next = vm.search.search(submitted, filters, groupNow, start = if (grouped) groupsRead else read)
                 // A new search started meanwhile: this page belongs to the old one.
                 if (result === res) {
+                    if (next.fetched == 0 && next.groups.isEmpty()) pagesDone = true
                     if (grouped) extraGroups = extraGroups + next.groups else { extraHits = extraHits + next.hits; fetchedMore += next.fetched.coerceAtLeast(1) }
                 }
             } catch (e: CancellationException) {
@@ -326,7 +339,7 @@ fun SearchScreen(vm: AppViewModel, sheet: String?, screen: Screen? = null) {
 
     // The same controls as the mail lists: swipe to delete or flag, long tap to select, the same bar of actions.
     // Flag and read changes show at once; the index catches up at the next indexing.
-    var selectedKeys by remember { mutableStateOf<Set<String>>(emptySet()) }
+    val context = androidx.compose.ui.platform.LocalContext.current
     // The selection when a drag started, and whether that drag unselects.
     var dragBase by remember { mutableStateOf<Set<String>?>(null) }
     var dragOff by remember { mutableStateOf(false) }
@@ -382,8 +395,12 @@ fun SearchScreen(vm: AppViewModel, sheet: String?, screen: Screen? = null) {
         hasAttachment = h.hasAttachment, fromName = h.from, fromEmail = h.fromEmail,
     )
     val allHits = (shownHits + shownGroups.flatMap { it.hits }).filter { it.threadId.isNotEmpty() }.distinctBy { keyOf(it) }
-    val selectedRows = allHits.filter { keyOf(it) in selectedKeys }.map { rowOf(it) }
-    androidx.activity.compose.BackHandler(enabled = selectedKeys.isNotEmpty()) { selectedKeys = emptySet() }
+    // "Select all results": the whole result set as the index found it, nothing on it can be deselected; the action
+    // runs on the server from the exact select, one request from here.
+    var wholePick by remember { mutableStateOf(false) }
+    var wholeAsk by remember { mutableStateOf<AppViewModel.FolderPick?>(null) }
+    val selectedRows = if (wholeSet) emptyList() else allHits.filter { keyOf(it) in selectedKeys }.map { rowOf(it) }
+    androidx.activity.compose.BackHandler(enabled = selectedKeys.isNotEmpty() || wholeSet) { selectedKeys = emptySet(); wholeSet = false; wholeResult = null }
 
     @Composable
     fun ActionHit(h: MailSearch.Hit) {
@@ -395,12 +412,13 @@ fun SearchScreen(vm: AppViewModel, sheet: String?, screen: Screen? = null) {
             key = row,
             onDelete = { if (vm.prefs.confirmSwipeDelete) confirmDelete = row else { gone[k] = true; vm.deleteWithUndo(row, viewOf(row)) { gone.remove(k) } } },
             onFlag = { val was = row.flagged; flagNow[k] = !was; vm.toggleFlagWithUndo(row) { flagNow[k] = was } },
-            enabled = selectedKeys.isEmpty() && h.threadId.isNotEmpty(),
+            enabled = selectedKeys.isEmpty() && !wholeSet && h.threadId.isNotEmpty(),
         ) {
             HitRow(
-                vm, shown, shown.folders.map { it to folderColor(folderRoles[h.acc + ":" + it], it) }, accounts.size > 1, accounts.firstOrNull { it.key == h.acc }?.color, selected = k in selectedKeys,
+                vm, shown, shown.folders.map { it to folderColor(folderRoles[h.acc + ":" + it], it) }, accounts.size > 1, accounts.firstOrNull { it.key == h.acc }?.color, selected = wholeSet || k in selectedKeys,
                 onClick = {
-                    if (selectedKeys.isNotEmpty()) { Haptics.toggle(view, k !in selectedKeys); selectedKeys = if (k in selectedKeys) selectedKeys - k else selectedKeys + k }
+                    if (wholeSet) Haptics.tick(view, false)
+                    else if (selectedKeys.isNotEmpty()) { Haptics.toggle(view, k !in selectedKeys); selectedKeys = if (k in selectedKeys) selectedKeys - k else selectedKeys + k }
                     else if (h.threadId.isNotEmpty()) { seenNow[k] = true; vm.go(Screen.Thread(h.acc, h.threadId)) }
                 },
             )
@@ -469,6 +487,26 @@ fun SearchScreen(vm: AppViewModel, sheet: String?, screen: Screen? = null) {
                 IconAction(if (anyOpen) R.drawable.ic_collapse_all else R.drawable.ic_expand_all, active = false) {
                     if (bestFolded == anyOpen) vm.toggleFold("search_folds", BEST_KEY)
                     vm.setKeySet("search_open", if (anyOpen) openKeys - SIMILAR_KEY else openKeys + SIMILAR_KEY)
+                }
+            }
+            if (!fastmail && r != null && r.total > 0) IconAction(R.drawable.ic_check, active = wholeSet, contentDescription = stringResource(R.string.select_all_results)) {
+                if (wholeSet) { wholeSet = false; wholeResult = null }
+                else {
+                    selectedKeys = emptySet()
+                    wholeBusy = true
+                    vm.blocking = context.getString(R.string.whole_counting)
+                    val text = submitted; val f = filters
+                    vm.viewModelScopeLaunch {
+                        try {
+                            wholeResult = vm.search.search(text, f, MailSearch.GroupBy.NONE, rows = 1, wordsOnly = true)
+                            wholeSet = true
+                        } catch (e: Exception) {
+                            vm.message = e.message ?: vm.text(R.string.err_generic)
+                        } finally {
+                            wholeBusy = false
+                            vm.blocking = null
+                        }
+                    }
                 }
             }
             IconAction(R.drawable.ic_help, active = false, contentDescription = stringResource(R.string.cd_search_help)) { showOperators = true }
@@ -629,12 +667,81 @@ fun SearchScreen(vm: AppViewModel, sheet: String?, screen: Screen? = null) {
         }
         FastScroller(listState, scrollIndex, minItems = 10)
         }
+        wholeResult?.takeIf { wholeSet }?.let { w ->
+            // The whole result set: its count, and the two actions that make sense on thousands at once.
+            Column(Modifier.fillMaxWidth().background(p.dockFill).padding(horizontal = 12.dp, vertical = 8.dp)) {
+                com.opensolr.mail.ui.Hairline()
+                Text(stringResource(R.string.whole_set_count, String.format(Locale.US, "%,d", w.total)), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, color = p.ink, modifier = Modifier.padding(vertical = 8.dp))
+                com.opensolr.mail.ui.AccentButton(stringResource(R.string.whole_move_to), { wholePick = true }, modifier = Modifier.fillMaxWidth(), enabled = !wholeBusy, icon = R.drawable.ic_archive)
+            }
+        }
+        // Where to: every folder any mailbox has; each message goes to that folder in its own mailbox.
+        if (wholePick) {
+            val picks = remember { vm.folderPicks() }
+            androidx.compose.material3.AlertDialog(
+                onDismissRequest = { wholePick = false },
+                title = { Text(stringResource(R.string.whole_move_to)) },
+                text = {
+                    Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState())) {
+                        Text(stringResource(R.string.whole_move_note), style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Medium, color = p.muted)
+                        Spacer(Modifier.height(8.dp))
+                        picks.forEach { pick ->
+                            val press = com.opensolr.mail.ui.rememberPress()
+                            Row(
+                                Modifier.fillMaxWidth().padding(vertical = 3.dp).tile(press) { Haptics.tick(view, false); wholePick = false; wholeAsk = pick }.padding(horizontal = 12.dp, vertical = 11.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Box(Modifier.size(12.dp).background(folderColor(pick.role, pick.name), androidx.compose.foundation.shape.CircleShape))
+                                Spacer(Modifier.width(10.dp))
+                                Text(pick.name, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Bold, color = press.tint(p.ink))
+                            }
+                        }
+                    }
+                },
+                confirmButton = {},
+                dismissButton = { com.opensolr.mail.ui.DialogButton(stringResource(R.string.cancel), { wholePick = false }) },
+                containerColor = p.paper, titleContentColor = p.ink, textContentColor = p.ink,
+            )
+        }
+        wholeAsk?.let { pick ->
+            val total = wholeResult?.total ?: 0L
+            val junk = pick.role == "junk"
+            androidx.compose.material3.AlertDialog(
+                onDismissRequest = { wholeAsk = null },
+                title = { Text(stringResource(R.string.whole_move_title, String.format(Locale.US, "%,d", total), pick.name)) },
+                text = { Text(stringResource(if (junk) R.string.whole_junk_text else R.string.whole_move_text, pick.name)) },
+                confirmButton = {
+                    com.opensolr.mail.ui.DialogButton(stringResource(R.string.whole_move_go), {
+                        wholeAsk = null
+                        val params = wholeResult?.params.orEmpty()
+                        wholeBusy = true
+                        vm.blocking = context.getString(R.string.whole_working)
+                        vm.viewModelScopeLaunch {
+                            try {
+                                val n = vm.mailBulk(pick, params, total)
+                                vm.message = context.getString(R.string.whole_move_done, String.format(Locale.US, "%,d", n), pick.name)
+                                wholeSet = false; wholeResult = null
+                                run()
+                            } catch (e: Exception) {
+                                vm.message = e.message ?: vm.text(R.string.err_generic)
+                            } finally {
+                                wholeBusy = false
+                                vm.blocking = null
+                            }
+                        }
+                    }, accent = true, heavy = true)
+                },
+                dismissButton = { com.opensolr.mail.ui.DialogButton(stringResource(R.string.cancel), { wholeAsk = null }) },
+                containerColor = p.paper, titleContentColor = p.ink, textContentColor = p.ink,
+            )
+        }
         if (selectedRows.isNotEmpty()) {
             val anyUnread = selectedRows.any { it.unread }
             val anyUnflagged = selectedRows.any { !it.flagged }
             fun each(block: suspend (String, List<String>) -> Unit) {
                 val rows = selectedRows
-                vm.viewModelScopeLaunch { rows.groupBy { it.acc }.forEach { (acc, rs) -> block(acc, rs.flatMap { vm.threadIds(it) }) } }
+                vm.blocking = context.getString(R.string.whole_working)
+                vm.viewModelScopeLaunch { try { vm.holdThreads(rows); rows.groupBy { it.acc }.forEach { (acc, rs) -> block(acc, rs.flatMap { vm.threadIds(it) }) } } finally { vm.blocking = null } }
             }
             SelectionBar(
                 count = selectedRows.size, inBins = selectedRows.count { binOf[it.acc + ":" + it.threadId] != null }, flagging = anyUnflagged,
@@ -642,18 +749,22 @@ fun SearchScreen(vm: AppViewModel, sheet: String?, screen: Screen? = null) {
                 readIcon = if (anyUnread) R.drawable.ic_check else R.drawable.ic_unread,
                 readLabel = if (anyUnread) R.string.tool_read else R.string.tool_unread,
                 onFlag = { selectedRows.forEach { flagNow[it.acc + ":" + it.threadId] = anyUnflagged }; each { acc, ids -> vm.setFlagged(acc, ids, anyUnflagged) }; selectedKeys = emptySet() },
-                onArchive = { selectedRows.forEach { gone[it.acc + ":" + it.threadId] = true }; each { acc, ids -> vm.archive(acc, ids) }; selectedKeys = emptySet() },
+                onArchive = { gone.putAll(selectedRows.associate { (it.acc + ":" + it.threadId) to true }); each { acc, ids -> vm.archive(acc, ids) }; selectedKeys = emptySet() },
                 onDelete = {
-                    val rows = selectedRows
-                    rows.forEach { gone[it.acc + ":" + it.threadId] = true }
-                    vm.viewModelScopeLaunch { rows.groupBy { it.acc }.forEach { (acc, rs) -> vm.delete(acc, rs.flatMap { vm.deleteIds(it, viewOf(it)) }) } }
+                    // What is already in Trash stays where it is; only when everything selected is in a bin is it deleted for good.
+                    val rows = selectedRows.filter { binOf[it.acc + ":" + it.threadId] != "trash" }.ifEmpty { selectedRows }
+                    gone.putAll(rows.associate { (it.acc + ":" + it.threadId) to true })
+                    vm.blocking = context.getString(R.string.whole_working)
+                    vm.viewModelScopeLaunch { try { vm.deleteMany(rows, ::viewOf) } finally { vm.blocking = null } }
                     selectedKeys = emptySet()
                 },
-                onForward = { vm.forwardSelected(selectedRows); selectedKeys = emptySet() },
-                onJunk = if (selectedRows.none { binOf[it.acc + ":" + it.threadId] == "junk" }) ({
-                    selectedRows.forEach { gone[it.acc + ":" + it.threadId] = true }
-                    vm.reportJunkRows(selectedRows); selectedKeys = emptySet()
-                }) else null,
+                // Forwarding is for a few conversations, never a whole result set.
+                onForward = { if (selectedRows.size > FORWARD_MAX) vm.message = context.getString(R.string.forward_limit, FORWARD_MAX) else { vm.forwardSelected(selectedRows); selectedKeys = emptySet() } },
+                // What is already in Junk stays; the rest is reported.
+                onJunk = selectedRows.filter { binOf[it.acc + ":" + it.threadId] != "junk" }.takeIf { it.isNotEmpty() }?.let { rows -> ({
+                    gone.putAll(rows.associate { (it.acc + ":" + it.threadId) to true })
+                    vm.reportJunkRows(rows); selectedKeys = emptySet()
+                }) },
                 // Results that all lie in Trash, or all in Junk, can go back to the Inbox, as from those folders.
                 restoreLabel = selectedRows.map { binOf[it.acc + ":" + it.threadId].orEmpty() }.distinct().singleOrNull()?.let {
                     when (it) { "junk" -> R.string.not_junk; "trash" -> R.string.move_to_inbox; else -> null }
@@ -661,7 +772,8 @@ fun SearchScreen(vm: AppViewModel, sheet: String?, screen: Screen? = null) {
                 onRestore = {
                     val rows = selectedRows
                     val notJunk = rows.all { binOf[it.acc + ":" + it.threadId] == "junk" }
-                    vm.viewModelScopeLaunch { rows.groupBy { it.acc }.forEach { (acc, rs) -> vm.restoreToInbox(acc, rs.flatMap { vm.threadIds(it, viewOf(it)) }, notJunk) } }
+                    vm.blocking = context.getString(R.string.whole_working)
+                    vm.viewModelScopeLaunch { try { vm.holdThreads(rows); rows.groupBy { it.acc }.forEach { (acc, rs) -> vm.restoreToInbox(acc, rs.flatMap { vm.threadIds(it, viewOf(it)) }, notJunk) } } finally { vm.blocking = null } }
                     rows.forEach { binOf.remove(it.acc + ":" + it.threadId) }
                     selectedKeys = emptySet()
                 },
@@ -693,9 +805,17 @@ fun SearchScreen(vm: AppViewModel, sheet: String?, screen: Screen? = null) {
         showInstructions = false
     }, onDismiss = { showInstructions = false })
 
+    // A field with a filter on it keeps the values it showed before the filter: the hybrid query's candidates are
+    // fixed once, so the index cannot count the other values of that field any more, and a chosen value must stay
+    // on screen to be un-chosen.
+    val facetMemory = remember { mutableStateMapOf<String, List<MailSearch.Facet>>() }
+    LaunchedEffect(r) { r?.facets?.forEach { (f, list) -> if (filters.facets[f].isNullOrEmpty() && list.isNotEmpty()) facetMemory[f] = list } }
+    val sheetFacets = r?.facets.orEmpty().mapValues { (f, list) ->
+        if (filters.facets[f].isNullOrEmpty()) list else (facetMemory[f] ?: list).map { known -> list.firstOrNull { it.value == known.value } ?: known }
+    }
     if (showFilters) {
         FilterSheet(
-            facets = r?.facets.orEmpty(), current = filters, total = r?.total ?: 0, accounts = accounts.map { it.username },
+            facets = sheetFacets, current = filters, total = r?.total ?: 0, accounts = accounts.map { it.username },
             open = zonesOpen, colorOf = ::facetColor, onToggle = { vm.toggleKey("filter_zones", it) }, onAll = { vm.setKeySet("filter_zones", it) }, onChange = { filters = it }, onDismiss = { showFilters = false },
         )
     }
@@ -779,32 +899,64 @@ private fun SearchOperatorsDialog(onDismiss: () -> Unit) {
         text = {
             val example = stringResource(R.string.ops_example)
             val phraseToo = stringResource(R.string.ops_phrase_too)
-            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                Heading(stringResource(R.string.ops_phrase_h), "\"word1 word2\"")
-                Text(stringResource(R.string.ops_phrase_b), style = MaterialTheme.typography.bodyMedium, color = p.ink)
-                Line(example, "\"purchase order\"", stringResource(R.string.ops_phrase_ex))
-                Text(stringResource(R.string.ops_phrase_ai), style = MaterialTheme.typography.bodyMedium, color = p.muted)
-
-                Spacer(Modifier.height(8.dp))
-                Heading(stringResource(R.string.ops_req_h), "+word")
-                Text(stringResource(R.string.ops_req_b), style = MaterialTheme.typography.bodyMedium, color = p.ink)
-                Line(example, "+invoice hosting march", stringResource(R.string.ops_req_ex))
-                Line(phraseToo, "+\"purchase order\"", stringResource(R.string.ops_req_phrase))
-
-                Spacer(Modifier.height(8.dp))
-                Heading(stringResource(R.string.ops_exc_h), "-word")
-                Text(stringResource(R.string.ops_exc_b), style = MaterialTheme.typography.bodyMedium, color = p.ink)
-                Line(example, "invoice -newsletter", stringResource(R.string.ops_exc_ex))
-                Line(phraseToo, "-\"order confirmation\"", stringResource(R.string.ops_exc_phrase))
-
-                Spacer(Modifier.height(8.dp))
-                Heading(stringResource(R.string.ops_comb_h), null)
-                Text(stringResource(R.string.ops_comb_b), style = MaterialTheme.typography.bodyMedium, color = p.ink)
-                Line(example, "+invoice +\"purchase order\" -newsletter", stringResource(R.string.ops_comb_ex))
-
-                Spacer(Modifier.height(8.dp))
-                Heading(stringResource(R.string.ops_why_h), null)
-                Text(stringResource(R.string.ops_why_b), style = MaterialTheme.typography.bodyMedium, color = p.ink)
+            // Each operator folds under its own heading, all folded at first: the list reads at a glance.
+            var open by remember { mutableStateOf(setOf<String>()) }
+            val view = androidx.compose.ui.platform.LocalView.current
+            @Composable
+            fun Section(key: String, label: String, syntax: String?, body: @Composable () -> Unit) {
+                val on = key in open
+                Column(Modifier.fillMaxWidth()) {
+                    Row(
+                        Modifier.fillMaxWidth().clickable { com.opensolr.mail.ui.Haptics.tick(view, false); open = if (on) open - key else open + key }.padding(vertical = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Icon(
+                            if (on) androidx.compose.material.icons.Icons.Filled.KeyboardArrowDown else androidx.compose.material.icons.Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                            contentDescription = null, tint = p.accent, modifier = Modifier.size(20.dp),
+                        )
+                        Spacer(Modifier.width(6.dp))
+                        Heading(label, syntax)
+                    }
+                    androidx.compose.animation.AnimatedVisibility(
+                        visible = on,
+                        enter = androidx.compose.animation.expandVertically(androidx.compose.animation.core.tween(200)) + androidx.compose.animation.fadeIn(androidx.compose.animation.core.tween(200)),
+                        exit = androidx.compose.animation.shrinkVertically(androidx.compose.animation.core.tween(160)) + androidx.compose.animation.fadeOut(androidx.compose.animation.core.tween(120)),
+                    ) {
+                        Column(Modifier.padding(start = 26.dp, bottom = 12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) { body() }
+                    }
+                    com.opensolr.mail.ui.Hairline()
+                }
+            }
+            Column(Modifier.verticalScroll(rememberScrollState())) {
+                Section("phrase", stringResource(R.string.ops_phrase_h), "\"word1 word2\"") {
+                    Text(stringResource(R.string.ops_phrase_b), style = MaterialTheme.typography.bodyMedium, color = p.ink)
+                    Line(example, "\"purchase order\"", stringResource(R.string.ops_phrase_ex))
+                    Text(stringResource(R.string.ops_phrase_ai), style = MaterialTheme.typography.bodyMedium, color = p.muted)
+                }
+                Section("required", stringResource(R.string.ops_req_h), "+word") {
+                    Text(stringResource(R.string.ops_req_b), style = MaterialTheme.typography.bodyMedium, color = p.ink)
+                    Line(example, "+invoice hosting march", stringResource(R.string.ops_req_ex))
+                    Line(phraseToo, "+\"purchase order\"", stringResource(R.string.ops_req_phrase))
+                }
+                Section("excluded", stringResource(R.string.ops_exc_h), "-word") {
+                    Text(stringResource(R.string.ops_exc_b), style = MaterialTheme.typography.bodyMedium, color = p.ink)
+                    Line(example, "invoice -newsletter", stringResource(R.string.ops_exc_ex))
+                    Line(phraseToo, "-\"order confirmation\"", stringResource(R.string.ops_exc_phrase))
+                }
+                Section("combine", stringResource(R.string.ops_comb_h), null) {
+                    Text(stringResource(R.string.ops_comb_b), style = MaterialTheme.typography.bodyMedium, color = p.ink)
+                    Line(example, "+invoice +\"purchase order\" -newsletter", stringResource(R.string.ops_comb_ex))
+                }
+                Section("time", stringResource(R.string.ops_time_h), null) {
+                    Text(stringResource(R.string.ops_time_b), style = MaterialTheme.typography.bodyMedium, color = p.ink)
+                    Text(stringResource(R.string.ops_time_list), style = MaterialTheme.typography.bodyMedium, color = p.ink)
+                    val lastMonth = java.time.LocalDate.now().minusMonths(1).format(java.time.format.DateTimeFormatter.ofPattern("MMMM yyyy", java.util.Locale.US))
+                    Line(example, stringResource(R.string.ops_time_query), stringResource(R.string.ops_time_ex, lastMonth))
+                    if (java.util.Locale.getDefault().language != "en") Text(stringResource(R.string.ops_time_en), style = MaterialTheme.typography.bodyMedium, color = p.muted)
+                }
+                Section("why", stringResource(R.string.ops_why_h), null) {
+                    Text(stringResource(R.string.ops_why_b), style = MaterialTheme.typography.bodyMedium, color = p.ink)
+                }
             }
         },
         confirmButton = { com.opensolr.mail.ui.DialogButton(stringResource(R.string.ops_close), onDismiss, accent = true) },
@@ -814,6 +966,7 @@ private fun SearchOperatorsDialog(onDismiss: () -> Unit) {
     )
 }
 
+private const val FORWARD_MAX = 10
 private const val BEST_KEY = "BEST:best"
 private const val SIMILAR_KEY = "similar"
 private const val MIN_HITS_TO_CUT = 8
@@ -951,7 +1104,6 @@ private fun ActivePills(filters: MailSearch.Filters, colorOf: (String, String) -
         if (filters.answered) add(Triple(stringResource(R.string.f_answered), filters.copy(answered = false), null))
         if (filters.attachments) add(Triple(stringResource(R.string.with_attachments), filters.copy(attachments = false), null))
         if (filters.attachmentText) add(Triple(stringResource(R.string.f_attachment_text), filters.copy(attachmentText = false), null))
-        if (filters.includeTrash) add(Triple(stringResource(R.string.include_trash), filters.copy(includeTrash = false), null))
     }
     if (pills.isEmpty()) return
     Row(Modifier.fillMaxWidth().background(p.toolFill).horizontalScroll(rememberScrollState()).padding(start = 10.dp, end = 10.dp, bottom = 6.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -1168,7 +1320,7 @@ private fun FilterSheet(
                         }
                     }
                     "is" -> {
-                        val switchesOn = listOf(current.unread, current.flagged, current.answered, current.attachments, current.attachmentText, current.includeTrash).count { it }
+                        val switchesOn = listOf(current.unread, current.flagged, current.answered, current.attachments, current.attachmentText).count { it }
                         Zone(stringResource(R.string.f_message_is), switchesOn, "is" in open, { onToggle("is") }) {
                             FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                                 SheetChip(stringResource(R.string.unread), current.unread) { onChange(current.copy(unread = !current.unread)) }
@@ -1176,7 +1328,6 @@ private fun FilterSheet(
                                 SheetChip(stringResource(R.string.f_answered), current.answered) { onChange(current.copy(answered = !current.answered)) }
                                 SheetChip(stringResource(R.string.with_attachments), current.attachments) { onChange(current.copy(attachments = !current.attachments)) }
                                 SheetChip(stringResource(R.string.f_attachment_text), current.attachmentText) { onChange(current.copy(attachmentText = !current.attachmentText)) }
-                                SheetChip(stringResource(R.string.include_trash), current.includeTrash) { onChange(current.copy(includeTrash = !current.includeTrash)) }
                             }
                         }
                     }

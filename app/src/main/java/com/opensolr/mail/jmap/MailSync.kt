@@ -1,5 +1,7 @@
 package com.opensolr.mail.jmap
 
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.async
 import android.content.Context
 import com.opensolr.mail.data.AccountStore
 import com.opensolr.mail.data.Address
@@ -203,7 +205,7 @@ class MailSync(private val context: Context) {
     /** Headers for [ids], 250 per call. */
     suspend fun getHeaders(jmap: Jmap, ids: List<String>): List<Message> {
         val out = ArrayList<Message>(ids.size)
-        ids.chunked(250).forEach { chunk ->
+        ids.chunked(4000).forEach { chunk ->
             val r = jmap.call("Email/get", JSONObject().put("ids", JSONArray(chunk)).put("properties", Jmap.HEADER_PROPS))
             val list = r.getJSONArray("list")
             for (i in 0 until list.length()) out += parseHeader(jmap.account.key, list.getJSONObject(i))
@@ -260,6 +262,36 @@ class MailSync(private val context: Context) {
     }
 
     /** Every message of a conversation, fetched when some are not held locally yet. */
+    /** Several conversations at once: one Thread/get per 4000, then only the messages this phone does not hold, per 4000. */
+    suspend fun fetchThreads(account: MailAccount, threadIds: Collection<String>) {
+        if (threadIds.isEmpty()) return
+        val jmap = Jmap(context, account)
+        // The Thread/get calls go ten at a time, and so do the Email/get calls for what is missing.
+        val ids = java.util.Collections.synchronizedList(ArrayList<String>())
+        kotlinx.coroutines.coroutineScope {
+            threadIds.distinct().chunked(4000).chunked(10).forEach { wave ->
+                wave.map { chunk ->
+                    async(kotlinx.coroutines.Dispatchers.IO) {
+                        val r = jmap.call("Thread/get", JSONObject().put("ids", JSONArray(chunk)))
+                        val list = r.getJSONArray("list")
+                        for (i in 0 until list.length()) ids += list.getJSONObject(i).optJSONArray("emailIds")?.strings().orEmpty()
+                    }
+                }.awaitAll()
+            }
+        }
+        val held = db.heldIds(account.key, ids)
+        val missing = ids.filterNot { it in held }
+        if (missing.isNotEmpty()) {
+            val fetched = java.util.Collections.synchronizedList(ArrayList<Message>())
+            kotlinx.coroutines.coroutineScope {
+                missing.chunked(4000).chunked(10).forEach { wave ->
+                    wave.map { chunk -> async(kotlinx.coroutines.Dispatchers.IO) { fetched += getHeaders(jmap, chunk) } }.awaitAll()
+                }
+            }
+            db.upsertMessages(fetched.toList())
+        }
+    }
+
     suspend fun fetchThread(account: MailAccount, threadId: String) {
         val jmap = Jmap(context, account)
         val r = jmap.call("Thread/get", JSONObject().put("ids", JSONArray().put(threadId)))

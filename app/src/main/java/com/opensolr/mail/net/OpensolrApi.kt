@@ -94,6 +94,22 @@ class OpensolrApi(private val prefs: AppPrefs) {
     // ---------- index management ----------
 
     /** Names of the account's indexes. */
+    /** An index of the account with what the platform knows of it. */
+    data class IndexInfo(val name: String, val numDocs: Long, val lastIndex: Long, val created: Long) {
+        val isMail: Boolean get() = Regex("^mail_[a-z0-9-]{1,64}__dense$").matches(name)
+    }
+
+    suspend fun indexes(): List<IndexInfo> = withContext(Dispatchers.IO) {
+        val t = post(MANAGEMENT + "get_index_list", form()).trim()
+        if (!t.startsWith("[")) throw ServiceException(message(t))
+        val a = JSONArray(t)
+        (0 until a.length()).mapNotNull { i ->
+            val o = a.optJSONObject(i) ?: return@mapNotNull null
+            val n = o.optString("index_name").takeIf { it.isNotBlank() } ?: return@mapNotNull null
+            IndexInfo(n, o.optLong("num_docs"), o.optLong("last_index"), o.optLong("created"))
+        }
+    }
+
     suspend fun indexNames(): List<String> = withContext(Dispatchers.IO) {
         val t = post(MANAGEMENT + "get_index_list", form()).trim()
         if (!t.startsWith("[")) throw ServiceException(message(t))
@@ -182,6 +198,48 @@ class OpensolrApi(private val prefs: AppPrefs) {
         if (text.startsWith("[")) return@withContext floats(JSONArray(text))
         if (obj(text).optString("msg") == "VECTOR_NOT_ALLOWED") throw VectorNotAllowedException()
         throw ServiceException(message(text))
+    }
+
+    /** One account of this phone as the bulk action needs it: how the index keys it, and how to reach it at Fastmail. */
+    data class BulkAccount(val key: String, val jmapAccountId: String, val apiUrl: String, val token: String, val toId: String, val toName: String, val toRole: String, val maxSet: Int)
+
+    /** What the server moved: the messages and conversations of each account. */
+    data class BulkMoved(val key: String, val emails: List<String>, val threads: List<String>)
+
+    /** Trash or junk for every message a search found, done on the server from the exact select the phone ran. */
+    suspend fun mailBulk(name: String, action: String, params: List<Pair<String, String>>, expected: Long, accounts: List<BulkAccount>): List<BulkMoved> = withContext(Dispatchers.IO) {
+        val body = JSONObject().put("email", email).put("api_key", key).put("index_name", name).put("action", action).put("expected", expected)
+            .put("params", JSONArray(params.map { JSONArray().put(it.first).put(it.second) }))
+            .put("accounts", JSONArray(accounts.map {
+                JSONObject().put("key", it.key).put("jmap_account_id", it.jmapAccountId).put("api_url", it.apiUrl).put("token", it.token)
+                    .put("to_id", it.toId).put("to_name", it.toName).put("to_role", it.toRole).put("max_set", it.maxSet)
+            }))
+        val text = execute(Request.Builder().url(AI + "mail_bulk").post(body.toString().toRequestBody(JSON)).build())
+        val json = obj(text)
+        if (!json.optBoolean("status")) throw ServiceException(json.optString("msg").ifBlank { message(text) })
+        val arr = json.optJSONArray("accounts") ?: JSONArray()
+        (0 until arr.length()).map { i ->
+            val o = arr.getJSONObject(i)
+            BulkMoved(o.optString("key"), o.optJSONArray("emails")?.let { a -> (0 until a.length()).map { a.getString(it) } }.orEmpty(),
+                o.optJSONArray("threads")?.let { a -> (0 until a.length()).map { a.getString(it) } }.orEmpty())
+        }
+    }
+
+    /** The text of up to 20 attachments, fetched from Fastmail and read on api.opensolr.com; null per attachment with none. */
+    suspend fun mailAttachments(name: String, jmapAccountId: String, downloadUrl: String, token: String, items: List<com.opensolr.mail.data.Attachment>): List<String?> = withContext(Dispatchers.IO) {
+        val body = JSONObject().put("email", email).put("api_key", key).put("index_name", name)
+            .put("account", JSONObject().put("jmap_account_id", jmapAccountId).put("download_url", downloadUrl).put("token", token))
+            .put("items", JSONArray(items.map { JSONObject().put("blob", it.blobId).put("name", it.name).put("type", it.type).put("size", it.size) }))
+        val req = Request.Builder().url(AI + "mail_attachments").post(body.toString().toRequestBody(JSON)).build()
+        Http.stream.newCall(req).execute().use { r ->
+            val text = r.body?.string().orEmpty()
+            classify(r.code, text, r.header("Retry-After"))
+            if (r.code == 404 || r.code == 403) throw EndpointMissingException()
+            if (r.code >= 500) throw ServiceException("Opensolr answered HTTP ${r.code}")
+            val json = obj(text)
+            val results = json.optJSONArray("results") ?: throw ServiceException(json.optString("msg").ifBlank { message(text) })
+            (0 until items.size).map { i -> results.optJSONObject(i)?.takeIf { it.optBoolean("status") }?.optString("text")?.takeIf { it.isNotBlank() } }
+        }
     }
 
     /** The text printed in up to 5 pictures (tesseract on api.opensolr.com); null per picture that had none or failed. */

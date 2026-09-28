@@ -196,7 +196,7 @@ fun SettingsScreen(vm: AppViewModel) {
                     s.running -> R.string.idx_running
                     vm.prefs.indexStopped -> R.string.idx_state_stopped
                     s.pending > 0 || !s.historyDone || s.messagesLeft > 0 -> R.string.idx_row_waiting
-                    s.attLeft > 0 -> R.string.idx_waiting_wifi
+                    s.attLeft > 0 -> R.string.idx_row_waiting
                     else -> R.string.idx_row_done
                 }
                 InfoRow(stringResource(R.string.idx_row_state), stringResource(state))
@@ -204,22 +204,23 @@ fun SettingsScreen(vm: AppViewModel) {
                 InfoRow(stringResource(R.string.idx_row_meaning), if (s.withMeaning < 0) "\u2014" else n(s.withMeaning))
                 // What is left is measured against everything at Fastmail, not against what was queued so far.
                 // Each count with its own bar: messages against all at Fastmail, attachments against all messages that have them.
-                InfoRow(stringResource(R.string.idx_row_msgs_left), if (s.messagesLeft < 0) "\u2014" else n(s.messagesLeft))
-                s.messageProgress?.let { (done, total) -> ProgressLine(done, total) }
-                InfoRow(stringResource(R.string.idx_row_attachments), if (s.attLeft < 0) "\u2014" else n(s.attLeft))
-                s.attachmentProgress?.let { (done, total) -> ProgressLine(done, total) }
+                // Two bars, each named: messages indexed of all at Fastmail, attachments read of all messages that have them.
+                s.messageProgress?.let { (done, total) -> ProgressLine(stringResource(R.string.idx_bar_messages), done, total) }
+                    ?: InfoRow(stringResource(R.string.idx_row_msgs_left), if (s.messagesLeft < 0) "\u2014" else n(s.messagesLeft))
+                s.attachmentProgress?.let { (done, total) -> ProgressLine(stringResource(R.string.idx_bar_attachments), done, total) }
+                    ?: InfoRow(stringResource(R.string.idx_row_attachments), if (s.attLeft < 0) "\u2014" else n(s.attLeft))
                 InfoRow(stringResource(R.string.idx_row_history), stringResource(if (s.historyDone) R.string.idx_row_done else R.string.idx_row_reading))
                 InfoRow(stringResource(R.string.idx_row_last), if (s.at > 0) fmtDate(s.at) else "\u2014")
                 InfoRow(stringResource(R.string.idx_row_name), vm.prefs.indexName.ifBlank { "\u2014" })
-                if (s.attLeft > 0) { Spacer(Modifier.height(8.dp)); Notice(stringResource(R.string.idx_att_wifi)) }
                 if (!vm.prefs.vectorAllowed) { Spacer(Modifier.height(8.dp)); Notice(stringResource(R.string.index_words_only)) }
                 if (vm.prefs.embedPausedUntil > System.currentTimeMillis()) { Spacer(Modifier.height(8.dp)); Notice(stringResource(R.string.index_quota)) }
                 Spacer(Modifier.height(12.dp))
                 // The index tools as in Opensolr Photos: one row of small icons with a short label under each.
                 // Those that start over or cost AI requests ask first, in a dialog saying what they do.
                 ToolRow(listOf(
-                    Tool(R.drawable.ic_idx_sync, stringResource(R.string.idx_tool_now), active = s.running) { vm.indexNow() },
-                    Tool(R.drawable.ic_idx_stop, stringResource(R.string.idx_tool_stop), active = vm.prefs.indexStopped) { vm.stopIndex() },
+                    Tool(R.drawable.ic_idx_reload, stringResource(R.string.idx_tool_refresh)) { vm.refreshIndexStatus() },
+                    Tool(R.drawable.ic_idx_sync, stringResource(R.string.idx_tool_now), active = s.running, strong = true) { vm.indexNow() },
+                    Tool(R.drawable.ic_idx_stop, stringResource(R.string.idx_tool_stop), active = vm.prefs.indexStopped, strong = true) { vm.stopIndex() },
                     Tool(R.drawable.ic_idx_repair, stringResource(R.string.idx_tool_repair)) { confirmIndex = "repair" },
                     Tool(R.drawable.ic_idx_reload, stringResource(R.string.idx_tool_reindex)) { confirmIndex = "reindex" },
                     Tool(R.drawable.ic_idx_rebuild, stringResource(R.string.idx_tool_clean)) { confirmIndex = "clean" },
@@ -273,27 +274,52 @@ fun SettingsScreen(vm: AppViewModel) {
                                 Icon(painterResource(R.drawable.ic_check), null, tint = p.onAccentFill, modifier = Modifier.size(18.dp))
                             }
                         }
+                        // Opensolr search settings sit right under the Opensolr choice, only while it is chosen.
+                        if (!fm && chosen) {
+                            Column(Modifier.fillMaxWidth().padding(start = 14.dp, bottom = 12.dp)) {
+                            Spacer(Modifier.height(12.dp))
+                            var lw by remember { mutableStateOf(vm.prefs.lexicalWeight) }
+                            Text(stringResource(R.string.alpha_title), style = MaterialTheme.typography.titleSmall, color = p.ink)
+                            // Semantic on the left, lexical on the right, as in every Opensolr app: to the right means more words.
+                            Text(stringResource(R.string.alpha_value, ((1f - lw) * 100).roundToInt(), (lw * 100).roundToInt()), style = MaterialTheme.typography.bodySmall, color = p.muted)
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(stringResource(R.string.alpha_meaning), style = MaterialTheme.typography.bodySmall, color = p.muted)
+                                androidx.compose.material3.Slider(
+                                    value = lw,
+                                    onValueChange = { v -> val next = (Math.round(v * 20) / 20f).coerceIn(0f, 1f); if (next != lw) Haptics.tick(view, false); lw = next },
+                                    onValueChangeFinished = { vm.prefs.lexicalWeight = lw },
+                                    steps = 19,
+                                    colors = androidx.compose.material3.SliderDefaults.colors(thumbColor = p.accentFill, activeTrackColor = p.accentFill, inactiveTrackColor = p.hairline),
+                                    modifier = Modifier.weight(1f).padding(horizontal = 8.dp),
+                                )
+                                Text(stringResource(R.string.alpha_words), style = MaterialTheme.typography.bodySmall, color = p.muted)
+                            }
+                            // How many of the typed words must match, in three steps.
+                            Spacer(Modifier.height(12.dp))
+                            var level by remember { mutableStateOf(vm.prefs.matchLevel) }
+                            Text(stringResource(R.string.match_title), style = MaterialTheme.typography.titleSmall, color = p.ink)
+                            androidx.compose.material3.Slider(
+                                value = level.toFloat(),
+                                onValueChange = { v -> val next = v.roundToInt().coerceIn(0, 2); if (next != level) { Haptics.tick(view, false); level = next } },
+                                onValueChangeFinished = { vm.prefs.matchLevel = level },
+                                valueRange = 0f..2f, steps = 1,
+                                colors = androidx.compose.material3.SliderDefaults.colors(thumbColor = p.accentFill, activeTrackColor = p.accentFill, inactiveTrackColor = p.hairline),
+                            )
+                            Row(Modifier.fillMaxWidth()) {
+                                listOf(R.string.match_flexible, R.string.match_balanced, R.string.match_strict).forEachIndexed { i, label ->
+                                    Text(
+                                        stringResource(label),
+                                        style = MaterialTheme.typography.bodySmall,
+                                        fontWeight = if (i == level) FontWeight.Bold else FontWeight.Medium,
+                                        color = if (i == level) p.accent else p.muted,
+                                        textAlign = when (i) { 0 -> androidx.compose.ui.text.style.TextAlign.Start; 1 -> androidx.compose.ui.text.style.TextAlign.Center; else -> androidx.compose.ui.text.style.TextAlign.End },
+                                        modifier = Modifier.weight(1f),
+                                    )
+                                }
+                            }
+                            }
+                        }
                         Hairline()
-                    }
-                    // The words/meaning balance belongs to the Opensolr search only.
-                    if (!vm.useFastmailSearch) {
-                    Spacer(Modifier.height(12.dp))
-                    var lw by remember { mutableStateOf(vm.prefs.lexicalWeight) }
-                    Text(stringResource(R.string.alpha_title), style = MaterialTheme.typography.titleSmall, color = p.ink)
-                    // Semantic on the left, lexical on the right, as in every Opensolr app: to the right means more words.
-                    Text(stringResource(R.string.alpha_value, ((1f - lw) * 100).roundToInt(), (lw * 100).roundToInt()), style = MaterialTheme.typography.bodySmall, color = p.muted)
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(stringResource(R.string.alpha_meaning), style = MaterialTheme.typography.bodySmall, color = p.muted)
-                        androidx.compose.material3.Slider(
-                            value = lw,
-                            onValueChange = { v -> val next = (Math.round(v * 20) / 20f).coerceIn(0f, 1f); if (next != lw) Haptics.tick(view, false); lw = next },
-                            onValueChangeFinished = { vm.prefs.lexicalWeight = lw },
-                            steps = 19,
-                            colors = androidx.compose.material3.SliderDefaults.colors(thumbColor = p.accentFill, activeTrackColor = p.accentFill, inactiveTrackColor = p.hairline),
-                            modifier = Modifier.weight(1f).padding(horizontal = 8.dp),
-                        )
-                        Text(stringResource(R.string.alpha_words), style = MaterialTheme.typography.bodySmall, color = p.muted)
-                    }
                     }
                 }
                 }
@@ -379,10 +405,13 @@ internal fun activityOf(context: Context): Activity? {
 
 /** A percentage and its bar, under the count it belongs to. */
 @Composable
-private fun ProgressLine(done: Long, total: Long) {
+private fun ProgressLine(label: String, done: Long, total: Long) {
     val p = LocalPalette.current
-    Spacer(Modifier.height(4.dp))
-    Text(stringResource(R.string.idx_progress, (done * 100 / total).toInt()), style = MaterialTheme.typography.bodySmall, color = p.muted)
+    Spacer(Modifier.height(8.dp))
+    Row(Modifier.fillMaxWidth()) {
+        Text(label, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold, color = p.ink, modifier = Modifier.weight(1f))
+        Text(stringResource(R.string.idx_bar_value, String.format(java.util.Locale.US, "%,d", done), String.format(java.util.Locale.US, "%,d", total), (done * 100 / total).toInt()), style = MaterialTheme.typography.bodySmall, color = p.muted)
+    }
     Spacer(Modifier.height(4.dp))
     LinearProgressIndicator(
         progress = { (done.toDouble() / total).toFloat().coerceIn(0f, 1f) },

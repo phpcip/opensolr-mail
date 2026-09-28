@@ -103,11 +103,12 @@ class Jmap(private val context: Context, val account: MailAccount) {
         if (r.code == 401) { r.close(); r = get(true) }
         r.use {
             if (!it.isSuccessful) throw ServiceException("Download failed: HTTP ${it.code}")
-            // Written beside the target and moved into place whole: a cut download never passes for a finished file.
-            val part = File(target.path + ".part")
+            // Written beside the target under a name of its own and moved into place whole: a cut download never
+            // passes for a finished file, and two downloads of the same blob at once do not trip over one part file.
+            val part = File(target.path + "." + java.util.UUID.randomUUID().toString().take(8) + ".part")
             try {
                 it.body!!.byteStream().use { input -> part.outputStream().use { out -> input.copyTo(out) } }
-                if (!part.renameTo(target)) throw java.io.IOException("Download could not be saved")
+                if (!part.renameTo(target) && !target.exists()) throw java.io.IOException("Download could not be saved")
             } finally {
                 part.delete()
             }

@@ -1,5 +1,7 @@
 package com.opensolr.mail.ui
 
+import androidx.compose.foundation.background
+import androidx.compose.runtime.getValue
 import android.os.Build
 import android.view.HapticFeedbackConstants
 import android.view.View
@@ -72,7 +74,11 @@ object Haptics {
 /** [clickable] that also taps back, so nothing in the app is pressed without being felt. */
 fun Modifier.hapticClickable(enabled: Boolean = true, onClick: () -> Unit): Modifier = composed {
     val view = LocalView.current
-    clickable(enabled = enabled) {
+    // A row or a plain surface: while touched, and a moment after, it darkens with ink so the tap is seen.
+    val press = com.opensolr.mail.ui.rememberPress()
+    val p = com.opensolr.mail.ui.theme.LocalPalette.current
+    val wash by androidx.compose.animation.animateColorAsState(if (press.on) p.ink.copy(alpha = 0.22f) else androidx.compose.ui.graphics.Color.Transparent, androidx.compose.animation.core.tween(if (press.on) 30 else 200), label = "wash")
+    background(wash).clickable(interactionSource = press.source, indication = null, enabled = enabled) {
         Haptics.tap(view)
         onClick()
     }

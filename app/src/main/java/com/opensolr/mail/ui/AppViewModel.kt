@@ -133,6 +133,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     }
     var busy by mutableStateOf(false)
     var message by mutableStateOf<String?>(null)
+
+    /** While set, the whole screen is covered and nothing can be touched: an action that must finish before anything else. */
+    var blocking by mutableStateOf<String?>(null)
     var needsLogin by mutableStateOf<Set<String>>(emptySet())
 
     var update by mutableStateOf<UpdateCheck.Update?>(null)
@@ -188,7 +191,16 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     var searchQuery = ""
 
     fun indexNow() {
+        toast(R.string.idx_started_toast)
         viewModelScope.launch(Dispatchers.IO + Guard) { Work.indexNow(ctx) }
+    }
+
+    /** The index counts read again now, with a word either way. */
+    fun refreshIndexStatus() {
+        viewModelScope.launch(Guard) {
+            val ok = withContext(Dispatchers.IO) { com.opensolr.mail.index.MailIndexer(ctx).refreshStatus() }
+            toast(if (ok) R.string.idx_refreshed_toast else R.string.err_generic)
+        }
     }
 
     fun stopIndex() {
@@ -291,6 +303,14 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     private fun onReady() {
         Work.schedule(ctx)
         viewModelScope.launch(Guard) { runCatching { MailPush.ensure(ctx) } }
+        Work.index(ctx)
+    }
+
+    /** Re-use [name] from another phone, or with null make this phone's own index; then indexing goes on. */
+    fun chooseIndex(name: String?) {
+        prefs.chosenIndex = name ?: MailIndex(ctx).newName
+        MailIndex(ctx).forget()
+        com.opensolr.mail.index.MailIndexer.clearChoices()
         Work.index(ctx)
     }
 
@@ -430,13 +450,17 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     /** Whole conversations reported as spam: they leave the lists by moving to Junk, where they show. */
     fun reportJunkRows(rows: kotlin.collections.List<ThreadRow>) {
         if (rows.isEmpty()) return
+        blocking = ctx.getString(R.string.whole_working)
         viewModelScope.launch(Guard) {
+            try {
+            holdThreads(rows)
             rows.groupBy { it.acc }.forEach { (acc, rs) ->
                 val ids = rs.flatMap { threadIds(it) }
                 withContext(Dispatchers.IO) { db.hide(acc, rs.map { it.threadId }, forever = false) }
                 io { actions.reportJunk(acc, ids) }
             }
             toast(R.string.reported_junk)
+            } finally { blocking = null }
         }
     }
     /**
@@ -666,6 +690,29 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
      * What a delete takes: the whole conversation, every copy in every folder, so it goes to Trash at once.
      * In Trash and Junk only what is there, which is then deleted for good.
      */
+    /** Trash or junk delete of many conversations: their message ids per account, hidden once per account, not one by one. */
+    suspend fun deleteMany(rows: kotlin.collections.List<ThreadRow>, viewOf: (ThreadRow) -> View?) {
+        holdThreads(rows)
+        val perAcc = HashMap<String, ArrayList<String>>()
+        val hideKeep = HashMap<String, ArrayList<String>>()
+        val hideForever = HashMap<String, ArrayList<String>>()
+        rows.forEach { row ->
+            val view = viewOf(row)
+            val bin = when (view) {
+                is View.Unified -> view.role == com.opensolr.mail.data.Role.TRASH || view.role == com.opensolr.mail.data.Role.JUNK
+                is View.Box -> withContext(Dispatchers.IO) { db.mailboxes(row.acc).firstOrNull { it.id == view.mailboxId }?.role } in setOf("trash", "junk")
+                else -> false
+            }
+            perAcc.getOrPut(row.acc) { ArrayList() } += threadIds(row, if (bin) view else null)
+            (if (bin) hideForever else hideKeep).getOrPut(row.acc) { ArrayList() } += row.threadId
+        }
+        withContext(Dispatchers.IO) {
+            hideKeep.forEach { (acc, t) -> db.hide(acc, t, forever = false) }
+            hideForever.forEach { (acc, t) -> db.hide(acc, t, forever = true) }
+        }
+        perAcc.forEach { (acc, ids) -> actions.delete(acc, ids) }
+    }
+
     suspend fun deleteIds(row: ThreadRow, view: View?): kotlin.collections.List<String> {
         val bin = when (view) {
             is View.Unified -> view.role == com.opensolr.mail.data.Role.TRASH || view.role == com.opensolr.mail.data.Role.JUNK
@@ -676,6 +723,66 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         // Out of search at once and for good, whatever the index still says: a Trash or Junk delete is final.
         withContext(Dispatchers.IO) { db.hide(row.acc, listOf(row.threadId), forever = bin) }
         return ids
+    }
+
+    /**
+     * Trash or junk on the whole result set of a search: one request to the server with the select as it ran,
+     * the server moves every message at Fastmail and in the index; this phone then only moves what it holds.
+     */
+    /** A folder as the reader picks it for every mailbox at once: by role where it has one, else by name. */
+    data class FolderPick(val role: String?, val name: String) {
+        fun matches(m: com.opensolr.mail.data.Mailbox) = if (role != null) m.role == role else m.role == null && m.name.equals(name, ignoreCase = true)
+    }
+
+    /** The folders the reader can move a whole result set to: every role and every custom name any mailbox has. */
+    fun folderPicks(): kotlin.collections.List<FolderPick> {
+        val all = db.mailboxes()
+        val out = LinkedHashMap<String, FolderPick>()
+        val order = listOf("inbox", "archive", "trash", "junk", "sent", "drafts")
+        all.filter { it.role != null && it.role != "drafts" }.sortedBy { order.indexOf(it.role).let { i -> if (i < 0) 99 else i } }.forEach { m -> out.putIfAbsent("r:" + m.role, FolderPick(m.role, m.name)) }
+        all.filter { it.role == null }.sortedBy { it.name.lowercase() }.forEach { m -> out.putIfAbsent("n:" + m.name.lowercase(), FolderPick(null, m.name)) }
+        return out.values.toList()
+    }
+
+    suspend fun mailBulk(target: FolderPick, params: kotlin.collections.List<Pair<String, String>>, expected: Long): Int {
+        val action = if (target.role == "junk") "junk" else "move"
+        val accounts = withContext(Dispatchers.IO) {
+            store.all().mapNotNull { a ->
+                val box = db.mailboxes(a.key).firstOrNull { target.matches(it) } ?: return@mapNotNull null
+                val token = runCatching { FastmailAuth.accessToken(ctx, a.key) }.getOrNull() ?: return@mapNotNull null
+                // An account signed in before the JMAP account id was kept: asked from the session now, used for this request only.
+                // The session says the account id and how many objects one Email/set may carry (maxObjectsInSet).
+                val session = runCatching { FastmailAuth.fetchSession(token) }.getOrNull()
+                val jmapId = a.jmapAccountId.ifBlank { session?.optJSONObject("primaryAccounts")?.optString("urn:ietf:params:jmap:mail").orEmpty() }
+                if (jmapId.isBlank()) return@mapNotNull null
+                val maxSet = session?.optJSONObject("capabilities")?.optJSONObject("urn:ietf:params:jmap:core")?.optInt("maxObjectsInSet", 0)?.takeIf { it > 0 } ?: 500
+                com.opensolr.mail.net.OpensolrApi.BulkAccount(com.opensolr.mail.index.MailIndexer.indexKey(a), jmapId, a.apiUrl, token, box.id, box.name, box.role.orEmpty(), maxSet)
+            }
+        }
+        com.opensolr.mail.util.Diag.init(ctx)
+        com.opensolr.mail.util.Diag.log("MailBulk", action + " on " + expected + ": " + store.all().size + " accounts on phone, " + accounts.size + " ready: " +
+            accounts.joinToString(" ") { "key=" + it.key + " jmap=" + it.jmapAccountId.isNotBlank() + " api=" + it.apiUrl + " to=" + it.toId.isNotBlank() })
+        if (accounts.isEmpty()) throw com.opensolr.mail.net.ServiceException(ctx.getString(R.string.whole_no_accounts))
+        val moved = com.opensolr.mail.net.OpensolrApi(prefs).mailBulk(prefs.indexName, action, params, expected, accounts)
+        withContext(Dispatchers.IO) {
+            moved.forEach { m ->
+                val a = store.all().firstOrNull { com.opensolr.mail.index.MailIndexer.indexKey(it) == m.key } ?: return@forEach
+                val box = db.mailboxes(a.key).firstOrNull { target.matches(it) } ?: return@forEach
+                val held = db.heldIds(a.key, m.emails)
+                if (held.isNotEmpty()) db.moveLocal(a.key, held, box.id)
+            }
+        }
+        runCatching { com.opensolr.mail.sync.Notifier.cancelGone(ctx) }
+        return moved.sumOf { it.emails.size }
+    }
+
+    /** Conversations of [rows] this phone does not hold yet, fetched in a few requests per account rather than one each. */
+    suspend fun holdThreads(rows: kotlin.collections.List<ThreadRow>) = withContext(Dispatchers.IO) {
+        rows.groupBy { it.acc }.forEach { (acc, rs) ->
+            val a = store.get(acc) ?: return@forEach
+            val missing = rs.map { it.threadId }.filter { it.isNotEmpty() }.distinct().filter { db.thread(acc, it).isEmpty() }
+            if (missing.isNotEmpty()) runCatching { sync.fetchThreads(a, missing) }
+        }
     }
 
     suspend fun threadIds(row: ThreadRow, view: View? = null): kotlin.collections.List<String> = withContext(Dispatchers.IO) {
