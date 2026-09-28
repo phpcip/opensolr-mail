@@ -10,7 +10,7 @@ import kotlinx.coroutines.flow.StateFlow
 import org.json.JSONArray
 
 /** The local copy of the mail: mailboxes, message headers (bodies once opened), identities, sync state, and the queues. */
-class MailDb private constructor(context: Context) : SQLiteOpenHelper(context.applicationContext, "mail.db", null, 1) {
+class MailDb private constructor(context: Context) : SQLiteOpenHelper(context.applicationContext, "mail.db", null, 2) {
 
     /** Bumped on every write the lists care about, so screens re-query. */
     private val _version = MutableStateFlow(0L)
@@ -256,12 +256,22 @@ class MailDb private constructor(context: Context) : SQLiteOpenHelper(context.ap
         db.execSQL("CREATE TABLE state (acc TEXT NOT NULL, kind TEXT NOT NULL, value TEXT NOT NULL, PRIMARY KEY (acc, kind))")
         db.execSQL("CREATE TABLE identity (acc TEXT NOT NULL, id TEXT NOT NULL, name TEXT NOT NULL, email TEXT NOT NULL, reply_to TEXT NOT NULL, bcc TEXT NOT NULL, signature TEXT NOT NULL, PRIMARY KEY (acc, id))")
         db.execSQL("CREATE TABLE ops (id INTEGER PRIMARY KEY AUTOINCREMENT, acc TEXT NOT NULL, kind TEXT NOT NULL, payload TEXT NOT NULL, created INTEGER NOT NULL, tries INTEGER NOT NULL DEFAULT 0)")
-        db.execSQL("CREATE TABLE index_queue (acc TEXT NOT NULL, msg TEXT NOT NULL, op TEXT NOT NULL, PRIMARY KEY (acc, msg))")
+        db.execSQL("CREATE TABLE index_queue (acc TEXT NOT NULL, msg TEXT NOT NULL, op TEXT NOT NULL, PRIMARY KEY (acc, msg, op))")
         db.execSQL("CREATE TABLE notified (acc TEXT NOT NULL, msg TEXT NOT NULL, at INTEGER NOT NULL, PRIMARY KEY (acc, msg))")
         createHidden(db)
     }
 
-    override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) = Unit
+    override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
+        if (oldVersion < 2) {
+            // One row per operation: a folder change queued while a full write is pending no longer replaces it.
+            db.execSQL("CREATE TABLE index_queue2 (acc TEXT NOT NULL, msg TEXT NOT NULL, op TEXT NOT NULL, PRIMARY KEY (acc, msg, op))")
+            db.execSQL("INSERT OR REPLACE INTO index_queue2 (acc, msg, op) SELECT acc, msg, op FROM index_queue")
+            db.execSQL("DROP TABLE index_queue")
+            db.execSQL("ALTER TABLE index_queue2 RENAME TO index_queue")
+            // Documents written before this version may carry a folder older than the phone's: every message held is set once more.
+            db.execSQL("INSERT OR REPLACE INTO index_queue (acc, msg, op) SELECT acc, id, ? FROM message", arrayOf(com.opensolr.mail.jmap.MailSync.OP_META))
+        }
+    }
 
     // ---------- state ----------
 
@@ -427,6 +437,7 @@ class MailDb private constructor(context: Context) : SQLiteOpenHelper(context.ap
         db.beginTransaction()
         try {
             ids.forEach { db.update("message", v, "acc = ? AND id = ?", arrayOf(acc, it)) }
+            queueRows(db, acc, ids, com.opensolr.mail.jmap.MailSync.OP_META)
             db.setTransactionSuccessful()
         } finally {
             db.endTransaction()
@@ -439,6 +450,10 @@ class MailDb private constructor(context: Context) : SQLiteOpenHelper(context.ap
         val db = writableDatabase
         db.beginTransaction()
         try {
+            db.execSQL(
+                "INSERT OR REPLACE INTO index_queue (acc, msg, op) SELECT acc, id, ? FROM message WHERE acc = ? AND seen = 0 AND id IN (SELECT msg FROM msg_box WHERE acc = ? AND box = ?)",
+                arrayOf(com.opensolr.mail.jmap.MailSync.OP_META, acc, acc, box),
+            )
             db.execSQL(
                 "UPDATE message SET seen = 1 WHERE acc = ? AND seen = 0 AND id IN (SELECT msg FROM msg_box WHERE acc = ? AND box = ?)",
                 arrayOf(acc, acc, box),
@@ -479,6 +494,7 @@ class MailDb private constructor(context: Context) : SQLiteOpenHelper(context.ap
                 db.delete("msg_box", "acc = ? AND msg = ?", arrayOf(acc, id))
                 db.insert("msg_box", null, ContentValues().apply { put("acc", acc); put("msg", id); put("box", to) })
             }
+            queueRows(db, acc, ids, com.opensolr.mail.jmap.MailSync.OP_META)
             db.setTransactionSuccessful()
         } finally {
             db.endTransaction()
@@ -852,15 +868,38 @@ class MailDb private constructor(context: Context) : SQLiteOpenHelper(context.ap
         val db = writableDatabase
         db.beginTransaction()
         try {
-            ids.forEach {
-                db.insertWithOnConflict("index_queue", null, ContentValues().apply {
-                    put("acc", acc); put("msg", it); put("op", op)
-                }, SQLiteDatabase.CONFLICT_REPLACE)
-            }
+            queueRows(db, acc, ids, op)
             db.setTransactionSuccessful()
         } finally {
             db.endTransaction()
         }
+    }
+
+    private fun queueRows(db: SQLiteDatabase, acc: String, ids: Collection<String>, op: String) {
+        ids.forEach {
+            db.insertWithOnConflict("index_queue", null, ContentValues().apply {
+                put("acc", acc); put("msg", it); put("op", op)
+            }, SQLiteDatabase.CONFLICT_REPLACE)
+        }
+    }
+
+    /** Folder and flags of a message as this phone holds them: what the index is written from. */
+    data class MsgState(val boxes: Set<String>, val seen: Boolean, val flagged: Boolean, val answered: Boolean, val draft: Boolean)
+
+    fun states(acc: String, ids: List<String>): Map<String, MsgState> {
+        if (ids.isEmpty()) return emptyMap()
+        val boxes = mailboxIdsOf(acc, ids)
+        val out = HashMap<String, MsgState>()
+        ids.chunked(400).forEach { chunk ->
+            val marks = chunk.joinToString(",") { "?" }
+            readableDatabase.rawQuery("SELECT id, seen, flagged, answered, draft FROM message WHERE acc = ? AND id IN ($marks)", arrayOf(acc) + chunk).use { c ->
+                while (c.moveToNext()) {
+                    val id = c.getString(0)
+                    out[id] = MsgState(boxes[id].orEmpty(), c.getInt(1) == 1, c.getInt(2) == 1, c.getInt(3) == 1, c.getInt(4) == 1)
+                }
+            }
+        }
+        return out
     }
 
     fun indexBatch(acc: String, op: String, limit: Int): List<String> =
@@ -868,11 +907,11 @@ class MailDb private constructor(context: Context) : SQLiteOpenHelper(context.ap
             generateSequence { if (c.moveToNext()) c.getString(0) else null }.toList()
         }
 
-    fun indexDone(acc: String, ids: Collection<String>) {
+    fun indexDone(acc: String, ids: Collection<String>, op: String) {
         val db = writableDatabase
         db.beginTransaction()
         try {
-            ids.forEach { db.delete("index_queue", "acc = ? AND msg = ?", arrayOf(acc, it)) }
+            ids.forEach { db.delete("index_queue", "acc = ? AND msg = ? AND op = ?", arrayOf(acc, it, op)) }
             db.setTransactionSuccessful()
         } finally {
             db.endTransaction()

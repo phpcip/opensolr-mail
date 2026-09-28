@@ -25,18 +25,21 @@ class MailActions(private val context: Context) {
         Notifier.cancel(context, acc, ids)
         db.setFlags(acc, ids, seen = seen)
         enqueue(acc, "seen", JSONObject().put("ids", JSONArray(ids)).put("value", seen))
+        Work.indexQueued(context)
     }
 
     fun setFlagged(acc: String, ids: List<String>, flagged: Boolean) {
         Notifier.cancel(context, acc, ids)
         db.setFlags(acc, ids, flagged = flagged)
         enqueue(acc, "flag", JSONObject().put("ids", JSONArray(ids)).put("value", flagged))
+        Work.indexQueued(context)
     }
 
     fun move(acc: String, ids: List<String>, to: String) {
         Notifier.cancel(context, acc, ids)
         db.moveLocal(acc, ids, to)
         enqueue(acc, "move", JSONObject().put("ids", JSONArray(ids)).put("to", to))
+        Work.indexQueued(context)
     }
 
     /** To the trash; out of the trash (or junk) it is gone for good. */
@@ -60,6 +63,7 @@ class MailActions(private val context: Context) {
         if (notJunk) db.unblock(acc, db.messages(acc, ids).flatMap { m -> m.from.map { it.email } })
         db.moveLocal(acc, ids, inbox.id)
         enqueue(acc, "restore", JSONObject().put("ids", JSONArray(ids)).put("to", inbox.id).put("notjunk", notJunk))
+        Work.indexQueued(context)
     }
 
     /** Every message of a mailbox marked read, on Fastmail too, however many there are. */
@@ -67,6 +71,7 @@ class MailActions(private val context: Context) {
         db.readAllLocal(acc, box)
         runCatching { Notifier.cancelGone(context) }
         enqueue(acc, "read_box", JSONObject().put("box", box))
+        Work.indexQueued(context)
     }
 
     /** A mailbox (Trash, Junk) emptied for good: its messages are destroyed, not moved anywhere. */
@@ -90,6 +95,7 @@ class MailActions(private val context: Context) {
         Notifier.cancel(context, acc, ids)
         db.moveLocal(acc, ids, junk.id)
         enqueue(acc, "junk", JSONObject().put("ids", JSONArray(ids)).put("to", junk.id))
+        Work.indexQueued(context)
     }
 
     fun archive(acc: String, ids: List<String>) {
@@ -196,14 +202,14 @@ class MailActions(private val context: Context) {
                 merged.forEach { db.opDone(it.id) }
                 if (op.kind == "send") Notifier.sendFailed(context, e.message.orEmpty())
                 // Refused by Fastmail: the local copy of those messages goes back to what Fastmail holds.
-                val ids = payload.optJSONArray("ids")?.strings().orEmpty()
-                if (ids.isNotEmpty()) runCatching { db.upsertMessages(MailSync(context).getHeaders(jmap, ids)) }
+                restoreFromFastmail(jmap, op.acc, payload)
             } catch (e: kotlinx.coroutines.CancellationException) {
                 throw e
             } catch (e: Exception) {
                 if (op.tries >= 20) {
                     merged.forEach { db.opDone(it.id) }
                     if (op.kind == "send") Notifier.sendFailed(context, e.message.orEmpty())
+                    restoreFromFastmail(jmap, op.acc, payload)
                 } else merged.forEach { db.opFailed(it.id) }
                 ok = false
                 break
@@ -225,6 +231,17 @@ class MailActions(private val context: Context) {
         }
         if (touched.isNotEmpty() && com.opensolr.mail.data.AppPrefs(context).signedIn) Work.indexNow(context)
         return ok
+    }
+
+    /** A change that will never reach Fastmail: the phone shows those messages as Fastmail holds them, and the index is told. */
+    private suspend fun restoreFromFastmail(jmap: Jmap, acc: String, payload: JSONObject) {
+        val ids = payload.optJSONArray("ids")?.strings().orEmpty()
+        if (ids.isEmpty()) return
+        runCatching {
+            db.upsertMessages(MailSync(context).getHeaders(jmap, ids))
+            db.queueIndex(acc, ids, MailSync.OP_META)
+            Work.indexQueued(context)
+        }
     }
 
     /** Attachment copies no queued message needs any more (a compose left without sending) go after two days. */

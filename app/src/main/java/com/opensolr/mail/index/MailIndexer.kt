@@ -309,6 +309,7 @@ class MailIndexer(private val context: Context) {
         val ids: List<String>,
         val docs: JSONArray,
         val gone: List<String>,
+        val boxes: Map<String, Mailbox>,
         val commitWithinMs: Int,
     )
 
@@ -336,13 +337,15 @@ class MailIndexer(private val context: Context) {
                 val acc = account.key
                 val deletes = db.indexBatch(acc, MailSync.OP_DELETE, 500)
                 if (deletes.isNotEmpty()) {
-                    solr.deleteIds(deletes.map { docId(account, it) })
-                    db.indexDone(acc, deletes)
+                    indexWriteLock.withLock { solr.deleteIds(deletes.map { docId(account, it) }) }
+                    db.indexDone(acc, deletes, MailSync.OP_DELETE)
                     continue
                 }
-                val meta = db.indexBatch(acc, MailSync.OP_META, 200)
+                val meta = db.indexBatch(acc, MailSync.OP_META, 4000)
                 if (meta.isNotEmpty()) {
-                    applyMeta(acc, meta)
+                    // A move or a flag change seen at Fastmail: the documents' folder and flags are set at once, no rewrite.
+                    setFolderAndFlags(solr, account, meta)
+                    db.indexDone(acc, meta, MailSync.OP_META)
                     continue
                 }
                 // Rows written off in this run are read past, never around: the ask grows by as many.
@@ -367,7 +370,7 @@ class MailIndexer(private val context: Context) {
         /** The batch is in the index: its rows leave the queue. */
         fun done(ids: List<String>) {
             inFlight -= ids.toSet()
-            db.indexDone(account.key, ids)
+            db.indexDone(account.key, ids, MailSync.OP_UPSERT)
         }
 
         /** The batch goes back: its rows are handed out again, in this run. */
@@ -558,7 +561,7 @@ class MailIndexer(private val context: Context) {
     private suspend fun indexFull(jmap: Jmap, solr: SolrClient, name: String, account: MailAccount, ids: List<String>, boxes: Map<String, Mailbox>, notes: Mailbox?, fresh: Map<String, String> = emptyMap()) {
         val prepared = prepareBatch(jmap, solr, account, ids, boxes, notes, fresh)
         writeBatch(solr, embedBatch(name, prepared))
-        db.indexDone(account.key, ids)
+        db.indexDone(account.key, ids, MailSync.OP_UPSERT)
     }
 
     /**
@@ -647,7 +650,7 @@ class MailIndexer(private val context: Context) {
             if (m.id in p.attDone) o.put("att_todo_b", false)
             docs.put(o)
         }
-        return Written(p.source, p.account, p.ids, docs, p.gone, p.commitWithinMs)
+        return Written(p.source, p.account, p.ids, docs, p.gone, p.boxes, p.commitWithinMs)
     }
 
     /**
@@ -660,34 +663,44 @@ class MailIndexer(private val context: Context) {
         val connection = MailIndex(context).ensure()
         val solr = SolrClient(connection)
         if (gone) {
-            ids.chunked(4000).forEach { solr.deleteIds(it.map { id -> docId(account, id) }, LIVE_ACTION_MS) }
+            indexWriteLock.withLock { ids.chunked(4000).forEach { solr.deleteIds(it.map { id -> docId(account, id) }, LIVE_ACTION_MS) } }
         } else {
-            // What the reader changed is the folder and the flags: those fields alone are set on the documents,
-            // the vector and the text stay as they are. Messages this phone does not hold are read once from
-            // Fastmail, headers only, four thousand a call.
-            val boxes = db.mailboxes(account.key).associateBy { it.id }
-            val held = db.messages(account.key, ids).associateBy { it.id }
-            val missing = ids.filterNot { it in held }
-            val fetched = if (missing.isEmpty()) emptyList() else MailSync(context).getHeaders(Jmap(context, account), missing)
-            if (fetched.isNotEmpty()) db.upsertMessages(fetched)
-            val all = held.values + fetched
-            all.chunked(4000).forEach { chunk ->
+            setFolderAndFlags(solr, account, ids)
+        }
+        db.indexDone(account.key, ids, if (gone) MailSync.OP_DELETE else MailSync.OP_META)
+    }
+
+    /**
+     * The folder and the flags of these messages set on their documents, nothing else touched: the vector and
+     * the text stay. Messages this phone does not hold are read once from Fastmail, headers only, four thousand a call.
+     */
+    private suspend fun setFolderAndFlags(solr: SolrClient, account: MailAccount, ids: List<String>) {
+        val boxes = db.mailboxes(account.key).associateBy { it.id }
+        val missing = ids.filterNot { it in db.heldIds(account.key, ids) }
+        val fetched = if (missing.isEmpty()) emptyList() else MailSync(context).getHeaders(Jmap(context, account), missing)
+        if (fetched.isNotEmpty()) db.upsertMessages(fetched)
+        // Read and written under the lock: nothing written from an older reading lands after this.
+        indexWriteLock.withLock {
+            val states = db.states(account.key, ids)
+            states.entries.chunked(4000).forEach { chunk ->
                 val docs = JSONArray()
-                chunk.forEach { m ->
-                    docs.put(JSONObject()
-                        .put("id", docId(account, m.id))
-                        .put("mailbox_ss", JSONObject().put("set", JSONArray(m.mailboxIds.toList())))
-                        .put("mailbox_role_ss", JSONObject().put("set", JSONArray(m.mailboxIds.mapNotNull { boxes[it]?.role })))
-                        .put("mailbox_name_ss", JSONObject().put("set", JSONArray(m.mailboxIds.mapNotNull { boxes[it]?.name })))
-                        .put("seen_b", JSONObject().put("set", m.seen))
-                        .put("flagged_b", JSONObject().put("set", m.flagged))
-                        .put("answered_b", JSONObject().put("set", m.answered))
-                        .put("draft_b", JSONObject().put("set", m.draft)))
-                }
+                chunk.forEach { (id, st) -> docs.put(stateFields(JSONObject().put("id", docId(account, id)), st, boxes, set = true)) }
                 solr.add(docs, LIVE_ACTION_MS)
             }
         }
-        db.indexDone(account.key, ids)
+    }
+
+    /** The folder and flag fields of a document; with [set] as an atomic update that leaves the rest of the document alone. */
+    private fun stateFields(o: JSONObject, st: MailDb.MsgState, boxes: Map<String, Mailbox>, set: Boolean): JSONObject {
+        fun v(x: Any): Any = if (set) JSONObject().put("set", x) else x
+        return o
+            .put("mailbox_ss", v(JSONArray(st.boxes.toList())))
+            .put("mailbox_role_ss", v(JSONArray(st.boxes.mapNotNull { boxes[it]?.role })))
+            .put("mailbox_name_ss", v(JSONArray(st.boxes.mapNotNull { boxes[it]?.name })))
+            .put("seen_b", v(st.seen))
+            .put("flagged_b", v(st.flagged))
+            .put("answered_b", v(st.answered))
+            .put("draft_b", v(st.draft))
     }
 
     /** A whole mailbox emptied for good: its documents leave the index at once. */
@@ -717,9 +730,18 @@ class MailIndexer(private val context: Context) {
     }
 
     /** Stage three: the one write of a batch, and the messages that are no longer at Fastmail. */
-    private suspend fun writeBatch(solr: SolrClient, w: Written) {
+    private suspend fun writeBatch(solr: SolrClient, w: Written) = indexWriteLock.withLock {
         if (w.gone.isNotEmpty()) solr.deleteIds(w.gone.map { docId(w.account, it) })
-        if (w.docs.length() > 0) solr.add(w.docs, w.commitWithinMs)
+        if (w.docs.length() > 0) {
+            // A move or a flag made on this phone since the batch was read from Fastmail wins over what was read.
+            val ids = (0 until w.docs.length()).map { w.docs.getJSONObject(it).optString("email_id_s") }
+            val states = db.states(w.account.key, ids)
+            for (i in 0 until w.docs.length()) {
+                val o = w.docs.getJSONObject(i)
+                states[o.optString("email_id_s")]?.let { stateFields(o, it, w.boxes, set = false) }
+            }
+            solr.add(w.docs, w.commitWithinMs)
+        }
     }
 
     /** Two accounts write the same conversation when a reply crossed between them: of each Message-ID under this phone's accounts, only the first written stays. Runs after every pass. */
@@ -778,12 +800,6 @@ class MailIndexer(private val context: Context) {
         }
     }
 
-    /** Moves and flag changes: the vector is not stored, so an atomic update would lose it; the document is written again in full. */
-    private fun applyMeta(acc: String, ids: List<String>) {
-        db.indexDone(acc, ids)
-        db.queueIndex(acc, ids, MailSync.OP_UPSERT)
-    }
-
     /** Documents written when the body was still cut are written again with the whole body. True when none are left. */
     private suspend fun fullBodyBackfill(solr: SolrClient): Boolean {
         val mine = localFilter() ?: return true
@@ -820,13 +836,6 @@ class MailIndexer(private val context: Context) {
             .put("email_id_s", m.id)
             .put("thread_id_s", m.threadId)
             .put("message_id_s", m.messageId)
-            .put("mailbox_ss", JSONArray(m.mailboxIds.toList()))
-            .put("mailbox_role_ss", JSONArray(m.mailboxIds.mapNotNull { boxes[it]?.role }))
-            .put("mailbox_name_ss", JSONArray(m.mailboxIds.mapNotNull { boxes[it]?.name }))
-            .put("seen_b", m.seen)
-            .put("flagged_b", m.flagged)
-            .put("answered_b", m.answered)
-            .put("draft_b", m.draft)
             .put("has_attachment_b", body.attachments.any { !it.inline } || m.hasAttachment)
             .put("received_dt", MailSync.iso(m.received))
             .put("year_i", cal.get(Calendar.YEAR))
@@ -836,6 +845,7 @@ class MailIndexer(private val context: Context) {
             .put("body_t", text)
             .put("body_full_b", true)
             .put("indexed_at_dt", MailSync.iso(System.currentTimeMillis()))
+        stateFields(o, MailDb.MsgState(m.mailboxIds.toSet(), m.seen, m.flagged, m.answered, m.draft), boxes, set = false)
         m.sender?.let {
             o.put("from_s", it.email.lowercase()).put("from_name_s", it.name).put("from_t", (it.name + " " + it.email).trim())
         }
@@ -1021,6 +1031,8 @@ class MailIndexer(private val context: Context) {
 
     companion object {
         const val VECTOR = "embeddings_vec"
+        /** Every write of folder or flag state to the index, full document or atomic, goes through this lock, in order. */
+        private val indexWriteLock = Mutex()
         /** How soon a write made for an action of the reader is searchable. */
         private const val LIVE_ACTION_MS = 500
         const val DOC_VERSION = 9

@@ -811,7 +811,12 @@ fun SearchScreen(vm: AppViewModel, sheet: String?, screen: Screen? = null) {
     val facetMemory = remember { mutableStateMapOf<String, List<MailSearch.Facet>>() }
     LaunchedEffect(r) { r?.facets?.forEach { (f, list) -> if (filters.facets[f].isNullOrEmpty() && list.isNotEmpty()) facetMemory[f] = list } }
     val sheetFacets = r?.facets.orEmpty().mapValues { (f, list) ->
-        if (filters.facets[f].isNullOrEmpty()) list else (facetMemory[f] ?: list).map { known -> list.firstOrNull { it.value == known.value } ?: known }
+        val shown = if (filters.facets[f].isNullOrEmpty()) list else (facetMemory[f] ?: list).map { known -> list.firstOrNull { it.value == known.value } ?: known }
+        // Folders: every role folder of the mailboxes is always offered (Junk, Trash, Archive…), at zero when the search found nothing in it.
+        if (f != "mailbox_name_ss") shown else {
+            val roles = vm.db.mailboxes().filter { it.role != null && it.role != "drafts" }.map { it.name }.distinct()
+            shown + roles.filter { n -> shown.none { it.value.equals(n, ignoreCase = true) } }.map { MailSearch.Facet(it, 0) }
+        }
     }
     if (showFilters) {
         FilterSheet(
