@@ -24,8 +24,8 @@ android {
         applicationId = "com.opensolr.mail"
         minSdk = 26
         targetSdk = 36
-        versionCode = 57
-        versionName = "1.12.1"
+        versionCode = 58
+        versionName = "1.12.2"
     }
 
     flavorDimensions += "store"
@@ -65,7 +65,9 @@ android {
             if (!signingProperties.isEmpty) {
                 signingConfig = signingConfigs.getByName("release")
             }
-            isMinifyEnabled = false
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }
     }
     compileOptions {

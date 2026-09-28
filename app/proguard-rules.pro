@@ -19,3 +19,12 @@
 # If you keep the line number information, uncomment this to
 # hide the original source file name.
 #-renamesourcefileattribute SourceFile
+# WorkManager builds workers by class name.
+-keep class com.opensolr.mail.sync.OpsWorker { <init>(...); }
+-keep class com.opensolr.mail.sync.SyncWorker { <init>(...); }
+-keep class com.opensolr.mail.sync.IndexWorker { <init>(...); }
+# Optional dependencies of OkHttp and jsoup that are not on Android.
+-dontwarn org.conscrypt.**
+-dontwarn org.bouncycastle.**
+-dontwarn org.openjsse.**
+-dontwarn com.google.re2j.**
