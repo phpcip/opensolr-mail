@@ -88,6 +88,8 @@ class MailIndexer(private val context: Context) {
                 if (it.vectorAllowed && it.aiFull) prefs.embedPausedUntil = nextMonth()
             }
             val sp = context.getSharedPreferences("index_status", Context.MODE_PRIVATE)
+            // Stubs left by folder or flag updates on messages held once under another id: removed once.
+            if (!sp.getBoolean("stubs_dropped", false)) { dropStubs(solr); sp.edit().putBoolean("stubs_dropped", true).commit() }
             if (sp.getInt("doc_version", 1) < DOC_VERSION || sp.getBoolean("reindex_all", false)) {
                 db.clearIndexQueue()
                 dropStrayCopies(solr)
@@ -286,6 +288,13 @@ class MailIndexer(private val context: Context) {
                 solr.deleteQuery("account_email_s:\"" + a.username.replace("\\", "\\\\").replace("\"", "\\\"") + "\" AND -account_s:" + indexKey(a))
             }
         }
+    }
+
+    /** Documents of this phone's accounts that carry only folder and flags, never written whole: gone. */
+    private suspend fun dropStubs(solr: SolrClient) {
+        val keys = store.all().map { indexKey(it) }.filter { it.matches(Regex("[0-9a-f]+")) }
+        if (keys.isEmpty()) return
+        solr.deleteQuery("(" + keys.joinToString(" OR ") { "id:" + it + "\\:*" } + ") AND NOT account_s:*")
     }
 
     /** A batch read from Fastmail and ready to be given a vector. */
@@ -685,7 +694,7 @@ class MailIndexer(private val context: Context) {
             states.entries.chunked(4000).forEach { chunk ->
                 val docs = JSONArray()
                 chunk.forEach { (id, st) -> docs.put(stateFields(JSONObject().put("id", docId(account, id)), st, boxes, set = true)) }
-                solr.add(docs, LIVE_ACTION_MS)
+                solr.setExisting(docs, LIVE_ACTION_MS)
             }
         }
     }
@@ -1017,8 +1026,16 @@ class MailIndexer(private val context: Context) {
             else -> maxOf(mailTotal - upToDate, pending.toLong()).coerceAtLeast(0)
         }
 
-        /** Messages whose attachments are still to be read: those in the index plus those with attachments not indexed yet. */
-        val attLeft: Long get() = if (attachmentsLeft < 0) -1 else attachmentsLeft + if (mailWithAtt < 0 || indexedWithAtt < 0) 0 else (mailWithAtt - indexedWithAtt).coerceAtLeast(0)
+        /**
+         * Messages whose attachments are still to be read: those in the index plus those with attachments not indexed yet.
+         * History walked and nothing queued: only the index says what is left (a copy of a message is held once, while
+         * Fastmail counts every copy, so its total is never reached).
+         */
+        val attLeft: Long get() = when {
+            attachmentsLeft < 0 -> -1
+            (historyDone && pending == 0) || mailWithAtt < 0 || indexedWithAtt < 0 -> attachmentsLeft
+            else -> attachmentsLeft + (mailWithAtt - indexedWithAtt).coerceAtLeast(0)
+        }
 
         /** Messages done of all at Fastmail; null until the totals are known. */
         val messageProgress: Pair<Long, Long>? get() =

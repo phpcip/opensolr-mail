@@ -35,6 +35,15 @@ class SolrClient(connection: IndexConnection) {
     /** [commitWithinMs] is how long the index may wait before the write becomes searchable. */
     suspend fun add(docs: JSONArray, commitWithinMs: Int = DEFAULT_COMMIT_MS) = update(docs.toString(), commitWithinMs)
 
+    /**
+     * Atomic updates that touch only documents already in the index: one for a message that has no
+     * document (a copy held once under another id) is dropped by Solr instead of becoming a stub.
+     */
+    suspend fun setExisting(docs: JSONArray, commitWithinMs: Int = DEFAULT_COMMIT_MS) {
+        for (i in 0 until docs.length()) docs.getJSONObject(i).put("_version_", 1)
+        update(docs.toString(), commitWithinMs, "&failOnVersionConflicts=false")
+    }
+
     suspend fun deleteIds(ids: Collection<String>, commitWithinMs: Int = DEFAULT_COMMIT_MS) {
         if (ids.isEmpty()) return
         update(JSONObject().put("delete", JSONArray(ids)).toString(), commitWithinMs)
@@ -51,9 +60,9 @@ class SolrClient(connection: IndexConnection) {
         Unit
     }
 
-    private suspend fun update(body: String, commitWithinMs: Int = DEFAULT_COMMIT_MS) = withContext(Dispatchers.IO) {
+    private suspend fun update(body: String, commitWithinMs: Int = DEFAULT_COMMIT_MS, extra: String = "") = withContext(Dispatchers.IO) {
         send { base, auth ->
-            Request.Builder().url("$base/update?commitWithin=$commitWithinMs&wt=json").header("Authorization", auth)
+            Request.Builder().url("$base/update?commitWithin=$commitWithinMs&wt=json$extra").header("Authorization", auth)
                 .post(body.toRequestBody(JSON)).build()
         }
         Unit
