@@ -28,6 +28,11 @@ object Http {
 
     /** Drops the pooled connections (shared by every client above): after the phone slept they are dead and a request on one hangs until its timeout. */
     fun dropIdleConnections() {
-        client.connectionPool.evictAll()
+        // Closing a TLS socket writes close_notify: never on the main thread.
+        evictor.execute { runCatching { client.connectionPool.evictAll() } }
+    }
+
+    private val evictor = java.util.concurrent.Executors.newSingleThreadExecutor { r ->
+        Thread(r, "http-evict").apply { isDaemon = true }
     }
 }
