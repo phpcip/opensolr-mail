@@ -256,7 +256,7 @@ fun ThreadListScreen(vm: AppViewModel, view: View) {
         } else {
             SelectionBar(selected.size, onClear = { selectedKeys = emptySet() })
         }
-        RefreshBox(refreshing = vm.busy, onRefresh = { vm.refresh() }, modifier = Modifier.weight(1f)) {
+        RefreshBox(refreshing = vm.busy, onRefresh = { vm.refresh(manual = true) }, modifier = Modifier.weight(1f)) {
             // Long press and drag selects every conversation between, as in Opensolr Photos.
             var dragBase by remember { mutableStateOf<Set<String>?>(null) }
             var dragOff by remember { mutableStateOf(false) }
@@ -306,7 +306,7 @@ fun ThreadListScreen(vm: AppViewModel, view: View) {
                 }
                 if (loaded && rows.isEmpty() && pinned.isEmpty()) item {
                     Text(
-                        stringResource(if (vm.busy) R.string.loading else R.string.empty_view), style = MaterialTheme.typography.bodyMedium,
+                        stringResource(if (vm.busy || vm.syncing) R.string.loading else R.string.empty_view), style = MaterialTheme.typography.bodyMedium,
                         color = p.muted, modifier = Modifier.fillMaxWidth().padding(32.dp),
                     )
                 }

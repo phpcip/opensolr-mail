@@ -28,6 +28,8 @@ import com.opensolr.mail.index.SolrClient
 import com.opensolr.mail.jmap.MailActions
 import com.opensolr.mail.jmap.MailSync
 import com.opensolr.mail.net.AccountSignInException
+import com.opensolr.mail.net.Http
+import com.opensolr.mail.net.Online
 import com.opensolr.mail.net.SignInRequiredException
 import com.opensolr.mail.net.UpdateCheck
 import com.opensolr.mail.push.MailPush
@@ -37,6 +39,9 @@ import com.opensolr.mail.sync.Work
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -74,6 +79,10 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     companion object {
         private const val ALL_FOLDED = "\u0000all"
         private const val UPDATE_CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000L
+        /** Pauses before each round of the sync on opening the app; the rounds after the first follow a failed one. */
+        private val AUTO_SYNC_RETRY_MS = listOf(0L, 3_000L, 10_000L, 30_000L)
+        private const val AUTO_NETWORK_WAIT_MS = 30_000L
+        private const val MANUAL_NETWORK_WAIT_MS = 10_000L
     }
 
 
@@ -116,6 +125,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         limitsLoading = true
         viewModelScope.launch(Guard) {
             try {
+                // On opening the app the network may still be waking: no read, and no error, until it is up.
+                if (minAgeMs > 0 && !Online.await(ctx, AUTO_NETWORK_WAIT_MS)) return@launch
                 val l = com.opensolr.mail.net.OpensolrApi(prefs).accountSummary(name, limits)
                 prefs.limits = l
                 prefs.vectorAllowed = l.vectorAllowed
@@ -361,30 +372,69 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     private var refreshJob: Job? = null
 
-    fun refresh() {
-        if (refreshJob?.isActive == true) return
+    /** A sync is under way (the pull spinner shows only for [busy]); an empty list says loading meanwhile. */
+    var syncing by mutableStateOf(false)
+
+    /**
+     * [manual] is the pull on the list: spinner and error shown. The sync on opening the app waits for the network,
+     * shows nothing, and tries again by itself when a round fails.
+     */
+    fun refresh(manual: Boolean = false) {
+        if (refreshJob?.isActive == true) {
+            if (manual) busy = true
+            return
+        }
         refreshJob = viewModelScope.launch(Guard) {
-            busy = true
+            if (manual) busy = true
+            syncing = true
             try {
-                val arrived = ArrayList<Message>()
-                withContext(Dispatchers.IO) { store.all().forEach { a ->
+                val rounds = if (manual) listOf(0L) else AUTO_SYNC_RETRY_MS
+                for ((i, wait) in rounds.withIndex()) {
+                    if (wait > 0) delay(wait)
+                    val online = Online.await(ctx, if (manual) MANUAL_NETWORK_WAIT_MS else AUTO_NETWORK_WAIT_MS)
+                    if (!online && !manual) continue
+                    val error = syncAccounts() ?: break
+                    if (manual) message = error
+                    if (manual || i == rounds.lastIndex) break
+                    Http.dropIdleConnections()
+                }
+            } finally {
+                busy = false
+                syncing = false
+            }
+        }
+    }
+
+    /** Syncs every account at once, so a slow one holds no other back; the first failure's text, or null when all went through. */
+    private suspend fun syncAccounts(): String? = withContext(Dispatchers.IO) {
+        val results = coroutineScope {
+            store.all().map { a ->
+                async {
                     try {
-                        arrived += sync.sync(a).arrived
-                    } catch (e: AccountSignInException) {
-                        needsLogin = needsLogin + e.accountKey
+                        Result.success(sync.sync(a).arrived)
                     } catch (e: CancellationException) {
                         throw e
                     } catch (e: Exception) {
-                        message = e.message ?: ctx.getString(R.string.err_generic)
+                        Result.failure<kotlin.collections.List<Message>>(e)
                     }
                 }
-                arrived.forEach { db.markNotified(it.acc, it.id) }
-                runCatching { Notifier.cancelGone(ctx) }
-                if (prefs.signedIn) Work.indexNow(ctx) }
-            } finally {
-                busy = false
+            }.awaitAll()
+        }
+        val arrived = ArrayList<Message>()
+        val signIn = HashSet<String>()
+        var error: String? = null
+        results.forEach { r ->
+            r.onSuccess { arrived += it }
+            r.onFailure { e ->
+                if (e is AccountSignInException) signIn += e.accountKey
+                else if (error == null) error = e.message ?: ctx.getString(R.string.err_generic)
             }
         }
+        if (signIn.isNotEmpty()) needsLogin = needsLogin + signIn
+        arrived.forEach { db.markNotified(it.acc, it.id) }
+        runCatching { Notifier.cancelGone(ctx) }
+        if (prefs.signedIn) Work.indexNow(ctx)
+        error
     }
 
     /** Conversations of [view]; [flagged] true takes only the flagged ones (pinned on top), false leaves them out. */

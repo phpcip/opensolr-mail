@@ -43,8 +43,19 @@ class MainActivity : ComponentActivity() {
         askMissingPermissions()
     }
 
+    private var stoppedAt = 0L
+
+    override fun onStop() {
+        super.onStop()
+        stoppedAt = System.currentTimeMillis()
+    }
+
     override fun onResume() {
         super.onResume()
+        if (stoppedAt > 0) {
+            com.opensolr.mail.net.Http.dropIdleConnections()
+            stoppedAt = 0
+        }
         runCatching { com.opensolr.mail.sync.Notifier.dropSummaryIfEmpty(this) }
         if (vm.store.all().isNotEmpty()) vm.refresh()
         // Also learns at once when the phone was signed out from Account > Devices.

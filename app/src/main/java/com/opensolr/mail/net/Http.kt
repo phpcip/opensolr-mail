@@ -25,4 +25,9 @@ object Http {
     val stream: OkHttpClient = client.newBuilder()
         .readTimeout(180, TimeUnit.SECONDS)
         .build()
+
+    /** Drops the pooled connections (shared by every client above): after the phone slept they are dead and a request on one hangs until its timeout. */
+    fun dropIdleConnections() {
+        client.connectionPool.evictAll()
+    }
 }
