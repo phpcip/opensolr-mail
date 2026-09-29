@@ -856,9 +856,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     // ---------------- updates ----------------
 
-    /** Once a day on start, from the GitHub releases; a copy installed by Google Play is updated by Play. */
+    /** Once a day on start, from the GitHub releases; a copy installed by a store is updated by that store. */
     fun checkForUpdate() {
-        if (com.opensolr.mail.net.SelfUpdate.fromPlay(ctx)) return
+        if (com.opensolr.mail.net.SelfUpdate.fromStore(ctx)) return
         if (System.currentTimeMillis() - prefs.lastUpdateCheck < UPDATE_CHECK_INTERVAL_MS) return
         viewModelScope.launch(Guard) {
             val u = UpdateCheck.check().getOrNull() ?: return@launch

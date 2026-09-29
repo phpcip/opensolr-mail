@@ -118,9 +118,12 @@ fun SettingsScreen(vm: AppViewModel) {
                         Notice(newer.notes.ifBlank { stringResource(R.string.acc_update_notes) }, title = stringResource(R.string.acc_version_available, newer.version))
                         Spacer(Modifier.height(10.dp))
                     }
-                    // A copy from Google Play is updated by Play; every other copy updates itself from the GitHub release.
-                    if (com.opensolr.mail.net.SelfUpdate.fromPlay(context)) {
-                        ToolRow(listOf(Tool(R.drawable.ic_tool_update, stringResource(R.string.acc_update_now, newer.version), accent = true) { com.opensolr.mail.net.SelfUpdate.openPlay(context) }))
+                    // A copy from a store is updated by that store; the store build sideloaded opens the GitHub release;
+                    // every other copy updates itself from the GitHub release.
+                    if (com.opensolr.mail.net.SelfUpdate.fromStore(context)) {
+                        ToolRow(listOf(Tool(R.drawable.ic_tool_update, stringResource(R.string.acc_update_now, newer.version), accent = true) { com.opensolr.mail.net.SelfUpdate.openStore(context) }))
+                    } else if (com.opensolr.mail.BuildConfig.PLAY_BUILD) {
+                        ToolRow(listOf(Tool(R.drawable.ic_tool_update, stringResource(R.string.acc_update_now, newer.version), accent = true) { com.opensolr.mail.net.SelfUpdate.openRelease(context, newer.pageUrl) }))
                     } else {
                         val progress = vm.updateProgress
                         ToolRow(listOf(Tool(
