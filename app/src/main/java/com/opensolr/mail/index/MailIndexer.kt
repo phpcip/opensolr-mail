@@ -905,7 +905,8 @@ class MailIndexer(private val context: Context) {
             val res = solr.select(listOf("q" to "*:*", "fq" to "att_todo_b:true", "fq" to mine.first, "acc" to mine.second, "rows" to "20", "sort" to "received_dt desc, id asc", "cursorMark" to cursor, "fl" to "account_s,email_id_s"))
             val docs = res.optJSONObject("response")?.optJSONArray("docs") ?: return true
             val left = res.optJSONObject("response")?.optLong("numFound") ?: 0L
-            _status.value = _status.value.copy(phase = Phase.ATTACHMENTS, attachmentsLeft = left)
+            // Nothing to read is not a stage at work: the phase moves only when there is something left.
+            _status.value = if (left > 0) _status.value.copy(phase = Phase.ATTACHMENTS, attachmentsLeft = left) else _status.value.copy(attachmentsLeft = left)
             com.opensolr.mail.util.Diag.log("MailIndexer", "attachments: " + left + " left, batch of " + docs.length())
             if (docs.length() == 0) return true
             val next = res.optString("nextCursorMark")

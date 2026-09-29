@@ -141,7 +141,7 @@ class IndexWorker(context: Context, params: WorkerParameters) : CoroutineWorker(
             var last = 0L
             var busySince = 0L
             MailIndexer.status.collect { st ->
-                if (st.phase == MailIndexer.Phase.IDLE) return@collect
+                if (!worthShowing(st)) return@collect
                 val now = System.currentTimeMillis()
                 if (busySince == 0L) busySince = now
                 // A few new messages are done in seconds and never show; only a long job gets the notification.
@@ -156,7 +156,7 @@ class IndexWorker(context: Context, params: WorkerParameters) : CoroutineWorker(
         val ticker = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.Default).launch(com.opensolr.mail.ui.Guard) {
             kotlinx.coroutines.delay(16_000L)
             val st = MailIndexer.status.value
-            if (st.phase != MailIndexer.Phase.IDLE) goForeground(st)
+            if (worthShowing(st)) goForeground(st)
         }
         return try {
             // Without the foreground notification Android stops a job after 10 minutes, so a run ends by
@@ -180,7 +180,12 @@ class IndexWorker(context: Context, params: WorkerParameters) : CoroutineWorker(
     private val startedAt = System.currentTimeMillis()
 
     /** Android refuses the notification while the app is in the background; the run then stays within the background limit. */
+    /** The notification only when it tells something: a stage at work with messages or attachments actually left. */
+    private fun worthShowing(st: MailIndexer.Status) =
+        st.phase != MailIndexer.Phase.IDLE && (st.messagesLeft > 0 || st.attLeft > 0)
+
     private suspend fun goForeground(st: MailIndexer.Status) {
+        if (!worthShowing(st)) return
         // The refusal happens later, inside WorkManager's service, so success is judged by whether the app is on screen.
         val visible = android.app.ActivityManager.RunningAppProcessInfo().also { android.app.ActivityManager.getMyMemoryState(it) }
             .importance <= android.app.ActivityManager.RunningAppProcessInfo.IMPORTANCE_FOREGROUND
@@ -200,7 +205,13 @@ class IndexWorker(context: Context, params: WorkerParameters) : CoroutineWorker(
             MailIndexer.Phase.IDLE -> R.string.indexing
         })
         // Everything still left at Fastmail; the bar is the one of the stage at work, attachments or messages.
-        val text = if (s.messagesLeft >= 0 && s.attLeft >= 0) words.getString(R.string.notif_left, n(s.messagesLeft), n(s.attLeft)) else null
+        // Only the counts that are not zero.
+        val text = when {
+            s.messagesLeft > 0 && s.attLeft > 0 -> words.getString(R.string.notif_left, n(s.messagesLeft), n(s.attLeft))
+            s.messagesLeft > 0 -> words.getString(R.string.notif_mail_left, n(s.messagesLeft))
+            s.attLeft > 0 -> words.getString(R.string.notif_att_left, n(s.attLeft))
+            else -> null
+        }
         val progress = if (s.phase == MailIndexer.Phase.ATTACHMENTS) s.attachmentProgress else s.messageProgress
         val n = NotificationCompat.Builder(applicationContext, Notifier.CHANNEL_APP)
             .setSmallIcon(R.drawable.ic_notify)
