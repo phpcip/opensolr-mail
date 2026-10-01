@@ -309,6 +309,8 @@
     <string name="text_size">文字大小</string>
     <string name="text_size_value">标准大小的 %1$d%%</string>
     <string name="text_size_sample">邮件的阅读和书写都以此大小显示。</string>
+    <string name="preview_lines">列表中显示的正文行数</string>
+    <string name="preview_lines_value">主题下 %1$d 行</string>
     <string name="cd_search_help">搜索运算符</string>
     <string name="select_all_results">选择全部结果</string>
     <string name="forward_limit">一次最多只能转发 %1$d 个会话。</string>

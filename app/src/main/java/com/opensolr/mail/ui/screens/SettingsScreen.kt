@@ -346,6 +346,20 @@ fun SettingsScreen(vm: AppViewModel) {
                     )
                     Text(stringResource(R.string.text_size_sample), style = MaterialTheme.typography.bodyMedium.let { it.copy(fontSize = it.fontSize * scale / 100f, lineHeight = it.lineHeight * scale / 100f) }, color = p.ink)
                     Spacer(Modifier.height(12.dp))
+                    Hairline()
+                    // Lines of the message body under the subject in the mail lists, 1 to 4.
+                    var lines by remember { mutableStateOf(vm.prefs.previewLines) }
+                    Spacer(Modifier.height(12.dp))
+                    Text(stringResource(R.string.preview_lines), style = MaterialTheme.typography.titleSmall, color = p.ink)
+                    Text(stringResource(R.string.preview_lines_value, lines), style = MaterialTheme.typography.bodySmall, color = p.muted)
+                    androidx.compose.material3.Slider(
+                        value = lines.toFloat(),
+                        onValueChange = { v -> val next = v.roundToInt().coerceIn(1, 4); if (next != lines) { Haptics.tick(view, false); lines = next } },
+                        onValueChangeFinished = { vm.prefs.previewLines = lines },
+                        valueRange = 1f..4f, steps = 2,
+                        colors = androidx.compose.material3.SliderDefaults.colors(thumbColor = p.accentFill, activeTrackColor = p.accentFill, inactiveTrackColor = p.hairline),
+                    )
+                    Spacer(Modifier.height(12.dp))
                 }
                 }
                 SubZone(stringResource(R.string.feedback), "pref_feedback" in open, { vm.toggleZone("pref_feedback") }) {

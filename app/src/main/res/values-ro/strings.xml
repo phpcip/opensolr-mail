@@ -309,6 +309,8 @@
     <string name="text_size">Mărimea textului</string>
     <string name="text_size_value">%1$d%% din mărimea standard</string>
     <string name="text_size_sample">Așa se citesc mesajele tale și așa le scrii.</string>
+    <string name="preview_lines">Rânduri din mesaj în listă</string>
+    <string name="preview_lines_value">%1$d sub subiect</string>
     <string name="cd_search_help">Operatori de căutare</string>
     <string name="select_all_results">Selectează toate rezultatele</string>
     <string name="forward_limit">Poți redirecționa cel mult %1$d conversații odată.</string>

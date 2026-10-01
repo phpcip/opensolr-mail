@@ -111,6 +111,7 @@ fun ThreadListScreen(vm: AppViewModel, view: View) {
     val colors = accounts.associate { it.key to Color(it.color) }
     val multi = accounts.size > 1
     var grouping by remember { mutableStateOf(runCatching { ListGroup.valueOf(vm.prefs.listGroup) }.getOrDefault(ListGroup.DAY)) }
+    val previewLines = vm.prefs.previewLines
     var groupMenu by remember { mutableStateOf(false) }
     val foldName = "listfold_" + scrollKey + "_" + grouping.name
     var confirmDelete by remember { mutableStateOf<ThreadRow?>(null) }
@@ -295,7 +296,7 @@ fun ThreadListScreen(vm: AppViewModel, view: View) {
                         enabled = selected.isEmpty(),
                     ) {
                         ThreadRowView(
-                            r, stripe = if (multi) colors[r.acc] else null, selected = (r.acc + ":" + r.threadId) in selectedKeys,
+                            r, stripe = if (multi) colors[r.acc] else null, selected = (r.acc + ":" + r.threadId) in selectedKeys, lines = previewLines,
                             onClick = {
                                 val rk = r.acc + ":" + r.threadId
                                 if (selected.isNotEmpty()) { Haptics.toggle(view0, rk !in selectedKeys); selectedKeys = if (rk in selectedKeys) selectedKeys - rk else selectedKeys + rk }
@@ -451,19 +452,20 @@ internal fun SelectionBar(count: Int, inBins: Int, onRead: () -> Unit, readIcon:
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun ThreadRowView(r: ThreadRow, stripe: Color?, selected: Boolean, onClick: () -> Unit) {
+private fun ThreadRowView(r: ThreadRow, stripe: Color?, selected: Boolean, lines: Int, onClick: () -> Unit) {
     val p = LocalPalette.current
     val view = LocalView.current
-    // Unread stands out plainly: an accent wash behind the row, a large dot, bold sender and subject, the date in the accent.
+    // The sender is the blackest, boldest line, the subject second, the body lines last in plain muted text.
+    // Unread adds an accent wash, an accent edge, a large dot, a darker semibold subject and the date in the accent.
     val bg = if (selected) p.accent.copy(alpha = 0.16f).compositeOver(p.paper) else if (r.flagged) p.flagFill else if (r.unread) com.opensolr.mail.ui.unreadFill() else p.paper
     // A conversation of several messages is drawn as a stack of cards.
     com.opensolr.mail.ui.StackCard(r.count, bg) {
     Row(
-        Modifier.fillMaxWidth()
+        Modifier.fillMaxWidth().height(androidx.compose.foundation.layout.IntrinsicSize.Min)
             .combinedClickable(onClick = onClick),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Box(Modifier.width(if (selected) 5.dp else 3.dp).height(68.dp).background(if (selected) p.accentFill else stripe ?: Color.Transparent))
+        Box(Modifier.width(if (selected || r.unread) 5.dp else 3.dp).fillMaxHeight().background(if (selected) p.accentFill else stripe ?: if (r.unread) p.accent else Color.Transparent))
         Spacer(Modifier.width(if (selected) 7.dp else 9.dp))
         // A selected conversation trades its initials for a filled tick, so a selection reads at a glance.
         if (selected) {
@@ -476,14 +478,12 @@ private fun ThreadRowView(r: ThreadRow, stripe: Color?, selected: Boolean, onCli
         Column(Modifier.weight(1f).padding(start = 10.dp, end = 12.dp, top = 6.dp, bottom = 6.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 if (r.unread) {
-                    com.opensolr.mail.ui.UnreadDot()
-                    Spacer(Modifier.width(6.dp))
+                    com.opensolr.mail.ui.UnreadDot(12.dp)
+                    Spacer(Modifier.width(7.dp))
                 }
                 Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
                     Text(
-                        r.senders.ifBlank { " " }, style = MaterialTheme.typography.bodyMedium,
-                        fontWeight = if (r.unread) FontWeight.Bold else FontWeight.Medium,
-                        color = p.ink, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false),
+                        r.senders.ifBlank { " " }, style = com.opensolr.mail.ui.listSenderStyle(r.unread), maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false),
                     )
                     com.opensolr.mail.ui.CountBadge(r.count)
                 }
@@ -492,14 +492,13 @@ private fun ThreadRowView(r: ThreadRow, stripe: Color?, selected: Boolean, onCli
             }
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
-                    r.subject.ifBlank { stringResource(R.string.no_subject) }, style = MaterialTheme.typography.bodyMedium,
-                    fontWeight = if (r.unread) FontWeight.Bold else FontWeight.Medium, color = p.ink,
+                    r.subject.ifBlank { stringResource(R.string.no_subject) }, style = com.opensolr.mail.ui.listSubjectStyle(r.unread),
                     maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f),
                 )
                 if (r.hasAttachment) com.opensolr.mail.ui.AttachBadge()
                 if (r.flagged) com.opensolr.mail.ui.FlagBadge()
             }
-            Text(r.preview, style = MaterialTheme.typography.bodySmall, color = if (r.unread) p.ink else p.muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(r.preview, style = com.opensolr.mail.ui.listBodyStyle(), maxLines = lines, overflow = TextOverflow.Ellipsis)
         }
     }
     }

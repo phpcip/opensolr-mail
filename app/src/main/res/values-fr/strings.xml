@@ -309,6 +309,8 @@
     <string name="text_size">Taille du texte</string>
     <string name="text_size_value">%1$d%% de la taille standard</string>
     <string name="text_size_sample">Voici comment vos messages se lisent et s\'écrivent.</string>
+    <string name="preview_lines">Lignes du message dans la liste</string>
+    <string name="preview_lines_value">%1$d sous l\'objet</string>
     <string name="cd_search_help">Opérateurs de recherche</string>
     <string name="select_all_results">Sélectionner tous les résultats</string>
     <string name="forward_limit">Vous pouvez transférer au plus %1$d conversations à la fois.</string>

@@ -309,6 +309,8 @@
     <string name="text_size">Tamaño del texto</string>
     <string name="text_size_value">%1$d%% del tamaño estándar</string>
     <string name="text_size_sample">Así se leen tus mensajes y así los escribes.</string>
+    <string name="preview_lines">Líneas del mensaje en la lista</string>
+    <string name="preview_lines_value">%1$d bajo el asunto</string>
     <string name="cd_search_help">Operadores de búsqueda</string>
     <string name="select_all_results">Seleccionar todos los resultados</string>
     <string name="forward_limit">Puedes reenviar como máximo %1$d conversaciones a la vez.</string>

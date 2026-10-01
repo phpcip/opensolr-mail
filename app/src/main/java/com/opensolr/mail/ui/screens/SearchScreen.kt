@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
@@ -1175,34 +1176,37 @@ private fun GroupHeader(label: String, total: Long, open: Boolean, onToggle: () 
 private fun HitRow(vm: AppViewModel, h: MailSearch.Hit, folders: List<Pair<String, Color>>, multi: Boolean, color: Int?, selected: Boolean, onClick: () -> Unit) {
     val p = LocalPalette.current
     val view = LocalView.current
+    val lines = remember { vm.prefs.previewLines }
     Column(Modifier.fillMaxWidth()) {
     // A conversation of several messages is drawn as a stack of cards.
     com.opensolr.mail.ui.StackCard(h.threadCount, if (selected) p.chip else if (h.flagged) p.flagFill else if (!h.seen) com.opensolr.mail.ui.unreadFill() else p.paper) {
     Row(
-        Modifier.fillMaxWidth().combinedClickable(onClick = onClick),
+        Modifier.fillMaxWidth().height(androidx.compose.foundation.layout.IntrinsicSize.Min).combinedClickable(onClick = onClick),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Box(Modifier.width(3.dp).height(72.dp).background(if (selected) p.accent else if (multi && color != null) Color(color) else Color.Transparent))
+        // The sender is the blackest, boldest line, the subject second, the body lines last in plain muted text;
+        // unread adds an accent edge, a large dot and a darker semibold subject.
+        Box(Modifier.width(if (selected || !h.seen) 5.dp else 3.dp).fillMaxHeight().background(if (selected) p.accent else if (multi && color != null) Color(color) else if (!h.seen) p.accent else Color.Transparent))
         Spacer(Modifier.width(9.dp))
         if (selected) Box(Modifier.size(40.dp).background(p.accentFill, androidx.compose.foundation.shape.CircleShape), contentAlignment = Alignment.Center) {
             Icon(painterResource(R.drawable.ic_check), null, tint = p.onAccentFill, modifier = Modifier.size(22.dp))
         } else Avatar(if (h.from == h.fromEmail) "" else h.from, h.fromEmail)
         Column(Modifier.weight(1f).padding(start = 10.dp, end = 12.dp, top = 6.dp, bottom = 6.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                if (!h.seen) { com.opensolr.mail.ui.UnreadDot(); Spacer(Modifier.width(6.dp)) }
+                if (!h.seen) { com.opensolr.mail.ui.UnreadDot(12.dp); Spacer(Modifier.width(7.dp)) }
                 Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically) {
-                    Text(h.from, style = MaterialTheme.typography.bodyMedium, fontWeight = if (h.seen) FontWeight.Medium else FontWeight.Bold, color = p.ink, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
+                    Text(h.from, style = com.opensolr.mail.ui.listSenderStyle(!h.seen), maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
                     com.opensolr.mail.ui.CountBadge(h.threadCount)
                 }
                 Spacer(Modifier.width(6.dp))
                 Text(fmtDate(h.received), style = MaterialTheme.typography.bodySmall, color = if (h.seen) p.muted else p.accent, fontWeight = if (h.seen) null else FontWeight.Bold)
             }
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(h.subject.ifBlank { stringResource(R.string.no_subject) }, style = MaterialTheme.typography.bodyMedium, fontWeight = if (h.seen) null else FontWeight.Bold, color = p.ink, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+                Text(h.subject.ifBlank { stringResource(R.string.no_subject) }, style = com.opensolr.mail.ui.listSubjectStyle(!h.seen), maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
                 if (h.hasAttachment) com.opensolr.mail.ui.AttachBadge()
                 if (h.flagged) com.opensolr.mail.ui.FlagBadge()
             }
-            Row(verticalAlignment = Alignment.CenterVertically) {
+            Row(verticalAlignment = Alignment.Top) {
                 // The folders the message lies in, ahead of its words, each in its own colour.
                 folders.take(2).forEach { (name, bg) ->
                     Text(
@@ -1211,7 +1215,7 @@ private fun HitRow(vm: AppViewModel, h: MailSearch.Hit, folders: List<Pair<Strin
                     )
                     Spacer(Modifier.width(6.dp))
                 }
-                Text(highlighted(h.snippet), style = MaterialTheme.typography.bodySmall, color = p.muted, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+                Text(highlighted(h.snippet), style = com.opensolr.mail.ui.listBodyStyle(), maxLines = lines, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
             }
         }
     }

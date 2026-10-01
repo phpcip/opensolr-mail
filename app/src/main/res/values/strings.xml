@@ -317,6 +317,8 @@
     <string name="text_size">Text size</string>
     <string name="text_size_value">%1$d%% of the standard size</string>
     <string name="text_size_sample">This is how your messages read and how you write them.</string>
+    <string name="preview_lines">Lines of the message in the list</string>
+    <string name="preview_lines_value">%1$d under the subject</string>
     <string name="cd_search_help">Search operators</string>
     <string name="select_all_results">Select all results</string>
     <string name="forward_limit">You can forward at most %1$d conversations at a time.</string>

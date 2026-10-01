@@ -309,6 +309,8 @@
     <string name="text_size">Textgröße</string>
     <string name="text_size_value">%1$d%% der Standardgröße</string>
     <string name="text_size_sample">So lesen sich Ihre Nachrichten und so schreiben Sie sie.</string>
+    <string name="preview_lines">Zeilen der Nachricht in der Liste</string>
+    <string name="preview_lines_value">%1$d unter dem Betreff</string>
     <string name="cd_search_help">Suchoperatoren</string>
     <string name="select_all_results">Alle Ergebnisse auswählen</string>
     <string name="forward_limit">Sie können höchstens %1$d Unterhaltungen auf einmal weiterleiten.</string>

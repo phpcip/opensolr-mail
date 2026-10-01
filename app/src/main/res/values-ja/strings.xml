@@ -309,6 +309,8 @@
     <string name="text_size">文字サイズ</string>
     <string name="text_size_value">標準の %1$d%%</string>
     <string name="text_size_sample">メッセージはこの大きさで表示され、入力されます。</string>
+    <string name="preview_lines">一覧に表示する本文の行数</string>
+    <string name="preview_lines_value">件名の下に %1$d 行</string>
     <string name="cd_search_help">検索演算子</string>
     <string name="select_all_results">すべての結果を選択</string>
     <string name="forward_limit">一度に転送できるのは最大 %1$d 件の会話です。</string>

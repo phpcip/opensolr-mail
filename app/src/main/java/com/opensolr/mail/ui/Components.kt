@@ -584,6 +584,31 @@ fun UnreadDot(size: androidx.compose.ui.unit.Dp = 10.dp) {
     Box(Modifier.size(size).background(LocalPalette.current.accent, androidx.compose.foundation.shape.CircleShape))
 }
 
+/** True when the dark palette is on: the list colours below are picked for each theme. */
+@Composable
+private fun darkList(): Boolean = LocalPalette.current.ink.luminance() > 0.5f
+
+/** The sender of a row in a mail list: black (white in the dark theme) and bold, the strongest line of the row. */
+@Composable
+fun listSenderStyle(unread: Boolean): androidx.compose.ui.text.TextStyle = MaterialTheme.typography.bodyMedium.copy(
+    fontSize = 15.sp, lineHeight = 19.sp, fontWeight = FontWeight.Bold,
+    color = if (darkList()) Color(0xFFFFFFFF) else Color(0xFF000000),
+)
+
+/** The subject of a row in a mail list: a clear grey, darker and semibold when unread, medium once read. */
+@Composable
+fun listSubjectStyle(unread: Boolean): androidx.compose.ui.text.TextStyle = MaterialTheme.typography.bodyMedium.copy(
+    fontSize = 14.sp, lineHeight = 18.sp, fontWeight = if (unread) FontWeight.SemiBold else FontWeight.Medium,
+    color = if (darkList()) Color(if (unread) 0xFFD6D6D6 else 0xFFB0B0B0) else Color(if (unread) 0xFF3A3A3A else 0xFF6A6A6A),
+)
+
+/** The lines of the message body in a mail list: last, plain weight, a light grey. */
+@Composable
+fun listBodyStyle(): androidx.compose.ui.text.TextStyle = MaterialTheme.typography.bodySmall.copy(
+    fontSize = 14.sp, lineHeight = 18.sp, fontWeight = FontWeight.Normal,
+    color = if (darkList()) Color(0xFF7E7E7E) else Color(0xFF9A9A9A),
+)
+
 /** The background of an unread row: a clear accent wash over the page, in both themes. */
 @Composable
 fun unreadFill(): Color = LocalPalette.current.accent.copy(alpha = 0.10f).compositeOver(LocalPalette.current.paper)

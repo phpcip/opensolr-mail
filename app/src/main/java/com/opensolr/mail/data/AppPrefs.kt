@@ -177,6 +177,11 @@ class AppPrefs(context: Context) {
         set(v) = sp.edit().putString("unified_order", v.joinToString(",")).apply()
 
     /** Size of message text, reading and writing, in percent of the standard size. */
+    /** Lines of the message body shown under the subject in the mail lists, 1 to 4. */
+    var previewLines: Int
+        get() = sp.getInt("preview_lines", 2).coerceIn(1, 4)
+        set(v) = sp.edit().putInt("preview_lines", v.coerceIn(1, 4)).apply()
+
     var textScale: Int
         get() = sp.getInt("text_scale", 100).coerceIn(80, 200)
         set(v) = sp.edit().putInt("text_scale", v.coerceIn(80, 200)).apply()
