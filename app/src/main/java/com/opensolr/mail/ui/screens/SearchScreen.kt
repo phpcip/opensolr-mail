@@ -1064,7 +1064,7 @@ private fun groupValueLabel(g: MailSearch.GroupBy, value: String, accounts: List
 }
 
 @Composable
-private fun IconAction(icon: Int, active: Boolean, badge: Int = 0, contentDescription: String? = null, onClick: () -> Unit) {
+internal fun IconAction(icon: Int, active: Boolean, badge: Int = 0, contentDescription: String? = null, onClick: () -> Unit) {
     val p = LocalPalette.current
     val view = LocalView.current
     val press = com.opensolr.mail.ui.rememberPress()

@@ -226,36 +226,39 @@ fun ThreadListScreen(vm: AppViewModel, view: View) {
     }
 
     Column(Modifier.fillMaxSize()) {
-        if (selected.isEmpty()) {
-            TopBar(viewTitle(vm, view), onBack = { vm.go(Screen.Mailboxes) }) {
-                if (groups.any { it.key != "all" }) {
-                    val anyOpen = groups.any { it.key != "all" && !folded(it.key) }
-                    IconBtn(if (anyOpen) R.drawable.ic_collapse_all else R.drawable.ic_expand_all, {
-                        vm.foldAll(foldName, anyOpen)
-                        vm.setKeySet(pinName, if (anyOpen) emptySet() else setOf("open"))
-                    })
-                }
-                Box {
-                    IconBtn(R.drawable.ic_group, { groupMenu = true }, tint = if (grouping != ListGroup.NONE) p.accent else null)
-                    DropdownMenu(expanded = groupMenu, onDismissRequest = { groupMenu = false }, containerColor = p.paper) {
-                        Text(stringResource(R.string.group_by), style = MaterialTheme.typography.labelSmall, color = p.muted, modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
-                        ListGroup.entries.forEach { g ->
-                            DropdownMenuItem(
-                                text = { Text(stringResource(g.label), style = MaterialTheme.typography.bodyLarge, fontWeight = if (g == grouping) FontWeight.Bold else FontWeight.Medium, color = if (g == grouping) p.accent else p.ink) },
-                                onClick = { Haptics.tick(view0, false); groupMenu = false; grouping = g; vm.prefs.listGroup = g.name },
-                            )
-                        }
+        if (selected.isEmpty()) TopBar(viewTitle(vm, view), onBack = { vm.go(Screen.Mailboxes) })
+        else SelectionBar(selected.size, onClear = { selectedKeys = emptySet() })
+        // The tools on a row of their own, as on the search screen, so the title keeps the top row.
+        Row(
+            Modifier.fillMaxWidth().background(p.toolFill).padding(horizontal = 10.dp, vertical = 6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            IconAction(R.drawable.ic_compose, active = false) { vm.go(Screen.Compose(ComposeInit())) }
+            IconAction(R.drawable.ic_search, active = false) { vm.go(Screen.Search()) }
+            // Filters are the Opensolr search's; Fastmail's classic search has none.
+            if (!vm.useFastmailSearch) IconAction(R.drawable.ic_filters, active = false) { vm.go(Screen.Search("filters")) }
+            Box {
+                IconAction(R.drawable.ic_group, active = grouping != ListGroup.NONE) { groupMenu = true }
+                DropdownMenu(expanded = groupMenu, onDismissRequest = { groupMenu = false }, containerColor = p.paper) {
+                    Text(stringResource(R.string.group_by), style = MaterialTheme.typography.labelSmall, color = p.muted, modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
+                    ListGroup.entries.forEach { g ->
+                        DropdownMenuItem(
+                            text = { Text(stringResource(g.label), style = MaterialTheme.typography.bodyLarge, fontWeight = if (g == grouping) FontWeight.Bold else FontWeight.Medium, color = if (g == grouping) p.accent else p.ink) },
+                            onClick = { Haptics.tick(view0, false); groupMenu = false; grouping = g; vm.prefs.listGroup = g.name },
+                        )
                     }
                 }
-                if (view !is View.Flagged && (rows.any { it.unread } || pinned.any { it.unread })) IconBtn(R.drawable.ic_read_all, { vm.readAll(view) })
-                // Filters are the Opensolr search's; Fastmail's classic search has none.
-                if (!vm.useFastmailSearch) IconBtn(R.drawable.ic_filters, { vm.go(Screen.Search("filters")) })
-                IconBtn(R.drawable.ic_search, { vm.go(Screen.Search()) })
-                IconBtn(R.drawable.ic_compose, { vm.go(Screen.Compose(ComposeInit())) })
             }
-        } else {
-            SelectionBar(selected.size, onClear = { selectedKeys = emptySet() })
+            if (groups.any { it.key != "all" }) {
+                val anyOpen = groups.any { it.key != "all" && !folded(it.key) }
+                IconAction(if (anyOpen) R.drawable.ic_collapse_all else R.drawable.ic_expand_all, active = false) {
+                    vm.foldAll(foldName, anyOpen)
+                    vm.setKeySet(pinName, if (anyOpen) emptySet() else setOf("open"))
+                }
+            }
+            if (view !is View.Flagged && (rows.any { it.unread } || pinned.any { it.unread })) IconAction(R.drawable.ic_read_all, active = false) { vm.readAll(view) }
         }
+        Hairline()
         RefreshBox(refreshing = vm.busy, onRefresh = { vm.refresh(manual = true) }, modifier = Modifier.weight(1f)) {
             // Long press and drag selects every conversation between, as in Opensolr Photos.
             var dragBase by remember { mutableStateOf<Set<String>?>(null) }
