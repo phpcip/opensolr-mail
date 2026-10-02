@@ -54,6 +54,10 @@ class NotificationActions : BroadcastReceiver() {
             Notifier.sendFailed(context, com.opensolr.mail.ui.AppLanguage.wrap(context).getString(com.opensolr.mail.R.string.no_identity))
             return
         }
+        // The app's own signature, when there is one, stands in for the account's and goes out as HTML too.
+        val sig = com.opensolr.mail.data.AppPrefs(context).signatureHtml
+        val (body, html) = if (sig.isNotBlank()) com.opensolr.mail.data.Signature.compose(text, sig, d.quote)
+            else (text + (if (identity.signature.isNotBlank()) "\n\n-- \n${identity.signature}" else "") + d.quote) to null
         val actions = MailActions(context)
         actions.send(
             MailActions.Outgoing(
@@ -64,7 +68,8 @@ class NotificationActions : BroadcastReceiver() {
                 cc = d.cc,
                 bcc = emptyList(),
                 subject = d.subject,
-                text = text + (if (identity.signature.isNotBlank()) "\n\n-- \n${identity.signature}" else "") + d.quote,
+                text = body,
+                html = html,
                 inReplyTo = d.inReplyTo,
                 references = d.references,
                 answeredId = m.id,

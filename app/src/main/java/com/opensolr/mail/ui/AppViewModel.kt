@@ -70,6 +70,8 @@ data class ComposeInit(
     val references: String = "",
     val answeredId: String? = null,
     val draftId: String? = null,
+    /** True when [body] is the quoted message of a reply or forward, not words already written. */
+    val quoted: Boolean = false,
     /** Files already in the app to attach, like the messages of a bulk forward. */
     val files: kotlin.collections.List<com.opensolr.mail.jmap.MailActions.OutFile> = emptyList(),
 )

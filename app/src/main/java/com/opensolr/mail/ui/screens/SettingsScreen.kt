@@ -95,7 +95,7 @@ fun SettingsScreen(vm: AppViewModel) {
         Column(Modifier.fillMaxSize().verticalScroll(settingsScroll).padding(horizontal = 20.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Box(Modifier.weight(1f)) { ScreenHeader(stringResource(R.string.settings), onBack = { vm.back() }) }
-            val allZones = setOf("updates", "accounts", "opensolr", "index", "preferences", "pref_search", "pref_reading", "pref_feedback", "pref_swipes", "pref_language")
+            val allZones = setOf("updates", "accounts", "opensolr", "index", "preferences", "pref_signature", "pref_search", "pref_reading", "pref_feedback", "pref_swipes", "pref_language")
             val anyOpen = allZones.any { it in open }
             com.opensolr.mail.ui.IconBtn(if (anyOpen) R.drawable.ic_collapse_all else R.drawable.ic_expand_all, { vm.setKeySet("settings_zones", if (anyOpen) emptySet() else allZones) })
         }
@@ -253,6 +253,15 @@ fun SettingsScreen(vm: AppViewModel) {
 
         Zone(stringResource(R.string.preferences), 0, "preferences" in open, { vm.toggleZone("preferences") }) {
             Column {
+                // One signature for every message sent, from every account.
+                SubZone(stringResource(R.string.signature), "pref_signature" in open, { vm.toggleZone("pref_signature") }) {
+                Column {
+                    Text(stringResource(R.string.signature_text), style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Medium, color = p.muted)
+                    Spacer(Modifier.height(10.dp))
+                    com.opensolr.mail.ui.SignatureEditor(vm.prefs.signatureHtml) { vm.prefs.signatureHtml = it }
+                    Spacer(Modifier.height(12.dp))
+                }
+                }
                 SubZone(stringResource(R.string.zone_search), "pref_search" in open, { vm.toggleZone("pref_search") }) {
                 Column {
                     // Where search runs: the Opensolr Index, or Fastmail's classic search by words.

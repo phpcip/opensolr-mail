@@ -260,10 +260,11 @@ fun BodyField(
     textScale: Float,
     modifier: Modifier = Modifier,
     focus: androidx.compose.ui.focus.FocusRequester? = null,
+    minHeight: Int = 320,
 ) {
     val p = LocalPalette.current
     val style = MaterialTheme.typography.bodyMedium.let { it.copy(color = p.ink, fontSize = it.fontSize * textScale, lineHeight = it.lineHeight * textScale) }
-    Box(modifier = modifier.heightIn(min = 320.dp).padding(PaddingValues(horizontal = 12.dp, vertical = 11.dp))) {
+    Box(modifier = modifier.heightIn(min = minHeight.dp).padding(PaddingValues(horizontal = 12.dp, vertical = 11.dp))) {
         if (value.isEmpty()) Text(hint, style = style.copy(color = p.muted))
         TextBox(
             value = value, onValueChange = onChange, cursorAtStart = true,

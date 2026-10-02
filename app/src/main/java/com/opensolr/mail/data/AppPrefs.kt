@@ -182,6 +182,11 @@ class AppPrefs(context: Context) {
         get() = sp.getInt("preview_lines", 2).coerceIn(1, 4)
         set(v) = sp.edit().putInt("preview_lines", v.coerceIn(1, 4)).apply()
 
+    /** The one signature, as clean HTML, under every message sent from any account; empty for none. */
+    var signatureHtml: String
+        get() = sp.getString("signature_html", "") ?: ""
+        set(v) = sp.edit().putString("signature_html", v).apply()
+
     var textScale: Int
         get() = sp.getInt("text_scale", 100).coerceIn(80, 200)
         set(v) = sp.edit().putInt("text_scale", v.coerceIn(80, 200)).apply()

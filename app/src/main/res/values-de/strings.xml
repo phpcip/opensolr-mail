@@ -418,4 +418,14 @@
     <string name="opensolr_pitch_text">Deine Mails kommen in einen eigenen Opensolr Index: Suche nach Bedeutung statt nur nach Wörtern, KI-Antworten aus deinen Mails, Text aus Bildern und Anhängen, Filter und Gruppierung, und neue Mails kommen sofort. Kostenlos für kleine und mittlere Postfächer.</string>
     <string name="tool_go_opensolr">Zu Opensolr</string>
     <string name="ai_no_answer">Nichts in deinen Mails beantwortet das.</string>
+    <string name="signature">Signatur</string>
+    <string name="signature_text">Unter jeder gesendeten Nachricht, aus jedem Konto.</string>
+    <string name="signature_hint">Signatur schreiben</string>
+    <string name="sig_bold">Fett</string>
+    <string name="sig_italic">Kursiv</string>
+    <string name="sig_underline">Unterstr.</string>
+    <string name="sig_link">Link</string>
+    <string name="sig_clear">Löschen</string>
+    <string name="link_text">Text</string>
+    <string name="link_address">Adresse</string>
 </resources>

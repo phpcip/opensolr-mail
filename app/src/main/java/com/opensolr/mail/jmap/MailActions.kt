@@ -118,6 +118,8 @@ class MailActions(private val context: Context) {
         val answeredId: String?,
         val replacesDraftId: String?,
         val attachments: List<OutFile>,
+        /** The same message as HTML, sent beside the text when there is a formatted signature. */
+        val html: String? = null,
     )
 
     companion object {
@@ -145,6 +147,7 @@ class MailActions(private val context: Context) {
         .put("bcc", JSONArray(o.bcc.map { it.toJson() }))
         .put("subject", o.subject)
         .put("text", o.text)
+        .put("html", o.html ?: "")
         .put("in_reply_to", o.inReplyTo)
         .put("references", o.references)
         .put("answered", o.answeredId ?: "")
@@ -396,6 +399,11 @@ class MailActions(private val context: Context) {
             .put("subject", p.optString("subject"))
             .put("bodyValues", JSONObject().put("b1", JSONObject().put("value", p.optString("text"))))
             .put("textBody", JSONArray().put(JSONObject().put("partId", "b1").put("type", "text/plain")))
+        // With an HTML version the message goes out as text and HTML together.
+        p.optString("html").takeIf { it.isNotBlank() }?.let { h ->
+            email.getJSONObject("bodyValues").put("b2", JSONObject().put("value", h))
+            email.put("htmlBody", JSONArray().put(JSONObject().put("partId", "b2").put("type", "text/html")))
+        }
         if (p.getJSONArray("cc").length() > 0) email.put("cc", p.getJSONArray("cc"))
         if (p.getJSONArray("bcc").length() > 0) email.put("bcc", p.getJSONArray("bcc"))
         if (attachments.length() > 0) email.put("attachments", attachments)

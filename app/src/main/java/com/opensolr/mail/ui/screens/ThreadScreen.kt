@@ -164,7 +164,7 @@ fun ThreadScreen(vm: AppViewModel, acc: String, threadId: String) {
                     ComposeInit(
                         acc = acc, identityId = d.identity?.id,
                         to = d.to.joinToString(", ") { it.formatted() }, cc = d.cc.joinToString(", ") { it.formatted() },
-                        subject = d.subject, body = d.quote, inReplyTo = d.inReplyTo, references = d.references,
+                        subject = d.subject, body = d.quote, quoted = true, inReplyTo = d.inReplyTo, references = d.references,
                         answeredId = if (att) null else m.id,
                     )
                 )

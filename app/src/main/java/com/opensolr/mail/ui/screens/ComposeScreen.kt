@@ -86,9 +86,22 @@ fun ComposeScreen(vm: AppViewModel, init: ComposeInit) {
     var bcc by remember { mutableStateOf("") }
     var showCc by remember { mutableStateOf(init.cc.isNotBlank()) }
     var subject by remember { mutableStateOf(init.subject) }
-    val signature = identity?.signature?.takeIf { it.isNotBlank() }?.let { "\n\n-- \n$it" }.orEmpty()
+    // The app's own signature, when set, goes under every message from every account, in place of the account's.
+    val sigHtml = remember { vm.prefs.signatureHtml }
+    val global = sigHtml.isNotBlank()
+    val signature = if (global) "" else identity?.signature?.takeIf { it.isNotBlank() }?.let { "\n\n-- \n$it" }.orEmpty()
+    // With the app's signature, what is written and the quoted message are two fields with the signature between them.
+    val start = remember {
+        when {
+            !global -> (if (init.draftId != null) init.body else signature + init.body) to ""
+            init.draftId != null -> com.opensolr.mail.data.Signature.split(init.body, sigHtml) ?: (init.body to "")
+            init.quoted -> "" to init.body.trim('\n')
+            else -> init.body to ""
+        }
+    }
     // The cursor starts at the very top, above the signature and the quoted message, ready to type.
-    var body by remember { mutableStateOf(if (init.draftId != null) init.body else signature + init.body) }
+    var body by remember { mutableStateOf(start.first) }
+    var quote by remember { mutableStateOf(start.second) }
     val toFocus = remember { androidx.compose.ui.focus.FocusRequester() }
     val bodyFocus = remember { androidx.compose.ui.focus.FocusRequester() }
     val keyboard = androidx.compose.ui.platform.LocalSoftwareKeyboardController.current
@@ -140,7 +153,7 @@ fun ComposeScreen(vm: AppViewModel, init: ComposeInit) {
     }
     var picking by remember { mutableStateOf(false) }
     var leaving by remember { mutableStateOf(false) }
-    val dirty = to != init.to || cc != init.cc || bcc.isNotBlank() || subject != init.subject || body.trim() != (signature + init.body).trim() || files.isNotEmpty()
+    val dirty = to != init.to || cc != init.cc || bcc.isNotBlank() || subject != init.subject || body.trim() != start.first.trim() || quote.trim() != start.second.trim() || files.isNotEmpty()
 
     val pick = rememberLauncherForActivityResult(ActivityResultContracts.GetMultipleContents()) { uris ->
         scope.launch(com.opensolr.mail.ui.Guard) {
@@ -150,10 +163,11 @@ fun ComposeScreen(vm: AppViewModel, init: ComposeInit) {
 
     fun outgoing(): MailActions.Outgoing? {
         val id = identity ?: return null
+        val (text, html) = if (global) com.opensolr.mail.data.Signature.compose(body, sigHtml, quote) else body to null
         return MailActions.Outgoing(
             acc = id.acc, identityId = id.id, from = Address(id.name, id.email),
             to = Address.parseInput(to), cc = Address.parseInput(cc), bcc = Address.parseInput(bcc),
-            subject = subject, text = body, inReplyTo = init.inReplyTo, references = init.references,
+            subject = subject, text = text, html = html, inReplyTo = init.inReplyTo, references = init.references,
             answeredId = init.answeredId, replacesDraftId = init.draftId.takeIf { id.acc == init.acc },
             attachments = files.toList(),
         )
@@ -214,7 +228,11 @@ fun ComposeScreen(vm: AppViewModel, init: ComposeInit) {
                     IconBtn(R.drawable.ic_close, { files.remove(f); File(f.path).delete() })
                 }
             }
-            BodyField(body, { body = it }, stringResource(R.string.message_hint), vm.prefs.textScale / 100f, Modifier.fillMaxWidth(), focus = bodyFocus)
+            BodyField(body, { body = it }, stringResource(R.string.message_hint), vm.prefs.textScale / 100f, Modifier.fillMaxWidth(), focus = bodyFocus, minHeight = if (global) 48 else 320)
+            if (global) {
+                SignaturePreview(sigHtml, vm.prefs.textScale / 100f)
+                if (start.second.isNotEmpty() || quote.isNotEmpty()) BodyField(quote, { quote = it }, "", vm.prefs.textScale / 100f, Modifier.fillMaxWidth(), minHeight = 0)
+            }
             Spacer(Modifier.height(bottomInset()))
         }
     }
@@ -252,6 +270,37 @@ fun ComposeScreen(vm: AppViewModel, init: ComposeInit) {
                 ))
             }
         }
+    }
+}
+
+/** The signature under what is being written, as it will be sent; its links do not open from here. */
+@Composable
+private fun SignaturePreview(html: String, textScale: Float) {
+    val p = LocalPalette.current
+    val style = MaterialTheme.typography.bodyMedium.let { it.copy(color = p.ink, fontSize = it.fontSize * textScale, lineHeight = it.lineHeight * textScale) }
+    val text = remember(html, p.accent) {
+        val sp = androidx.core.text.HtmlCompat.fromHtml(html, androidx.core.text.HtmlCompat.FROM_HTML_MODE_COMPACT)
+        androidx.compose.ui.text.buildAnnotatedString {
+            append(sp.toString().trimEnd())
+            val end = length
+            sp.getSpans(0, sp.length, Any::class.java).forEach { span ->
+                val a = sp.getSpanStart(span).coerceAtMost(end)
+                val b = sp.getSpanEnd(span).coerceAtMost(end)
+                if (a >= b) return@forEach
+                when (span) {
+                    is android.text.style.StyleSpan -> addStyle(androidx.compose.ui.text.SpanStyle(
+                        fontWeight = if (span.style and android.graphics.Typeface.BOLD != 0) androidx.compose.ui.text.font.FontWeight.Bold else null,
+                        fontStyle = if (span.style and android.graphics.Typeface.ITALIC != 0) androidx.compose.ui.text.font.FontStyle.Italic else null,
+                    ), a, b)
+                    is android.text.style.UnderlineSpan -> addStyle(androidx.compose.ui.text.SpanStyle(textDecoration = androidx.compose.ui.text.style.TextDecoration.Underline), a, b)
+                    is android.text.style.URLSpan -> addStyle(androidx.compose.ui.text.SpanStyle(color = p.accent, textDecoration = androidx.compose.ui.text.style.TextDecoration.Underline), a, b)
+                }
+            }
+        }
+    }
+    Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp)) {
+        Text("-- ", style = style.copy(color = p.muted))
+        Text(text, style = style)
     }
 }
 

@@ -418,4 +418,14 @@
     <string name="opensolr_pitch_text">你的邮件会进入你自己的 Opensolr Index:不仅按字词,还按含义搜索,基于你的邮件给出 AI 回答,读取图片和附件中的文字,支持筛选和分组,新邮件即时送达。中小型邮箱免费。</string>
     <string name="tool_go_opensolr">前往 Opensolr</string>
     <string name="ai_no_answer">你的邮件中没有能回答这个问题的内容。</string>
+    <string name="signature">签名</string>
+    <string name="signature_text">添加在每个账户发出的每封邮件下方。</string>
+    <string name="signature_hint">输入签名</string>
+    <string name="sig_bold">粗体</string>
+    <string name="sig_italic">斜体</string>
+    <string name="sig_underline">下划线</string>
+    <string name="sig_link">链接</string>
+    <string name="sig_clear">清除</string>
+    <string name="link_text">文字</string>
+    <string name="link_address">地址</string>
 </resources>

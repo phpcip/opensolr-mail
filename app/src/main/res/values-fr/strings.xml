@@ -418,4 +418,14 @@
     <string name="opensolr_pitch_text">Vos e-mails vont dans votre propre Opensolr Index : recherche par le sens et pas seulement par les mots, réponses IA sur vos e-mails, texte lu dans les photos et pièces jointes, filtres et regroupement, et les nouveaux e-mails arrivent tout de suite. Gratuit pour les boîtes petites et moyennes.</string>
     <string name="tool_go_opensolr">Aller sur Opensolr</string>
     <string name="ai_no_answer">Rien dans vos e-mails ne répond à cela.</string>
+    <string name="signature">Signature</string>
+    <string name="signature_text">Ajoutée sous chaque message envoyé, depuis chaque compte.</string>
+    <string name="signature_hint">Écrivez votre signature</string>
+    <string name="sig_bold">Gras</string>
+    <string name="sig_italic">Italique</string>
+    <string name="sig_underline">Souligné</string>
+    <string name="sig_link">Lien</string>
+    <string name="sig_clear">Effacer</string>
+    <string name="link_text">Texte</string>
+    <string name="link_address">Adresse</string>
 </resources>

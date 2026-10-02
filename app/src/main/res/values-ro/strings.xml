@@ -418,4 +418,14 @@
     <string name="opensolr_pitch_text">Mailul tău intră într-un Opensolr Index al tău: căutare după sens, nu doar după cuvinte, răspunsuri AI din mailurile tale, text citit din poze și atașamente, filtre și grupare, iar mailul nou sosește imediat. Gratuit pentru căsuțe mici și medii.</string>
     <string name="tool_go_opensolr">Mergi la Opensolr</string>
     <string name="ai_no_answer">Nimic din mailurile tale nu răspunde la asta.</string>
+    <string name="signature">Semnătură</string>
+    <string name="signature_text">Adăugată sub fiecare mesaj trimis, din orice cont.</string>
+    <string name="signature_hint">Scrie semnătura</string>
+    <string name="sig_bold">Bold</string>
+    <string name="sig_italic">Italic</string>
+    <string name="sig_underline">Subliniat</string>
+    <string name="sig_link">Link</string>
+    <string name="sig_clear">Șterge</string>
+    <string name="link_text">Text</string>
+    <string name="link_address">Adresă</string>
 </resources>
