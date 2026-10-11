@@ -28,6 +28,9 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.ui.focus.onFocusChanged
+import com.opensolr.mail.ui.hapticClickable
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.KeyboardArrowDown
@@ -224,6 +227,15 @@ fun SearchScreen(vm: AppViewModel, sheet: String?, screen: Screen? = null) {
     }
 
     LaunchedEffect(Unit) { if (openSheet == null && snap == null) focus.requestFocus() }
+    // Autocomplete: while the box holds words not yet searched, people and mails that match them, a moment after the last key.
+    var boxFocused by remember { mutableStateOf(false) }
+    var suggestions by remember { mutableStateOf<MailSearch.Suggestions?>(null) }
+    LaunchedEffect(query, boxFocused, fastmail) {
+        val typed = query.trim()
+        if (fastmail || !boxFocused || typed.length < 2 || typed == submitted) { suggestions = null; return@LaunchedEffect }
+        kotlinx.coroutines.delay(SUGGEST_DEBOUNCE_MS)
+        suggestions = runCatching { vm.search.suggest(typed) }.getOrNull()
+    }
     // Another question stops the answer to the previous one at once.
     LaunchedEffect(submitted) { if (vm.aiQuestion != null && vm.aiQuestion != submitted) vm.stopAi() }
     LaunchedEffect(submitted, filters) {
@@ -443,7 +455,7 @@ fun SearchScreen(vm: AppViewModel, sheet: String?, screen: Screen? = null) {
                         // A new text starts a search through the effect; the same text searched again is a refresh.
                         if (submitted != query.trim()) submitted = query.trim() else run()
                     },
-                    modifier = Modifier.fillMaxWidth().focusRequester(focus),
+                    modifier = Modifier.fillMaxWidth().focusRequester(focus).onFocusChanged { boxFocused = it.isFocused },
                 )
             }
             // A small, quiet clear at the end of the box: back to the plain list, newest first.
@@ -456,6 +468,17 @@ fun SearchScreen(vm: AppViewModel, sheet: String?, screen: Screen? = null) {
             if (fastmail) IconBtn(R.drawable.ic_help, { showOperators = true }, tint = p.muted, contentDescription = stringResource(R.string.cd_search_help))
         }
         Hairline()
+        suggestions?.takeIf { it.people.isNotEmpty() || it.mails.isNotEmpty() }?.let { sg ->
+            SuggestionList(
+                sg,
+                onPerson = { label ->
+                    // A person picked: their name (or address) is the search
+                    val name = Regex("^(.*) \\(([^()]+@[^()]+)\\)$").find(label)?.groupValues?.let { it[1].ifBlank { it[2] } } ?: label
+                    query = name; suggestions = null; focusManager.clearFocus(); submitted = name
+                },
+                onMail = { h -> suggestions = null; focusManager.clearFocus(); vm.go(Screen.Thread(h.acc, h.threadId)) },
+            )
+        }
         // Fastmail's search is the classic one: no grouping, no filters, no AI; the Opensolr tools only with the index.
         if (!fastmail) Row(
             Modifier.fillMaxWidth().background(p.toolFill).padding(horizontal = 10.dp, vertical = 6.dp),
@@ -1459,3 +1482,31 @@ private const val PREVIEW = 12
 
 private val Icons.Filled.KeyboardArrowDownCompat get() = androidx.compose.material.icons.Icons.Filled.KeyboardArrowDown
 private val Icons.Filled.KeyboardArrowRightCompat get() = androidx.compose.material.icons.Icons.AutoMirrored.Filled.KeyboardArrowRight
+
+private const val SUGGEST_DEBOUNCE_MS = 250L
+
+/** The autocomplete under the search box: people first (a tap searches them), then mails (a tap opens the conversation). */
+@Composable
+private fun SuggestionList(sg: MailSearch.Suggestions, onPerson: (String) -> Unit, onMail: (MailSearch.Hit) -> Unit) {
+    val p = LocalPalette.current
+    Column(Modifier.fillMaxWidth().heightIn(max = 360.dp).background(p.paper).verticalScroll(rememberScrollState())) {
+        sg.people.forEach { label ->
+            Row(Modifier.fillMaxWidth().hapticClickable { onPerson(label) }.padding(horizontal = 14.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+                Icon(painterResource(R.drawable.ic_contact), null, tint = p.muted, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(10.dp))
+                Text(label, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium, color = p.ink, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+        }
+        sg.mails.forEach { h ->
+            Row(Modifier.fillMaxWidth().hapticClickable { onMail(h) }.padding(horizontal = 14.dp, vertical = 9.dp), verticalAlignment = Alignment.CenterVertically) {
+                Icon(painterResource(R.drawable.ic_inbox), null, tint = p.muted, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(10.dp))
+                Column(Modifier.weight(1f)) {
+                    Text(h.subject.ifBlank { "\u2014" }, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Bold, color = p.ink, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(h.from + " \u00b7 " + com.opensolr.mail.ui.fmtDate(h.received), style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.Medium, color = p.muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
+            }
+        }
+        Hairline()
+    }
+}

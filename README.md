@@ -29,7 +29,8 @@ with AI answers on top, and new mail is pushed at once.
 | **Housekeeping** | Mark all as read, on any view or mailbox. Long press Trash or Junk to empty it for good. |
 | **Notes** | Fastmail Notes, read and written from the app. |
 | **Calendars** | Each account's Fastmail calendars sync both ways into Android's calendar store, so they show up in Google Calendar or any calendar app. |
-| **Search** | Two searches, chosen in **Settings → Search**. **Fastmail**: a classic search by words, newest first, on Fastmail's own servers, with nothing else to connect. **Opensolr**, with an Opensolr account: words and meaning blended, an AI answer drawn from your own mail, a Fresh switch that favours recent mail, filters (from, to, company, account, folder, year, attachment type, weekday, dates, unread, flagged, answered, attachments), and grouping by date, sender, company or account. |
+| **Search** | Two searches, chosen in **Settings → Search**. **Fastmail**: a classic search by words, newest first, on Fastmail's own servers, with nothing else to connect. **Opensolr**, with an Opensolr account: words and meaning blended, an AI answer drawn from your own mail, a Fresh switch that favours recent mail, filters (from, to, company, account, folder, year, attachment type, weekday, dates, unread, flagged, answered, attachments), grouping by date, sender, company or account, and suggestions as you type: the people whose name or address holds what you typed, and the newest conversations whose words start with it. |
+| **Chat with your mail** | With an Opensolr account: ask your mail anything, in your own words, and talk on with follow-ups and corrections. The assistant searches your own Opensolr Index the way the question needs (by meaning, by exact words, the latest with recent mail boosted, or a list by sender, period or state), in every folder, reads a whole conversation when it needs more, and answers in your language. Every answer links the mails and attachments it comes from, shown as pills under it: a tap opens the conversation or the file. Commands starting with `/` look things up at once: `/search`, `/time`, `/rate`, `/vat`, `/vatcheck`, `/distance`, `/place`, `/postal`, `/ip`, `/language`, `/translate`, `/help`. A chat keeps 50 questions, then starts anew. |
 | **Contacts** | Everyone you can write to, in one list: your Fastmail address books, the phone's contacts (only if you allow it), and, with an Opensolr account, everyone in your mail. Merged into one card per person, under A to Z, with names, addresses, phone numbers and postal addresses, pictures from the phone, from Fastmail or from Gravatar, a search box, and Compose on each card. Nothing is ever edited or deleted. The same people are suggested as you type in To, Cc and Bcc. |
 | **Attachments searched too** | With an Opensolr account, on Wi-Fi, pictures are read with OCR and documents (PDF, Office, OpenDocument, RTF, text, HTML) are turned into text, so a search finds the invoice by the number printed inside it. Archives are never opened. |
 | **Updates itself** | Once a day the app looks at the latest release on GitHub, and **Check for updates** in Settings asks on the spot. The app downloads the APK, checks that it is signed with the same key and is really newer, and hands it to Android's installer. A copy installed from Google Play is updated by Play instead. |
@@ -41,7 +42,7 @@ Mail, notes and calendars work with a Fastmail account alone, and so does search
 **Fastmail** in **Settings → Search** and the app searches on Fastmail's own servers (JMAP `Email/query`),
 newest first, with the same `+word`, `-word` and `"phrase"` operators and no filters, groups or AI.
 
-Search by meaning, AI answers, text inside attachments, filters and grouping live in an **Opensolr Index**
+Search by meaning, AI answers, the chat, text inside attachments, filters and grouping live in an **Opensolr Index**
 that the app creates in your Opensolr account, one per phone (`mail_<device id>__dense`). Without an
 Opensolr account, new mail is checked every 15 minutes instead of arriving at once, because instant push
 goes through the relay on opensolr.com. When the Opensolr Index is out of disk or bandwidth, or cannot be
@@ -69,14 +70,18 @@ What your plan decides, shown in **Settings → Opensolr Account**:
    walked newest first; deletions and moves follow at once.
 4. **Search.** A query goes to your index through Opensolr's `{!hybrid}` parser: an edismax query over the
    words and a kNN query over the vectors, blended with the balance set in Settings.
+5. **Chat.** A question goes to Opensolr's assistant on api.opensolr.com in one streamed call. The model
+   there chooses its searches of your index (only the accounts on this phone), reads what they find, and
+   writes the answer; the phone shows each step as it runs and the answer as it is written.
 
 ## Your data
 
 - **Your mail stays between Fastmail, your phone and your own Opensolr Index.** No analytics, no ads, no
   tracking.
 - **What reaches Opensolr:** only with an Opensolr account connected, the text of your messages goes into
-  your index, the text to embed goes to Opensolr's embedding service, and attachments are sent to be read
-  into text. The index is yours: you can see it, back it up or empty it in the Opensolr control panel.
+  your index, the text to embed goes to Opensolr's embedding service, attachments are sent to be read
+  into text, and the questions you ask in the chat (with its earlier messages) go to Opensolr's assistant,
+  which reads your index to answer and keeps nothing. The index is yours: you can see it, back it up or empty it in the Opensolr control panel.
 - **Passwords are only typed in the browser.** Tokens and the Opensolr API key are stored encrypted with an
   Android Keystore key and excluded from phone backups.
 
@@ -116,6 +121,7 @@ without it the app builds and runs with push off. Details: [building](docs/build
 ```
 app/src/main/java/com/opensolr/mail/
   auth/     Fastmail and Opensolr sign-in (OAuth 2.0 + PKCE) and the callback activity
+  chat/     the chat with your mail: the streamed call to Opensolr's assistant
   data/     accounts, preferences, Keystore encryption, the local mail database, models
   dav/      CalDAV and the Android calendar sync adapter
   index/    the Opensolr Index: creation, configuration, the indexer

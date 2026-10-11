@@ -72,6 +72,7 @@ fun AppRoot(vm: AppViewModel) {
                     is Screen.NoteEdit -> NoteEditScreen(vm, s.acc, s.noteId)
                     Screen.Settings -> SettingsScreen(vm)
                     Screen.Contacts -> com.opensolr.mail.ui.screens.ContactsScreen(vm)
+                    Screen.Chat -> com.opensolr.mail.ui.screens.ChatScreen(vm)
                 }
                 }
             }
@@ -177,7 +178,7 @@ fun AppRoot(vm: AppViewModel) {
 private fun depth(s: Screen): Int = when (s) {
     Screen.Mailboxes -> 0
     is Screen.List -> 1
-    is Screen.Thread, is Screen.Search, is Screen.Notes, Screen.Settings, Screen.Contacts -> 2
+    is Screen.Thread, is Screen.Search, is Screen.Notes, Screen.Settings, Screen.Contacts, Screen.Chat -> 2
     is Screen.Compose, is Screen.NoteEdit -> 3
 }
 

@@ -236,6 +236,8 @@ fun ThreadListScreen(vm: AppViewModel, view: View) {
         ) {
             IconAction(R.drawable.ic_compose, active = false) { vm.go(Screen.Compose(ComposeInit())) }
             IconAction(R.drawable.ic_search, active = false) { vm.go(Screen.Search()) }
+            // The chat with the mailbox: needs the Opensolr account and AI in the plan, like the AI answer.
+            if (vm.chatAvailable) IconAction(R.drawable.ic_chat, active = false, contentDescription = stringResource(R.string.chat)) { vm.go(Screen.Chat) }
             // Filters are the Opensolr search's; Fastmail's classic search has none.
             if (!vm.useFastmailSearch) IconAction(R.drawable.ic_filters, active = false) { vm.go(Screen.Search("filters")) }
             Box {

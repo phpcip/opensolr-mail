@@ -56,6 +56,7 @@ sealed class Screen {
     data class NoteEdit(val acc: String, val noteId: String?) : Screen()
     object Settings : Screen()
     object Contacts : Screen()
+    object Chat : Screen()
 }
 
 /** What a compose screen opens with. */
@@ -85,6 +86,11 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         private val AUTO_SYNC_RETRY_MS = listOf(0L, 3_000L, 10_000L, 30_000L)
         private const val AUTO_NETWORK_WAIT_MS = 30_000L
         private const val MANUAL_NETWORK_WAIT_MS = 10_000L
+        /** A link of a chat answer to a mail: (mail:<index id>). */
+        val CHAT_LINK = Regex("\\(mail:([A-Za-z0-9_:-]+(?:~\\d+)?)\\)")
+        /** A mail: link in an answer, linked ([text](mail:id)) or written bare (mail:id): group 1 the text, 2 the link. */
+        // The text may hold one level of brackets itself ([Re: [EXTERNAL] Offer](mail:...))
+        val CHAT_ANY_LINK = Regex("\\[((?:[^\\[\\]\\n]|\\[[^\\[\\]\\n]*\\])*)\\]\\(mail:([A-Za-z0-9_:-]+(?:~\\d+)?)\\)|mail:([A-Za-z0-9_-]{16}:[A-Za-z0-9_-]+(?:~\\d+)?)")
     }
 
 
@@ -614,6 +620,186 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         aiText = null
         aiRefs = emptyList()
         aiRunning = false
+    }
+
+    // ---------- the mail chat ----------
+
+    /** One message of the chat: the reader's ("user") or the assistant's; [error] when it says why there is no answer. */
+    data class ChatLine(val role: String, val text: String, val error: Boolean = false)
+
+    /** The chat needs the Opensolr account and AI in the plan with allowance left. */
+    val chatAvailable: Boolean get() = prefs.signedIn && (prefs.limits?.aiUsable ?: prefs.vectorAllowed)
+
+    /** The conversation, kept on this phone until New chat. */
+    var chatLines by mutableStateOf(loadChat().first)
+        private set
+    var chatBusy by mutableStateOf(false)
+        private set
+    /** What the assistant is doing now (searching, reading, answering); null once its words arrive. */
+    var chatProgress by mutableStateOf<String?>(null)
+        private set
+    /** The conversation each mail the answers link to belongs to: index id to thread id. */
+    private var chatMails: MutableMap<String, String> = loadChat().second
+    /** The attachments of each mail the answers link to, in the order their links number them. */
+    private var chatAtts: MutableMap<String, kotlin.collections.List<String>> = loadAtts()
+    /** The subject of each mail the answers link to: the text of its links. */
+    private var chatSubjects: MutableMap<String, String> = loadSubjects()
+
+    /** What a link of an answer reads: the attachment's file name or the mail's subject; null when unknown. */
+    fun chatLabel(link: String): String? {
+        val id = link.substringBefore('~')
+        val n = link.substringAfter('~', "").toIntOrNull()
+        return if (n != null) chatAtts[id]?.getOrNull(n - 1)?.takeIf { it.isNotBlank() } else chatSubjects[id]?.takeIf { it.isNotBlank() }
+    }
+    private var chatJob: Job? = null
+    private val chat by lazy { com.opensolr.mail.chat.MailChat(ctx) }
+
+    private fun loadChat(): Pair<kotlin.collections.List<ChatLine>, MutableMap<String, String>> = runCatching {
+        val o = org.json.JSONObject(prefs.chatJson)
+        val a = o.optJSONArray("lines") ?: org.json.JSONArray()
+        val lines = (0 until a.length()).mapNotNull { i -> a.optJSONObject(i)?.let { ChatLine(it.optString("r"), it.optString("t"), it.optBoolean("e")) } }
+        val m = o.optJSONObject("mails") ?: org.json.JSONObject()
+        lines to m.keys().asSequence().associateWith { m.optString(it) }.toMutableMap()
+    }.getOrDefault(emptyList<ChatLine>() to HashMap())
+
+    private fun loadSubjects(): MutableMap<String, String> = runCatching {
+        val m = org.json.JSONObject(prefs.chatJson).optJSONObject("subjects") ?: org.json.JSONObject()
+        m.keys().asSequence().associateWith { m.optString(it) }.toMutableMap()
+    }.getOrDefault(HashMap())
+
+    private fun loadAtts(): MutableMap<String, kotlin.collections.List<String>> = runCatching {
+        val m = org.json.JSONObject(prefs.chatJson).optJSONObject("atts") ?: org.json.JSONObject()
+        m.keys().asSequence().associateWith { k -> m.optJSONArray(k)?.let { a -> (0 until a.length()).map { a.optString(it) } }.orEmpty() }.toMutableMap()
+    }.getOrDefault(HashMap())
+
+    private fun saveChat() {
+        val a = org.json.JSONArray()
+        chatLines.forEach { a.put(org.json.JSONObject().put("r", it.role).put("t", it.text).put("e", it.error)) }
+        // Only the mails the kept answers still link to
+        val linked = chatLines.flatMap { l -> CHAT_ANY_LINK.findAll(l.text).map { (it.groupValues[2].ifEmpty { it.groupValues[3] }).substringBefore('~') }.toList() }.toSet()
+        val m = org.json.JSONObject()
+        chatMails.filterKeys { it in linked }.forEach { (k, v) -> m.put(k, v) }
+        val at = org.json.JSONObject()
+        chatAtts.filterKeys { it in linked }.forEach { (k, v) -> at.put(k, org.json.JSONArray(v)) }
+        val sj = org.json.JSONObject()
+        chatSubjects.filterKeys { it in linked }.forEach { (k, v) -> sj.put(k, v) }
+        prefs.chatJson = org.json.JSONObject().put("lines", a).put("mails", m).put("atts", at).put("subjects", sj).toString()
+    }
+
+    /** Sends [text] (a question, or a / command) and streams the answer into the last line. */
+    fun chatSend(text: String) {
+        val q = text.trim()
+        if (q.isEmpty() || chatBusy) return
+        if (q.length > com.opensolr.mail.chat.MailChat.MAX_CHARS) { toast(R.string.chat_too_long, java.text.NumberFormat.getIntegerInstance().format(com.opensolr.mail.chat.MailChat.MAX_CHARS)); return }
+        // A chat holds MAX_QUESTIONS questions: the next one starts a new chat on its own, with no earlier context
+        if (chatLines.count { it.role == "user" } >= com.opensolr.mail.chat.MailChat.MAX_QUESTIONS) {
+            chatLines = emptyList()
+            chatMails.clear()
+            chatAtts.clear()
+            chatSubjects.clear()
+            toast(R.string.chat_full)
+        }
+        // The earlier messages that were answered, then the question; error lines are the phone's own, never sent
+        val history = chatLines.filter { !it.error && it.text.isNotBlank() }.takeLast(com.opensolr.mail.chat.MailChat.HISTORY).map { it.role to it.text }
+        chatLines = chatLines + ChatLine("user", q) + ChatLine("assistant", "")
+        chatBusy = true
+        chatProgress = ctx.getString(R.string.chat_reading)
+        saveChat()
+        chatJob = viewModelScope.launch(Guard) {
+            val me = coroutineContext[Job]
+            val raw = StringBuilder()
+            fun show(t: String, error: Boolean = false) {
+                if (chatJob !== me) return
+                chatLines = chatLines.dropLast(1) + ChatLine("assistant", t, error)
+            }
+            try {
+                chat.ask(history + ("user" to q)) { e ->
+                    if (chatJob !== me) return@ask
+                    when (e) {
+                        is com.opensolr.mail.chat.MailChat.Event.Status ->
+                            if (raw.isEmpty()) chatProgress = ctx.getString(if (e.stage == "answering") R.string.chat_answering else R.string.chat_reading)
+                        is com.opensolr.mail.chat.MailChat.Event.Tool -> if (raw.isEmpty()) chatProgress = chatToolLine(e)
+                        is com.opensolr.mail.chat.MailChat.Event.Mails -> e.items.forEach { r ->
+                            chatMails[r.id] = r.thread
+                            if (r.files.isNotEmpty()) chatAtts[r.id] = r.files
+                            if (r.subject.isNotBlank()) chatSubjects[r.id] = r.subject
+                        }
+                        is com.opensolr.mail.chat.MailChat.Event.Text -> {
+                            raw.append(e.text)
+                            chatProgress = null
+                            show(raw.toString())
+                        }
+                    }
+                }
+                if (raw.isBlank()) show(ctx.getString(R.string.chat_err_generic), error = true)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: com.opensolr.mail.net.QuotaExceededException) {
+                show(ctx.getString(R.string.search_ai_off_quota), error = true)
+                refreshLimits()
+            } catch (e: com.opensolr.mail.net.VectorNotAllowedException) {
+                show(ctx.getString(R.string.search_ai_off_plan), error = true)
+                refreshLimits()
+            } catch (e: com.opensolr.mail.chat.MailChat.ChatException) {
+                val msg = ctx.getString(when (e.code) {
+                    "ERROR_ASSISTANT_TIMEOUT" -> R.string.chat_err_timeout
+                    "ERROR_NETWORK" -> R.string.chat_err_network
+                    else -> R.string.chat_err_generic
+                })
+                // What was written before the failure stays, the reason under it
+                show(if (raw.isBlank()) msg else raw.toString() + "\n\n" + msg, error = raw.isBlank())
+            } catch (e: Exception) {
+                show(if (raw.isBlank()) ctx.getString(R.string.chat_err_generic) else raw.toString(), error = raw.isBlank())
+            } finally {
+                if (chatJob === me) {
+                    chatBusy = false
+                    chatProgress = null
+                    chatJob = null
+                    saveChat()
+                }
+            }
+        }
+    }
+
+    /** The progress line of a tool the assistant runs. */
+    private fun chatToolLine(e: com.opensolr.mail.chat.MailChat.Event.Tool): String = when (e.name) {
+        "mail_search", "mail_lexical_search", "mail_latest_search", "command_search" ->
+            ctx.getString(R.string.chat_searching, (e.args["query"] ?: e.args["text"]).orEmpty().ifBlank { e.args["sender"].orEmpty() })
+        "mail_list" -> ctx.getString(R.string.chat_listing)
+        "mail_read_conversation" -> ctx.getString(R.string.chat_reading_conv)
+        "command_translate" -> ctx.getString(R.string.chat_translating)
+        else -> ctx.getString(R.string.chat_looking_up, e.args.values.filter { it.isNotBlank() }.joinToString(", ").take(120))
+    }
+
+    /** New chat: the answer being written stops, the conversation is cleared. */
+    fun chatNew() {
+        chatJob?.cancel()
+        chatJob = null
+        chatBusy = false
+        chatProgress = null
+        chatLines = emptyList()
+        chatMails.clear()
+        chatAtts.clear()
+        chatSubjects.clear()
+        saveChat()
+    }
+
+    /** A link of an answer: a mail (its index id) opens its conversation, an attachment (id~n) opens that file. */
+    fun chatOpen(context: Context, link: String) {
+        val docId = link.substringBefore('~')
+        val att = link.substringAfter('~', "").toIntOrNull()
+        val acc = store.all().firstOrNull { docId.startsWith(MailIndexer.indexKey(it) + ":") } ?: run { toast(R.string.err_generic); return }
+        val emailId = docId.substringAfter(':')
+        viewModelScope.launch(Guard) {
+            val thread = chatMails[docId] ?: withContext(Dispatchers.IO) { db.message(acc.key, emailId)?.threadId }.orEmpty()
+            val file = att?.let { chatAtts[docId]?.getOrNull(it - 1) }
+            if (file != null) {
+                openAnswerRef(context, com.opensolr.mail.search.MailSearch.AnswerRef(file, acc.key, emailId, thread, attachment = true))
+                return@launch
+            }
+            if (thread.isBlank()) { toast(R.string.err_generic); return@launch }
+            go(Screen.Thread(acc.key, thread))
+        }
     }
 
     /** A name in the answer tapped: an attachment opens (downloaded first when needed), a subject opens its conversation. */

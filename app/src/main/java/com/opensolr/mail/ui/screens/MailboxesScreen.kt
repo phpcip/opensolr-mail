@@ -107,6 +107,7 @@ fun MailboxesScreen(vm: AppViewModel) {
                 vm.prefs.openSections = open
             })
             IconBtn(R.drawable.ic_search, { vm.go(Screen.Search()) })
+            if (vm.chatAvailable) IconBtn(R.drawable.ic_chat, { vm.go(Screen.Chat) }, contentDescription = stringResource(R.string.chat))
             IconBtn(R.drawable.ic_compose, { vm.go(Screen.Compose(ComposeInit())) })
         }
         // Folders under All accounts: the saved order, anything new or unknown after it.

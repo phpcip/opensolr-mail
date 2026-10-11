@@ -132,6 +132,11 @@ class AppPrefs(context: Context) {
         get() = sp.getString("ai_instructions", "") ?: ""
         set(v) = sp.edit().putString("ai_instructions", v.trim().take(2000)).apply()
 
+    /** The mail chat as JSON (its messages and the conversations its links open), kept until New chat. */
+    var chatJson: String
+        get() = sp.getString("mail_chat", "") ?: ""
+        set(v) = sp.edit().putString("mail_chat", v).apply()
+
     /** Search on Fastmail's servers instead of the Opensolr Index; without an Opensolr account it is the only one. */
     var fastmailSearch: Boolean
         get() = sp.getBoolean("fastmail_search", false)

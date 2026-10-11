@@ -368,6 +368,55 @@ class MailSearch(private val context: Context) {
         return Result(threadHits, threadGroups, total, smart, facets, names.mapValues { it.value.first }, aiDocs, hlMap, fetched = hits.size, params = p)
     }
 
+    /** What the search box offers while the reader types: people whose name or address has the text, and mails whose words start with it. */
+    data class Suggestions(val people: List<String>, val mails: List<Hit>)
+
+    /**
+     * Suggestions for [typed], in one request to the index: the senders and recipients that contain it (facets, any
+     * case) and the conversations whose subject, people or attachment names start with its words (edge n-grams), the
+     * best first and the newest among equals. Only this phone's accounts; nothing is created when there is no index yet.
+     */
+    suspend fun suggest(typed: String): Suggestions {
+        val text = LEXICAL_SYNTAX.replace(typed.trim().take(100), " ").replace(SPACES, " ").trim()
+        val connection = com.opensolr.mail.net.IndexConnection.fromJson(prefs.connectionJson) ?: return Suggestions(emptyList(), emptyList())
+        val local = store.all()
+        if (text.length < 2 || local.isEmpty()) return Suggestions(emptyList(), emptyList())
+        val json = SolrClient(connection).select(listOf(
+            "q" to "{!edismax qf=\"subject_t^3 words_ng\" mm=\"100%\" v=\$uq}",
+            "uq" to text,
+            "fq" to "{!terms f=account_s v=\$f_acc}",
+            "f_acc" to local.joinToString(",") { MailIndexer.indexKey(it) },
+            // Every word must match, so the newest of the matches come first; a conversation shows its newest mail
+            "fq" to "{!collapse field=thread_id_s sort=\$csort}",
+            "csort" to "received_dt desc",
+            "sort" to "received_dt desc, id asc",
+            "fl" to "id,account_s,email_id_s,thread_id_s,subject_t,from_t,from_s,from_name_s,received_dt,seen_b,flagged_b,has_attachment_b",
+            "rows" to SUGGEST_ROWS.toString(),
+            "facet" to "true",
+            "facet.field" to "{!key=people}from_label_s",
+            "facet.field" to "{!key=to}to_label_ss",
+            "facet.contains" to text,
+            "facet.contains.ignoreCase" to "true",
+            "facet.limit" to SUGGEST_ROWS.toString(),
+            "facet.mincount" to "1",
+        ))
+        val ff = json.optJSONObject("facet_counts")?.optJSONObject("facet_fields")
+        val people = (facetList(ff?.optJSONArray("people")) + facetList(ff?.optJSONArray("to")))
+            .groupBy { it.value }.map { (v, l) -> v to l.sumOf { it.count } }.sortedByDescending { it.second }
+            .map { it.first }.take(SUGGEST_PEOPLE)
+        val localKey = local.associate { MailIndexer.indexKey(it) to it.key }
+        val docs = json.optJSONObject("response")?.optJSONArray("docs") ?: JSONArray()
+        val mails = (0 until docs.length()).map { docs.getJSONObject(it) }.filter { localKey.containsKey(it.optString("account_s")) }.map { d ->
+            Hit(
+                acc = localKey.getValue(d.optString("account_s")), emailId = d.optString("email_id_s"), threadId = d.optString("thread_id_s"),
+                subject = d.optString("subject_t"), from = d.optString("from_name_s").ifBlank { d.optString("from_t") }, fromEmail = d.optString("from_s"),
+                received = MailSync.parseDate(d.optString("received_dt")), snippet = "", seen = d.optBoolean("seen_b", true),
+                flagged = d.optBoolean("flagged_b"), hasAttachment = d.optBoolean("has_attachment_b"), score = 0.0, docId = d.optString("id"),
+            )
+        }
+        return Suggestions(people, mails)
+    }
+
     /** A name the answer may mention: an attachment (opened on a tap) or a mail's subject (its conversation opened). */
     data class AnswerRef(val label: String, val acc: String, val emailId: String, val threadId: String, val attachment: Boolean)
 
@@ -627,7 +676,7 @@ class MailSearch(private val context: Context) {
         private val vectors = object : LinkedHashMap<String, FloatArray>(64, 0.75f, true) {
             override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, FloatArray>?) = size > 100
         }
-        private const val QF = "subject_t^3 from_t to_tm cc_tm date_t^8 attachment_names_tm body_t^2 attachment_text_t^0.01 words_ng^0.01 address_ngk^0.01"
+        private const val QF = "subject_t^3 from_t to_tm cc_tm date_t^8 attachment_names_tm body_t^2 attachment_text_t^2"
         /** Minimum match for flexible, balanced and strict. */
         private val MM_LEVELS = listOf("2<65% 4<50% 8<40%", "2<90% 5<75% 8<60% 12<50%", "2<95% 5<90% 8<80%")
         private const val TOP_K = 790
@@ -639,6 +688,9 @@ class MailSearch(private val context: Context) {
         /** Words of the text read from a message's attachments (documents, OCR) that go to the AI answer. */
         private const val AI_ATTACHMENT_WORDS = 1_000
         private const val GROUP_LIMIT = 5
+        /** Mails and people the search box suggests while the reader types. */
+        private const val SUGGEST_ROWS = 6
+        private const val SUGGEST_PEOPLE = 4
         private const val GROUP_ROWS = 20
         /** Words one message may give the AI answer, and characters for all of them together: what fits the model with room to answer. */
         private const val AI_DOC_WORDS = 10_000
