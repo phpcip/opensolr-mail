@@ -438,6 +438,7 @@
     <string name="chat_reading_conv">Leyendo la conversación…</string>
     <string name="chat_looking_up">Consultando: %1$s…</string>
     <string name="chat_translating">Traduciendo…</string>
+    <string name="chat_reviewing">Revisando lo encontrado…</string>
     <string name="chat_answering">Respondiendo…</string>
     <string name="chat_err_timeout">La respuesta tardó demasiado. Inténtalo de nuevo.</string>
     <string name="chat_err_generic">No he podido responder ahora. Inténtalo de nuevo.</string>

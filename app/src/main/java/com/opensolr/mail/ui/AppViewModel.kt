@@ -717,7 +717,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                     if (chatJob !== me) return@ask
                     when (e) {
                         is com.opensolr.mail.chat.MailChat.Event.Status ->
-                            if (raw.isEmpty()) chatProgress = ctx.getString(if (e.stage == "answering") R.string.chat_answering else R.string.chat_reading)
+                            if (raw.isEmpty()) chatProgress = ctx.getString(when (e.stage) { "answering" -> R.string.chat_answering; "reviewing" -> R.string.chat_reviewing; else -> R.string.chat_reading })
                         is com.opensolr.mail.chat.MailChat.Event.Tool -> if (raw.isEmpty()) chatProgress = chatToolLine(e)
                         is com.opensolr.mail.chat.MailChat.Event.Mails -> e.items.forEach { r ->
                             chatMails[r.id] = r.thread

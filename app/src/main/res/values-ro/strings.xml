@@ -438,6 +438,7 @@
     <string name="chat_reading_conv">Citesc conversația…</string>
     <string name="chat_looking_up">Caut: %1$s…</string>
     <string name="chat_translating">Traduc…</string>
+    <string name="chat_reviewing">Mă uit prin ce am găsit…</string>
     <string name="chat_answering">Răspund…</string>
     <string name="chat_err_timeout">Răspunsul a durat prea mult. Încearcă din nou.</string>
     <string name="chat_err_generic">N-am putut răspunde acum. Încearcă din nou.</string>

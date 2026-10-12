@@ -438,6 +438,7 @@
     <string name="chat_reading_conv">会話を読んでいます…</string>
     <string name="chat_looking_up">調べています: %1$s…</string>
     <string name="chat_translating">翻訳中…</string>
+    <string name="chat_reviewing">見つかった内容を確認しています…</string>
     <string name="chat_answering">回答中…</string>
     <string name="chat_err_timeout">回答に時間がかかりすぎました。もう一度お試しください。</string>
     <string name="chat_err_generic">今は回答できませんでした。もう一度お試しください。</string>

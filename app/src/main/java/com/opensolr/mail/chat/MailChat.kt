@@ -118,7 +118,7 @@ class MailChat(private val context: Context) {
 
     companion object {
         private val JSON = "application/json; charset=utf-8".toMediaType()
-        /** The server gives up after 60 seconds (a translation after 180); the phone a little later. */
+        /** The server gives up after 150 seconds; the phone a little later. */
         const val STALL_MS = 30_000L
         const val TOTAL_MS = 200_000L
         /** The reader's question, as the server takes it. */
