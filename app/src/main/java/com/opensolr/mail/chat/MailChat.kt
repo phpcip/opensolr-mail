@@ -41,8 +41,11 @@ class MailChat(private val context: Context) {
     /** Raised for an error event or a stream that stalled or ran too long; [code] is the server's code. */
     class ChatException(val code: String) : Exception(code)
 
-    /** Streams the answer to the last of [messages] (role to text, the reader's question last) into [onEvent]. */
-    suspend fun ask(messages: List<Pair<String, String>>, onEvent: (Event) -> Unit) = withContext(Dispatchers.IO) {
+    /**
+     * Streams the answer to the last of [messages] (role to text, the reader's question last) into [onEvent].
+     * [conversationId] names the chat: the server keeps what its tools found for the next questions of the same chat.
+     */
+    suspend fun ask(messages: List<Pair<String, String>>, conversationId: String, onEvent: (Event) -> Unit) = withContext(Dispatchers.IO) {
         val connection = MailIndex(context).ensure()
         val accounts = store.all()
         val body = JSONObject()
@@ -54,6 +57,7 @@ class MailChat(private val context: Context) {
             .put("instructions", prefs.aiInstructions)
             .put("alpha", (1f - prefs.lexicalWeight).toDouble())
             .put("match", prefs.matchLevel)
+            .put("conversation_id", conversationId)
         val url = (OpensolrApi.AI + "mail_chat").toHttpUrl().newBuilder().addQueryParameter("index_name", connection.indexName).build()
         val call = Http.stream.newCall(Request.Builder().url(url).post(body.toString().toRequestBody(JSON)).build())
         // Stopping the chat (New chat, leaving the app) closes the connection at once, so the server stops too.

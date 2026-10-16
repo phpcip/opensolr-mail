@@ -644,6 +644,10 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     private var chatAtts: MutableMap<String, kotlin.collections.List<String>> = loadAtts()
     /** The subject of each mail the answers link to: the text of its links. */
     private var chatSubjects: MutableMap<String, String> = loadSubjects()
+    /** This chat's id, sent with every question so the server keeps what it found for the next ones; new on New chat. */
+    private var chatId: String = runCatching { org.json.JSONObject(prefs.chatJson).optString("id") }.getOrDefault("").ifBlank { newChatId() }
+
+    private fun newChatId(): String = java.util.UUID.randomUUID().toString().replace("-", "")
 
     /** What a link of an answer reads: the attachment's file name or the mail's subject; null when unknown. */
     fun chatLabel(link: String): String? {
@@ -683,7 +687,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         chatAtts.filterKeys { it in linked }.forEach { (k, v) -> at.put(k, org.json.JSONArray(v)) }
         val sj = org.json.JSONObject()
         chatSubjects.filterKeys { it in linked }.forEach { (k, v) -> sj.put(k, v) }
-        prefs.chatJson = org.json.JSONObject().put("lines", a).put("mails", m).put("atts", at).put("subjects", sj).toString()
+        prefs.chatJson = org.json.JSONObject().put("id", chatId).put("lines", a).put("mails", m).put("atts", at).put("subjects", sj).toString()
     }
 
     /** Sends [text] (a question, or a / command) and streams the answer into the last line. */
@@ -697,6 +701,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             chatMails.clear()
             chatAtts.clear()
             chatSubjects.clear()
+            chatId = newChatId()
             toast(R.string.chat_full)
         }
         // The earlier messages that were answered, then the question; error lines are the phone's own, never sent
@@ -713,7 +718,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 chatLines = chatLines.dropLast(1) + ChatLine("assistant", t, error)
             }
             try {
-                chat.ask(history + ("user" to q)) { e ->
+                chat.ask(history + ("user" to q), chatId) { e ->
                     if (chatJob !== me) return@ask
                     when (e) {
                         is com.opensolr.mail.chat.MailChat.Event.Status ->
@@ -781,6 +786,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         chatMails.clear()
         chatAtts.clear()
         chatSubjects.clear()
+        chatId = newChatId()
         saveChat()
     }
 
