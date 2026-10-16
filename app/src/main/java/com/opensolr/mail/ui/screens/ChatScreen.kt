@@ -276,9 +276,6 @@ private fun ProgressLine(text: String) {
  */
 private fun mailLinks(text: String, label: (String) -> String?): Pair<String, List<String>> {
     val ids = ArrayList<String>()
-    // The source line the server adds last: a link it holds that the answer already shows (same text) is not shown twice
-    val tail = text.lastIndexOf("\n\n").takeIf { it >= 0 && AppViewModel.CHAT_ANY_LINK.containsMatchIn(text.substring(it)) } ?: text.length
-    val shownBefore = HashSet<String>()
     val md = AppViewModel.CHAT_ANY_LINK.replace(text) { m ->
         val link = m.groupValues[2].ifEmpty { m.groupValues[3] }
         var n = ids.indexOf(link)
@@ -287,12 +284,9 @@ private fun mailLinks(text: String, label: (String) -> String?): Pair<String, Li
         // A link written as its address, a number ("1", "[1]") or nothing reads the mail's subject or the file's name
         val bare = given.isEmpty() || given.startsWith("mail:") || given == link || given.trim('[', ']', ' ', '#').all { it.isDigit() }
         val shown = (if (bare) label(link) ?: given.ifEmpty { link } else given).replace("[", "(").replace("]", ")")
-        if (m.range.first >= tail && shown.lowercase() in shownBefore) return@replace "\u0000"
-        if (m.range.first < tail) shownBefore += shown.lowercase()
         "[" + shown + "](ref:$n)"
     }
-    // The links left out of the source line take their separators with them
-    return md.replace(Regex("(\\s*·\\s*)?\u0000(\\s*·\\s*)?")) { r -> if (r.groupValues[1].isNotEmpty() && r.groupValues[2].isNotEmpty()) " · " else "" }.trimEnd() to ids
+    return md.trimEnd() to ids
 }
 
 /** The commands, each with what it does and an example a tap puts in the box. */
