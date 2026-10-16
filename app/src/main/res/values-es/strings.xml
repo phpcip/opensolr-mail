@@ -448,6 +448,8 @@
     <string name="chat_commands">Comandos</string>
     <string name="chat_commands_intro">Empieza un mensaje con uno de estos para consultar al instante. Toca un ejemplo.</string>
     <string name="chat_send">Enviar</string>
+    <string name="chat_stop">Detener respuesta</string>
+    <string name="chat_stopped">Detenido.</string>
     <string name="cmd_search">Busca en tu correo y lista las conversaciones que coinciden.</string>
     <string name="cmd_time">La fecha y hora local de un lugar. Solo: tu hora.</string>
     <string name="cmd_rate">El tipo de cambio de hoy y el importe convertido. Añade una fecha (YYYY-MM-DD) para un día pasado.</string>

@@ -458,6 +458,8 @@
     <string name="chat_commands">Commands</string>
     <string name="chat_commands_intro">Start a message with one of these to look something up at once. Tap an example to use it.</string>
     <string name="chat_send">Send</string>
+    <string name="chat_stop">Stop answer</string>
+    <string name="chat_stopped">Stopped.</string>
     <string name="cmd_search">Searches your mail and lists the conversations that match.</string>
     <string name="cmd_time">The local date and time at a place. Alone: your own time.</string>
     <string name="cmd_rate">Today\'s exchange rate, and the amount converted. Add a date (YYYY-MM-DD) for a past day.</string>

@@ -448,6 +448,8 @@
     <string name="chat_commands">Befehle</string>
     <string name="chat_commands_intro">Beginne eine Nachricht mit einem davon, um sofort nachzuschlagen. Tippe auf ein Beispiel.</string>
     <string name="chat_send">Senden</string>
+    <string name="chat_stop">Antwort stoppen</string>
+    <string name="chat_stopped">Gestoppt.</string>
     <string name="cmd_search">Durchsucht deine Mails und listet passende Unterhaltungen.</string>
     <string name="cmd_time">Datum und Uhrzeit an einem Ort. Allein: deine Uhrzeit.</string>
     <string name="cmd_rate">Heutiger Wechselkurs und umgerechneter Betrag. Mit Datum (YYYY-MM-DD) für einen früheren Tag.</string>

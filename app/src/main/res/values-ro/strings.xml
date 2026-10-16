@@ -448,6 +448,8 @@
     <string name="chat_commands">Comenzi</string>
     <string name="chat_commands_intro">Începe un mesaj cu una dintre ele ca să afli pe loc. Atinge un exemplu.</string>
     <string name="chat_send">Trimite</string>
+    <string name="chat_stop">Oprește răspunsul</string>
+    <string name="chat_stopped">Oprit.</string>
     <string name="cmd_search">Caută în mail și listează conversațiile găsite.</string>
     <string name="cmd_time">Data și ora locală într-un loc. Singură: ora ta.</string>
     <string name="cmd_rate">Cursul de azi și suma convertită. Adaugă o dată (YYYY-MM-DD) pentru o zi trecută.</string>

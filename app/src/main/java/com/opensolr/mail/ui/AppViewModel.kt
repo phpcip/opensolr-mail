@@ -736,7 +736,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                         }
                     }
                 }
-                if (raw.isBlank()) show(ctx.getString(R.string.chat_err_generic), error = true)
+                if (raw.isBlank()) show(ctx.getString(R.string.chat_err_generic), error = true) else if (chatJob === me) chatAnswered++
             } catch (e: CancellationException) {
                 throw e
             } catch (e: com.opensolr.mail.net.QuotaExceededException) {
@@ -774,6 +774,23 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         "mail_read_conversation" -> ctx.getString(R.string.chat_reading_conv)
         "command_translate" -> ctx.getString(R.string.chat_translating)
         else -> ctx.getString(R.string.chat_looking_up, e.args.values.filter { it.isNotBlank() }.joinToString(", ").take(120))
+    }
+
+    /** Answers finished with text, counted so the chat screen gives a haptic on each. */
+    var chatAnswered by mutableStateOf(0)
+
+    /** Stop answer: the stream is closed (the server stops too); what was written stays, else the line says it was stopped. */
+    fun chatStop() {
+        val job = chatJob ?: return
+        chatJob = null
+        job.cancel()
+        val last = chatLines.lastOrNull()
+        if (last != null && last.role == "assistant" && last.text.isBlank()) {
+            chatLines = chatLines.dropLast(1) + ChatLine("assistant", ctx.getString(R.string.chat_stopped), true)
+        }
+        chatBusy = false
+        chatProgress = null
+        saveChat()
     }
 
     /** New chat: the answer being written stops, the conversation is cleared. */

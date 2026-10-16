@@ -448,6 +448,8 @@
     <string name="chat_commands">命令</string>
     <string name="chat_commands_intro">以其中之一开头即可立即查询。点按示例即可使用。</string>
     <string name="chat_send">发送</string>
+    <string name="chat_stop">停止回答</string>
+    <string name="chat_stopped">已停止。</string>
     <string name="cmd_search">搜索你的邮件并列出匹配的会话。</string>
     <string name="cmd_time">某地的当地日期和时间。单独使用：你的时间。</string>
     <string name="cmd_rate">今日汇率及换算金额。加日期 (YYYY-MM-DD) 查过去某天。</string>

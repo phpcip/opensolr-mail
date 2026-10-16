@@ -102,6 +102,11 @@ fun ChatScreen(vm: AppViewModel) {
         if (lines.isNotEmpty() && listState.canScrollForward && lastVisible >= lines.size - 1) listState.scrollToItem(lines.size - 1, Int.MAX_VALUE / 2)
     }
 
+    // A finished answer is felt
+    LaunchedEffect(vm.chatAnswered) {
+        if (vm.chatAnswered > 0) Haptics.thud(view)
+    }
+
     fun send() {
         if (vm.chatBusy || text.isBlank()) return
         Haptics.tick(view, true)
@@ -177,9 +182,10 @@ fun ChatScreen(vm: AppViewModel) {
             )
             Spacer(Modifier.width(6.dp))
             if (vm.chatBusy) {
-                Box(Modifier.padding(bottom = 6.dp).size(44.dp), contentAlignment = Alignment.Center) {
-                    androidx.compose.material3.CircularProgressIndicator(Modifier.size(24.dp), color = p.accent, trackColor = p.hairline, strokeWidth = 2.5.dp)
-                }
+                IconBtn(
+                    R.drawable.ic_idx_stop, { Haptics.tick(view, true); vm.chatStop() }, tint = p.accent, strong = true,
+                    contentDescription = stringResource(R.string.chat_stop), modifier = Modifier.padding(bottom = 6.dp).size(44.dp),
+                )
             } else {
                 IconBtn(
                     R.drawable.ic_send, { send() }, tint = p.accent, enabled = text.isNotBlank(), strong = true,
