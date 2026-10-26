@@ -71,9 +71,6 @@ class MailIndexer(private val context: Context) {
             } catch (e: IndexLimitException) {
                 _status.value = _status.value.copy(running = false, noRoom = true, error = null)
                 return@withLock Outcome.DONE
-            } catch (e: com.opensolr.mail.net.IndexChoiceException) {
-                _status.value = _status.value.copy(running = false, choices = e.choices, error = null)
-                return@withLock Outcome.DONE
             }
             val solr = SolrClient(connection)
             solrForCount = solr
@@ -1015,7 +1012,6 @@ class MailIndexer(private val context: Context) {
         val historyDone: Boolean = false,
         val noRoom: Boolean = false,
         /** Mail indexes of other phones the reader can re-use; the indexer waits until one is chosen or declined. */
-        val choices: List<com.opensolr.mail.net.OpensolrApi.IndexInfo> = emptyList(),
         val error: String? = null,
         val at: Long = 0,
     ) {
@@ -1113,7 +1109,6 @@ class MailIndexer(private val context: Context) {
         val status: StateFlow<Status> = _status
 
         /** The reader answered the re-use question. */
-        fun clearChoices() = _status.update { it.copy(choices = emptyList()) }
 
         /**
          * The account as the shared index knows it: its Fastmail mailbox, not the address it was signed in with.

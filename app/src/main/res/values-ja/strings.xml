@@ -149,10 +149,6 @@
     <string name="match_flexible">柔軟</string>
     <string name="match_balanced">標準</string>
     <string name="match_strict">厳格</string>
-    <string name="reuse_title">Opensolrアカウントのこれらのインデックスのいずれかを再利用しますか？</string>
-    <string name="reuse_new">いいえ、新しいインデックスを作成</string>
-    <string name="reuse_messages">%1$s 件のメッセージ</string>
-    <string name="reuse_last">最終インデックス %1$s</string>
     <string name="manage_index">Opensolrアカウントでこのインデックスを管理</string>
     <string name="get_app_title">Opensolrアプリを入手しますか？</string>
     <string name="get_app_text">Opensolrアプリでアカウントのすべてのインデックスを管理できます。アプリがない場合はopensolr.comで開きます。</string>

@@ -325,13 +325,6 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         Work.index(ctx)
     }
 
-    /** Re-use [name] from another phone, or with null make this phone's own index; then indexing goes on. */
-    fun chooseIndex(name: String?) {
-        prefs.chosenIndex = name ?: MailIndex(ctx).newName
-        MailIndex(ctx).forget()
-        com.opensolr.mail.index.MailIndexer.clearChoices()
-        Work.index(ctx)
-    }
 
     fun signOutOpensolr() {
         viewModelScope.launch(Guard) {

@@ -149,10 +149,6 @@
     <string name="match_flexible">Souple</string>
     <string name="match_balanced">Équilibrée</string>
     <string name="match_strict">Stricte</string>
-    <string name="reuse_title">Réutiliser l\'un de ces index de votre compte Opensolr ?</string>
-    <string name="reuse_new">Non, créer un nouvel index</string>
-    <string name="reuse_messages">%1$s messages</string>
-    <string name="reuse_last">dernière indexation %1$s</string>
     <string name="manage_index">Gérer cet index dans votre compte Opensolr</string>
     <string name="get_app_title">Installer l\'app Opensolr ?</string>
     <string name="get_app_text">L\'app Opensolr gère tous les index de votre compte. Sans elle, vos index s\'ouvrent sur opensolr.com.</string>

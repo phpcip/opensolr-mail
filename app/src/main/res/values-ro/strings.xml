@@ -149,10 +149,6 @@
     <string name="match_flexible">Flexibilă</string>
     <string name="match_balanced">Echilibrată</string>
     <string name="match_strict">Strictă</string>
-    <string name="reuse_title">Refolosești unul dintre acești indecși din contul tău Opensolr?</string>
-    <string name="reuse_new">Nu, creează un index nou</string>
-    <string name="reuse_messages">%1$s mesaje</string>
-    <string name="reuse_last">indexat ultima dată %1$s</string>
     <string name="manage_index">Administrează acest index în contul tău Opensolr</string>
     <string name="get_app_title">Instalezi aplicația Opensolr?</string>
     <string name="get_app_text">Aplicația Opensolr administrează toți indecșii din contul tău. Fără ea, indecșii se deschid pe opensolr.com.</string>

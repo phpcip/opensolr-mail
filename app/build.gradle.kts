@@ -24,8 +24,8 @@ android {
         applicationId = "com.opensolr.mail"
         minSdk = 26
         targetSdk = 36
-        versionCode = 71
-        versionName = "1.16.0"
+        versionCode = 72
+        versionName = "1.17.0"
     }
 
     flavorDimensions += "store"
@@ -61,6 +61,12 @@ android {
     }
 
     buildTypes {
+        // test builds: no minification, signed with the same key so they install over the app without losing its data
+        debug {
+            if (!signingProperties.isEmpty) {
+                signingConfig = signingConfigs.getByName("release")
+            }
+        }
         release {
             if (!signingProperties.isEmpty) {
                 signingConfig = signingConfigs.getByName("release")

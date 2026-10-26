@@ -2,7 +2,6 @@ package com.opensolr.mail.index
 
 import android.content.Context
 import com.opensolr.mail.data.AppPrefs
-import com.opensolr.mail.net.IndexChoiceException
 import com.opensolr.mail.net.IndexConnection
 import com.opensolr.mail.net.IndexMissingException
 import com.opensolr.mail.net.OpensolrApi
@@ -27,20 +26,19 @@ class MailIndex(private val context: Context) {
     /** mail_<device id>__dense: the index this phone makes for itself. */
     val newName: String get() = "mail_" + deviceId + "__dense"
 
-    /** The index this phone writes to: the one chosen, else its own. */
+    /** The index this phone writes to: the account's mail index once resolved, else its own. */
     val ownName: String get() = prefs.chosenIndex ?: newName
 
     suspend fun ensure(): IndexConnection = lock.withLock {
-        val name = ownName
-        IndexConnection.fromJson(prefs.connectionJson)?.takeIf { it.indexName == name && verified == name }?.let { return@withLock it }
+        prefs.chosenIndex?.let { chosen ->
+            IndexConnection.fromJson(prefs.connectionJson)?.takeIf { it.indexName == chosen && verified == chosen }?.let { return@withLock it }
+        }
 
         val all = api.indexes()
+        // One mail index per Opensolr account: an index already on the account is taken as it is, whichever phone
+        // made it, so a new phone indexes nothing again. Only an account without one gets a new index.
+        val name = all.filter { it.isMail }.map { it.name }.minOrNull() ?: newName
         val exists = all.any { it.name == name }
-        if (!exists && prefs.chosenIndex == null) {
-            // Another phone's mail index can be re-used instead of indexing everything again; the reader decides.
-            val others = all.filter { it.isMail && it.name != name }
-            if (others.isNotEmpty()) throw IndexChoiceException(others)
-        }
         if (!exists) {
             prefs.connectionJson = ""
             api.createIndex(name, region())

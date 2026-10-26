@@ -149,10 +149,6 @@
     <string name="match_flexible">Flexibel</string>
     <string name="match_balanced">Ausgewogen</string>
     <string name="match_strict">Streng</string>
-    <string name="reuse_title">Einen dieser Indizes aus Ihrem Opensolr-Konto wiederverwenden?</string>
-    <string name="reuse_new">Nein, einen neuen Index anlegen</string>
-    <string name="reuse_messages">%1$s Nachrichten</string>
-    <string name="reuse_last">zuletzt indexiert %1$s</string>
     <string name="manage_index">Diesen Index in Ihrem Opensolr-Konto verwalten</string>
     <string name="get_app_title">Opensolr-App installieren?</string>
     <string name="get_app_text">Die Opensolr-App verwaltet alle Indizes Ihres Kontos. Ohne sie öffnen sich Ihre Indizes auf opensolr.com.</string>

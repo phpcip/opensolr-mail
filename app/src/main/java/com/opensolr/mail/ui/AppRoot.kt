@@ -101,37 +101,6 @@ fun AppRoot(vm: AppViewModel) {
             }
         }
 
-        // Mail indexes of other phones on the account: re-use one, or start this phone's own.
-        val indexStatus by com.opensolr.mail.index.MailIndexer.status.collectAsState()
-        if (indexStatus.choices.isNotEmpty()) {
-            val v = androidx.compose.ui.platform.LocalView.current
-            androidx.compose.material3.AlertDialog(
-                onDismissRequest = {},
-                title = { Text(androidx.compose.ui.res.stringResource(com.opensolr.mail.R.string.reuse_title)) },
-                text = {
-                    Column(Modifier.fillMaxWidth().verticalScroll(androidx.compose.foundation.rememberScrollState())) {
-                        indexStatus.choices.sortedByDescending { maxOf(it.lastIndex, it.created) }.forEach { c ->
-                            Column(Modifier.fillMaxWidth().clickable { Haptics.tick(v, true); vm.chooseIndex(c.name) }.padding(vertical = 12.dp)) {
-                                val count = java.text.NumberFormat.getIntegerInstance().format(c.numDocs)
-                                Text(
-                                    androidx.compose.ui.res.stringResource(com.opensolr.mail.R.string.reuse_messages, count),
-                                    style = MaterialTheme.typography.bodyLarge, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold, color = p.ink,
-                                )
-                                val at = maxOf(c.lastIndex, c.created)
-                                if (at > 0) Text(
-                                    androidx.compose.ui.res.stringResource(com.opensolr.mail.R.string.reuse_last, fmtDate(at * 1000L)),
-                                    style = MaterialTheme.typography.bodySmall, fontWeight = androidx.compose.ui.text.font.FontWeight.Medium, color = p.muted,
-                                )
-                            }
-                            Hairline()
-                        }
-                    }
-                },
-                confirmButton = {},
-                dismissButton = { DialogButton(androidx.compose.ui.res.stringResource(com.opensolr.mail.R.string.reuse_new), { vm.chooseIndex(null) }) },
-                containerColor = p.paper, titleContentColor = p.ink, textContentColor = p.ink,
-            )
-        }
 
         // An action that must finish first: the screen is covered, every touch and the back gesture are swallowed,
         // a spinner and one line say what is going on.
