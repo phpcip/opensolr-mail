@@ -24,8 +24,8 @@ android {
         applicationId = "com.opensolr.mail"
         minSdk = 26
         targetSdk = 36
-        versionCode = 72
-        versionName = "1.17.0"
+        versionCode = 73
+        versionName = "1.17.1"
     }
 
     flavorDimensions += "store"
