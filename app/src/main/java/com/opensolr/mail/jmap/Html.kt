@@ -7,7 +7,9 @@ object Html {
     fun escape(s: String): String = s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace("\"", "&quot;")
 
     /** Plain text shown as HTML, keeping line breaks. */
-    fun fromText(s: String): String = "<div style=\"white-space:pre-wrap;word-wrap:break-word\">" + escape(s) + "</div>"
+    fun fromText(s: String): String = "<div style=\"$TEXT_STYLE\">" + escape(s) + "</div>"
+
+    private const val TEXT_STYLE = "white-space:pre-wrap;word-wrap:break-word"
 
     private val TAGS = Regex("(?i)<\\s*(/?\\s*(html|head|body|div|p|br|span|table|tbody|thead|tr|td|th|a|img|font|b|i|u|em|strong|ul|ol|li|h[1-6]|center|blockquote|pre|hr|meta|style|script|o:p)\\b[^>]*|!--)")
     private val ENTITY = Regex("(?i)&(#\\d{1,7}|#x[0-9a-f]{1,6}|[a-z][a-z0-9]{1,31});")
@@ -52,16 +54,24 @@ object Html {
     fun foldQuotes(html: String, label: String, hide: String): String = runCatching {
         val doc = org.jsoup.Jsoup.parseBodyFragment(html)
         val body = doc.body()
+        // A plain text message only wrapped by [fromText] is folded line by line, like text.
+        val blocks = body.children()
+        if (blocks.isNotEmpty() && body.ownText().isBlank() && blocks.all { it.normalName() == "div" && it.attr("style") == TEXT_STYLE && it.children().isEmpty() }) {
+            return@runCatching fromTextFolded(blocks.joinToString("\n\n") { it.wholeText() }, label, hide)
+        }
         val marked = body.select(QUOTE_SELECTOR).firstOrNull()
         // A written "On ... wrote:" or "Original Message" line, or Outlook's short header block (From: with Sent: or Date:).
         val byLine = body.getAllElements().firstOrNull { e ->
             if (e === body) return@firstOrNull false
             val own = e.ownText().trim()
+            val first = e.wholeOwnText().trim().lineSequence().firstOrNull().orEmpty().trim()
             val all = e.text().trim()
-            (own.isNotEmpty() && WROTE.containsMatchIn(own)) ||
+            (own.isNotEmpty() && (WROTE.containsMatchIn(own) || WROTE.matches(first))) ||
                 (all.length < 600 && all.startsWith("From:") && (all.contains("Sent:") || all.contains("Date:")))
         }
-        val start = listOfNotNull(marked, byLine).minByOrNull { body.getAllElements().indexOf(it) } ?: return@runCatching html
+        var start = listOfNotNull(marked, byLine).minByOrNull { body.getAllElements().indexOf(it) } ?: return@runCatching html
+        // The "... wrote:" line right above a marked quote, in any language, folds with it.
+        start.previousElementSibling()?.takeIf { start === marked && it.attr("style") == TEXT_STYLE && it.text().trimEnd().endsWith(":") }?.let { start = it }
         // Before the quote there must be something of the message itself, or there is nothing to fold.
         val before = StringBuilder()
         run {
@@ -99,7 +109,9 @@ object Html {
     /** Plain text shown as HTML, the quoted history below the first quote line folded under [label]. */
     fun fromTextFolded(text: String, label: String, hide: String): String {
         val lines = text.lines()
-        val at = lines.indexOfFirst { l -> QUOTE_LINE.matches(l) || l.trimStart().startsWith(">") }
+        var at = lines.indexOfFirst { l -> QUOTE_LINE.matches(l) || l.trimStart().startsWith(">") }
+        // The "... wrote:" line right above the first "> " line, in any language, folds with it.
+        if (at > 0 && lines[at].trimStart().startsWith(">") && lines[at - 1].trimEnd().endsWith(":")) at--
         if (at <= 0 || lines.take(at).all { it.isBlank() }) return fromText(text)
         val head = lines.take(at).joinToString("\n").trimEnd()
         val tail = lines.drop(at).joinToString("\n")

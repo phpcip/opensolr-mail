@@ -56,8 +56,17 @@ object Signature {
         val words = typed.trimEnd()
         val q = quote.trim('\n')
         val text = words + textBlock(signatureHtml) + (if (q.isNotBlank()) "\n\n$q" else "")
-        val html = Html.fromText(words) + htmlBlock(signatureHtml) + (if (q.isNotBlank()) "<br>" + Html.fromText(q) else "")
+        val html = Html.fromText(words) + htmlBlock(signatureHtml) + (if (q.isNotBlank()) "<br>" + quoteHtml(q) else "")
         return text to html
+    }
+
+    /** A reply's "On ... wrote:" line (in any language) with the "> " lines under it as a cited blockquote, the mark every mail program folds; anything else as text. */
+    private fun quoteHtml(q: String): String {
+        val lines = q.lines()
+        val rest = lines.drop(1)
+        if (!lines.first().trimEnd().endsWith(":") || rest.none { it.isNotBlank() } || rest.any { it.isNotBlank() && !it.startsWith(">") }) return Html.fromText(q)
+        val cited = rest.joinToString("\n") { it.removePrefix(">").removePrefix(" ") }.trim('\n')
+        return Html.fromText(lines.first()) + "<blockquote type=\"cite\">" + Html.fromText(cited) + "</blockquote>"
     }
 
     /** A draft written with the signature, split back into what was written and the quote under it; null when the signature is not in it. */
