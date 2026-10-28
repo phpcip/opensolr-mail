@@ -20,7 +20,9 @@ class MailActions(private val context: Context) {
 
     private val db = MailDb.get(context)
 
-    fun setSeen(acc: String, ids: List<String>, seen: Boolean) {
+    fun setSeen(acc: String, shown: List<String>, seen: Boolean) {
+        // A message shown once stands for all its copies: read or unread goes to every one of them.
+        val ids = db.withCopies(acc, shown)
         // Any action taken on a message ends its new-mail notification, here or from the notification itself.
         Notifier.cancel(context, acc, ids)
         db.setFlags(acc, ids, seen = seen)
@@ -28,7 +30,8 @@ class MailActions(private val context: Context) {
         Work.indexQueued(context)
     }
 
-    fun setFlagged(acc: String, ids: List<String>, flagged: Boolean) {
+    fun setFlagged(acc: String, shown: List<String>, flagged: Boolean) {
+        val ids = db.withCopies(acc, shown)
         Notifier.cancel(context, acc, ids)
         db.setFlags(acc, ids, flagged = flagged)
         enqueue(acc, "flag", JSONObject().put("ids", JSONArray(ids)).put("value", flagged))

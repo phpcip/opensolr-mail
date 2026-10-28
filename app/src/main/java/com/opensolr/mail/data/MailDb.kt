@@ -8,6 +8,7 @@ import android.database.sqlite.SQLiteOpenHelper
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import org.json.JSONArray
+import org.json.JSONObject
 
 /** The local copy of the mail: mailboxes, message headers (bodies once opened), identities, sync state, and the queues. */
 class MailDb private constructor(context: Context) : SQLiteOpenHelper(context.applicationContext, "mail.db", null, 2) {
@@ -357,12 +358,17 @@ class MailDb private constructor(context: Context) : SQLiteOpenHelper(context.ap
     fun upsertMessages(list: List<Message>) {
         if (list.isEmpty()) return
         val db = writableDatabase
+        val local = pendingFlags(db)
         db.beginTransaction()
         try {
             list.forEach { m ->
+                // A read/flag change still on its way to Fastmail wins over what Fastmail sent before it got there.
+                val k = m.acc + "\u0000" + m.id
+                val seen = local.seen[k] ?: (m.seen || m.mailboxIds.any { (m.acc + "\u0000" + it) in local.readBoxes })
+                val flagged = local.flagged[k] ?: m.flagged
                 val v = ContentValues().apply {
                     put("acc", m.acc); put("id", m.id); put("thread", m.threadId)
-                    put("seen", if (m.seen) 1 else 0); put("flagged", if (m.flagged) 1 else 0)
+                    put("seen", if (seen) 1 else 0); put("flagged", if (flagged) 1 else 0)
                     put("draft", if (m.draft) 1 else 0); put("answered", if (m.answered) 1 else 0)
                     put("received", m.received); put("subject", m.subject)
                     put("from_name", m.sender?.label.orEmpty()); put("from_addr", m.sender?.email.orEmpty())
@@ -527,6 +533,20 @@ class MailDb private constructor(context: Context) : SQLiteOpenHelper(context.ap
                 answered = copies.any { it.answered },
             )
         }.sortedBy { it.received }
+
+    /** [ids] plus every other copy of the same messages (same Message-ID, same conversation) in that account. */
+    fun withCopies(acc: String, ids: Collection<String>): List<String> {
+        val out = LinkedHashSet(ids)
+        ids.chunked(400).forEach { chunk ->
+            val marks = chunk.joinToString(",") { "?" }
+            readableDatabase.rawQuery(
+                "SELECT b.id FROM message a JOIN message b ON b.acc = a.acc AND b.thread = a.thread AND b.message_id = a.message_id " +
+                    "WHERE a.acc = ? AND a.message_id != '' AND a.id IN ($marks)",
+                arrayOf(acc) + chunk,
+            ).use { c -> while (c.moveToNext()) out += c.getString(0) }
+        }
+        return out.toList()
+    }
 
     /** Many messages of one account, in chunks, with their mailboxes. */
     fun messages(acc: String, ids: List<String>): List<Message> {
@@ -847,6 +867,31 @@ class MailDb private constructor(context: Context) : SQLiteOpenHelper(context.ap
         writableDatabase.insert("ops", null, ContentValues().apply {
             put("acc", acc); put("kind", kind); put("payload", payload); put("created", System.currentTimeMillis())
         })
+    }
+
+    private class PendingFlags(val seen: Map<String, Boolean>, val flagged: Map<String, Boolean>, val readBoxes: Set<String>)
+
+    /** Read/flag changes queued and not yet applied on Fastmail, by "acc\u0000id" (and "acc\u0000box" for mark-all-read), the last one winning. */
+    private fun pendingFlags(db: SQLiteDatabase): PendingFlags {
+        val seen = HashMap<String, Boolean>()
+        val flagged = HashMap<String, Boolean>()
+        val boxes = HashSet<String>()
+        db.rawQuery("SELECT acc, kind, payload FROM ops WHERE kind IN ('seen', 'flag', 'read_box') ORDER BY id ASC", null).use { c ->
+            while (c.moveToNext()) {
+                val acc = c.getString(0)
+                val p = runCatching { JSONObject(c.getString(2)) }.getOrNull() ?: continue
+                when (c.getString(1)) {
+                    "read_box" -> boxes += acc + "\u0000" + p.optString("box")
+                    else -> {
+                        val target = if (c.getString(1) == "seen") seen else flagged
+                        val value = p.optBoolean("value")
+                        val ids = p.optJSONArray("ids") ?: continue
+                        for (i in 0 until ids.length()) target[acc + "\u0000" + ids.optString(i)] = value
+                    }
+                }
+            }
+        }
+        return PendingFlags(seen, flagged, boxes)
     }
 
     fun ops(): List<Op> = readableDatabase.rawQuery("SELECT id, acc, kind, payload, tries FROM ops ORDER BY id ASC LIMIT 200", null).use { c ->
