@@ -53,6 +53,8 @@ object Html {
      */
     fun foldQuotes(html: String, label: String, hide: String): String = runCatching {
         val doc = org.jsoup.Jsoup.parseBodyFragment(html)
+        // Pretty printing would collapse the line breaks of pre-wrap text.
+        doc.outputSettings().prettyPrint(false)
         val body = doc.body()
         // A plain text message only wrapped by [fromText] is folded line by line, like text.
         val blocks = body.children()
@@ -99,7 +101,7 @@ object Html {
 
     /** The message's own words as plain text: the quote found by [foldQuotes] is dropped; a forward stays whole. */
     fun withoutQuotes(html: String): String = runCatching {
-        val body = org.jsoup.Jsoup.parseBodyFragment(foldQuotes(html, "", "")).body()
+        val body = org.jsoup.Jsoup.parseBodyFragment(foldQuotes(html, "", "")).apply { outputSettings().prettyPrint(false) }.body()
         // A forward's original is what was sent along, not a quote of this conversation: it stays.
         if (body.select("details.osq").text().take(300).contains(FORWARDED)) return@runCatching plain(html)
         body.select("details.osq").remove()
