@@ -91,6 +91,8 @@ fun ThreadScreen(vm: AppViewModel, acc: String, threadId: String) {
     // Header details unfold per message: only the one tapped opens.
     val details = remember { mutableStateMapOf<String, Boolean>() }
     val images = remember { mutableStateMapOf<String, Boolean>() }
+    // the messages whose quoted history is open
+    val quotes = remember { mutableStateMapOf<String, Boolean>() }
     var moving by remember { mutableStateOf(false) }
     var saving by remember { mutableStateOf<com.opensolr.mail.data.Attachment?>(null) }
     val clipboard = remember { context.getSystemService(android.content.ClipboardManager::class.java) }
@@ -245,11 +247,17 @@ fun ThreadScreen(vm: AppViewModel, acc: String, threadId: String) {
                             // The message itself shows; the quoted history under it is folded, one tap opens it.
                             val quoted = stringResource(R.string.show_quoted)
                             val hideQuoted = stringResource(R.string.hide_quoted)
-                            val html = remember(full.bodyHtml, full.bodyText, quoted) {
+                            val folded = remember(full.bodyHtml, full.bodyText) {
                                 val raw = full.bodyHtml.orEmpty()
-                                if (raw.isBlank()) com.opensolr.mail.jmap.Html.fromTextFolded(full.bodyText ?: m.preview, quoted, hideQuoted)
-                                else com.opensolr.mail.jmap.Html.foldQuotes(raw, quoted, hideQuoted)
+                                if (raw.isBlank()) com.opensolr.mail.jmap.Html.fromTextFolded(full.bodyText ?: m.preview, "", "")
+                                else com.opensolr.mail.jmap.Html.foldQuotes(raw, "", "")
                             }
+                            // The pill that opens the history is the app's own, under the message, so it is the same size in
+                            // every message (a wide message is shrunk to the screen, and everything inside it with it).
+                            val hasQuote = remember(folded) { com.opensolr.mail.jmap.Html.hasFold(folded) }
+                            val quoteOpen = quotes[m.id] == true
+                            val html = remember(folded) { if (hasQuote) com.opensolr.mail.jmap.Html.dropFolded(folded) else folded }
+                            val quoteHtml = remember(folded, quoteOpen) { if (hasQuote && quoteOpen) com.opensolr.mail.jmap.Html.foldedPart(folded) else "" }
                             // Any picture fetched from the web: <img src>, srcset, background="...", CSS url(...), with or without http:
                             val hasRemote = remember(html) { REMOTE_IMAGE.containsMatchIn(html) }
                             // Pictures can be allowed for one message, or for every message from its sender until stopped.
@@ -281,6 +289,19 @@ fun ThreadScreen(vm: AppViewModel, acc: String, threadId: String) {
                                 onEdgeDrag = { dy -> threadScroll.dispatchRawDelta(-dy) },
                                 onEdgeFling = { vy -> scope.launch(com.opensolr.mail.ui.Guard) { threadScroll.animateScrollBy(-vy * 0.35f) } },
                             )
+                            // The quoted history, under its pill, in a view of its own: the pill stays between message and quote.
+                            if (hasQuote) {
+                                Row(Modifier.padding(horizontal = 12.dp, vertical = 6.dp)) {
+                                    QuotePill(if (quoteOpen) hideQuoted else quoted) { quotes[m.id] = !quoteOpen }
+                                }
+                                if (quoteOpen) MailWebView(
+                                    quoteHtml, acc, full.attachments, allow,
+                                    Modifier.fillMaxWidth().heightIn(min = 40.dp),
+                                    onZoomed = {},
+                                    onEdgeDrag = { dy -> threadScroll.dispatchRawDelta(-dy) },
+                                    onEdgeFling = { vy -> scope.launch(com.opensolr.mail.ui.Guard) { threadScroll.animateScrollBy(-vy * 0.35f) } },
+                                )
+                            }
                             val files = full.attachments.filter { !it.inline || it.cid == null }
                             if (files.isNotEmpty()) Attachments(files, onSave = { a ->
                                 // Download only: the file goes to Downloads, the system notification opens it later.
@@ -444,6 +465,20 @@ private fun androidx.compose.foundation.layout.RowScope.BarBtn(icon: Int, onClic
     IconBtn(icon, onClick, tint = tint, strong = strong, modifier = Modifier.weight(1f).fillMaxHeight())
 
 /** A small pill for the remote-picture choices: a line icon and a short label, in the accent. */
+// Show / hide the quoted history under a message: one size, whatever the message's own scale.
+@Composable
+private fun QuotePill(label: String, onClick: () -> Unit) {
+    val p = LocalPalette.current
+    val view = androidx.compose.ui.platform.LocalView.current
+    val press = rememberPress()
+    Row(
+        Modifier.tile(press, fill = p.pillFill, rim = p.headRim) { com.opensolr.mail.ui.Haptics.tap(view); onClick() }.padding(horizontal = 12.dp, vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(label, style = MaterialTheme.typography.labelMedium, fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold, color = press.tint(p.accent), maxLines = 1)
+    }
+}
+
 @Composable
 private fun ImagePill(icon: Int, label: String, onClick: () -> Unit) {
     val p = LocalPalette.current
