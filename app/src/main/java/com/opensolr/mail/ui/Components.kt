@@ -344,7 +344,7 @@ fun Zone(title: String, badge: Int, open: Boolean, onToggle: () -> Unit, content
     androidx.compose.foundation.layout.Column(Modifier.fillMaxWidth().scrollMark(LocalScrollMarks.current, title, title)) {
         Row(
             Modifier.fillMaxWidth().padding(top = 10.dp, bottom = 4.dp)
-                .background(p.accent.copy(alpha = 0.18f), SHAPE)
+                .band(p.accent.copy(alpha = 0.18f), p.hairline)
                 .clickable { Haptics.tick(view, strong = false); onToggle() }
                 .padding(start = 8.dp, end = 10.dp, top = 7.dp, bottom = 7.dp),
             verticalAlignment = Alignment.CenterVertically,
@@ -383,7 +383,7 @@ fun SubZone(title: String, open: Boolean, onToggle: () -> Unit, content: @Compos
     val view = androidx.compose.ui.platform.LocalView.current
     androidx.compose.foundation.layout.Column(Modifier.fillMaxWidth()) {
         Row(
-            Modifier.fillMaxWidth().clickable { Haptics.tick(view, strong = false); onToggle() }.padding(vertical = 12.dp),
+            Modifier.fillMaxWidth().padding(vertical = 4.dp).band(p.buttonFill, p.hairline, 0.7f).clickable { Haptics.tick(view, strong = false); onToggle() }.padding(horizontal = 8.dp, vertical = 9.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Icon(
@@ -400,7 +400,6 @@ fun SubZone(title: String, open: Boolean, onToggle: () -> Unit, content: @Compos
         ) {
             androidx.compose.foundation.layout.Column(Modifier.padding(start = 26.dp, bottom = 8.dp)) { content() }
         }
-        Hairline()
     }
 }
 

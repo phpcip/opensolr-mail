@@ -1,5 +1,6 @@
 package com.opensolr.mail.ui.screens
 
+import com.opensolr.mail.ui.band
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -1182,7 +1183,7 @@ private fun GroupHeader(label: String, total: Long, open: Boolean, onToggle: () 
     val p = LocalPalette.current
     val view = LocalView.current
     Row(
-        Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 4.dp).background(p.groupFill, Corner).border(1.dp, p.groupRim, Corner)
+        Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 4.dp).band(p.groupFill, p.groupRim)
             .clickable { Haptics.tick(view, false); onToggle() }.padding(horizontal = 10.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -1425,9 +1426,13 @@ private fun FacetValues(field: String, values: List<MailSearch.Facet>, chosen: S
     val matching = if (filter.isBlank()) list else list.filter { it.value.contains(filter, ignoreCase = true) }
     val shown = if (all || matching.size <= PREVIEW) matching else matching.take(PREVIEW) + matching.drop(PREVIEW).filter { it.value in chosen }
     if (list.size > PREVIEW) {
-        Box(Modifier.fillMaxWidth().border(1.dp, p.hairline, Corner).padding(horizontal = 10.dp, vertical = 8.dp)) {
-            if (filter.isEmpty()) Text(stringResource(R.string.f_find), style = MaterialTheme.typography.bodyMedium, color = p.muted)
-            com.opensolr.mail.ui.TextBox(filter, { filter = it }, singleLine = true, textStyle = MaterialTheme.typography.bodyMedium.copy(color = p.ink), cursorBrush = SolidColor(p.accent), modifier = Modifier.fillMaxWidth())
+        Row(Modifier.fillMaxWidth().band(p.paper, p.hairline, 0.6f).padding(horizontal = 12.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+            Icon(painterResource(R.drawable.ic_search), null, tint = p.muted, modifier = Modifier.size(16.dp))
+            Spacer(Modifier.width(8.dp))
+            Box(Modifier.weight(1f)) {
+                if (filter.isEmpty()) Text(stringResource(R.string.f_find), style = MaterialTheme.typography.bodyMedium, color = p.muted)
+                com.opensolr.mail.ui.TextBox(filter, { filter = it }, singleLine = true, textStyle = MaterialTheme.typography.bodyMedium.copy(color = p.ink), cursorBrush = SolidColor(p.accent), modifier = Modifier.fillMaxWidth())
+            }
         }
         Spacer(Modifier.height(8.dp))
     }
@@ -1480,7 +1485,7 @@ private fun SheetActions(total: Long, onClear: () -> Unit, onDone: () -> Unit) {
     }
 }
 
-private const val PREVIEW = 12
+private const val PREVIEW = 10
 
 private val Icons.Filled.KeyboardArrowDownCompat get() = androidx.compose.material.icons.Icons.Filled.KeyboardArrowDown
 private val Icons.Filled.KeyboardArrowRightCompat get() = androidx.compose.material.icons.Icons.AutoMirrored.Filled.KeyboardArrowRight

@@ -54,6 +54,10 @@ fun Modifier.sheen(shape: Shape, strength: Float = 1f): Modifier = background(
 /** The rim of a glass surface: it catches the light at the top and fades into [edge]. */
 fun rimBrush(edge: Color): Brush = Brush.verticalGradient(listOf(lerp(edge, Color.White, RIM_LIGHT), edge))
 
+/** A glass band: the heading of a group or of a section that folds, and the box that narrows a list. */
+fun Modifier.band(fill: Color, rim: Color, strength: Float = 1f): Modifier =
+    clip(ButtonShape).background(fill).sheen(ButtonShape, strength).border(1.dp, rimBrush(rim), ButtonShape)
+
 /**
  * One bar for a row of actions: a single rounded frame, a fine line between one action and the next.
  * With [fill] the actions share the width equally, otherwise each is as wide as it needs.
