@@ -335,12 +335,10 @@ fun ThreadScreen(vm: AppViewModel, acc: String, threadId: String) {
             }
             FastScroller(threadScroll, threadMarks)
         }
-        Column(Modifier.fillMaxWidth().background(p.dockFill)) {
-            Hairline()
-            // The buttons share the whole width, one hairline apart.
-            Row(
-                Modifier.fillMaxWidth().padding(bottom = bottomInset()).height(54.dp).padding(horizontal = 4.dp, vertical = 4.dp),
-                horizontalArrangement = Arrangement.spacedBy(2.dp), verticalAlignment = Alignment.CenterVertically,
+        Column(Modifier.fillMaxWidth()) {
+            // The buttons share the whole width of one dock, a fine line apart.
+            com.opensolr.mail.ui.Dock(
+                Modifier.fillMaxWidth().padding(bottom = bottomInset()).padding(horizontal = 10.dp, vertical = 6.dp),
             ) {
                 BarBtn(R.drawable.ic_reply, { reply(Replies.Kind.REPLY) })
                 BarBtn(R.drawable.ic_reply_all, { reply(Replies.Kind.REPLY_ALL) })
@@ -461,8 +459,8 @@ private fun AddressLine(label: String, list: List<com.opensolr.mail.data.Address
 
 /** A button of the bar under a message: an [IconBtn] sized by the bar. */
 @Composable
-private fun androidx.compose.foundation.layout.RowScope.BarBtn(icon: Int, onClick: () -> Unit, tint: Color? = null, strong: Boolean = false) =
-    IconBtn(icon, onClick, tint = tint, strong = strong, modifier = Modifier.weight(1f).fillMaxHeight())
+private fun BarBtn(icon: Int, onClick: () -> Unit, tint: Color? = null, strong: Boolean = false) =
+    IconBtn(icon, onClick, tint = tint, strong = strong, modifier = Modifier.padding(3.dp).height(44.dp))
 
 /** A small pill for the remote-picture choices: a line icon and a short label, in the accent. */
 // Show / hide the quoted history under a message: one size, whatever the message's own scale.

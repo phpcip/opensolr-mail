@@ -484,6 +484,7 @@ fun SearchScreen(vm: AppViewModel, sheet: String?, screen: Screen? = null) {
             Modifier.fillMaxWidth().background(p.toolFill).padding(horizontal = 10.dp, vertical = 6.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
+            com.opensolr.mail.ui.Dock(fill = false) {
             Box {
                 IconAction(R.drawable.ic_group, active = groupBy.field != null) { showGroup = true }
                 DropdownMenu(expanded = showGroup, onDismissRequest = { showGroup = false }, containerColor = p.paper) {
@@ -534,6 +535,7 @@ fun SearchScreen(vm: AppViewModel, sheet: String?, screen: Screen? = null) {
                 }
             }
             IconAction(R.drawable.ic_help, active = false, contentDescription = stringResource(R.string.cd_search_help)) { showOperators = true }
+            }
             Spacer(Modifier.weight(1f))
             r?.let { Text(String.format(Locale.US, "%,d", it.total), style = MaterialTheme.typography.labelSmall, color = p.muted) }
         }
@@ -1093,7 +1095,7 @@ internal fun IconAction(icon: Int, active: Boolean, badge: Int = 0, contentDescr
     val view = LocalView.current
     val press = com.opensolr.mail.ui.rememberPress()
     Box(
-        Modifier.padding(end = 4.dp).size(36.dp).tile(press, rim = if (active) p.accent else null) { Haptics.tick(view, false); onClick() },
+        Modifier.padding(if (com.opensolr.mail.ui.LocalDock.current) androidx.compose.foundation.layout.PaddingValues(2.dp) else androidx.compose.foundation.layout.PaddingValues(end = 4.dp)).size(36.dp).tile(press, rim = if (active) p.accent else null) { Haptics.tick(view, false); onClick() },
         contentAlignment = Alignment.Center,
     ) {
         Icon(painterResource(icon), contentDescription, tint = press.tint(if (active) p.accent else p.ink), modifier = Modifier.size(22.dp))
@@ -1112,7 +1114,7 @@ private fun IconToggle(icon: Int, label: String, on: Boolean, enabled: Boolean =
     // Greyed out and inert when the plan does not allow it.
     val press = com.opensolr.mail.ui.rememberPress()
     Box(
-        Modifier.padding(end = 4.dp).size(36.dp).alpha(if (enabled) 1f else 0.35f)
+        Modifier.padding(if (com.opensolr.mail.ui.LocalDock.current) androidx.compose.foundation.layout.PaddingValues(2.dp) else androidx.compose.foundation.layout.PaddingValues(end = 4.dp)).size(36.dp).alpha(if (enabled) 1f else 0.35f)
             .tile(press, enabled, fill = if (on) p.accentFill else null, rim = if (on) p.accentFill else null, solid = on) { Haptics.toggle(view, !on); onChange(!on) },
         contentAlignment = Alignment.Center,
     ) { Icon(painterResource(icon), label, tint = press.tint(if (on) p.onAccentFill else p.ink, solid = on), modifier = Modifier.size(22.dp)) }

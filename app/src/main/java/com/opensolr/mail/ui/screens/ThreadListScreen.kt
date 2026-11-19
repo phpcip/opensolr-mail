@@ -234,6 +234,7 @@ fun ThreadListScreen(vm: AppViewModel, view: View) {
             Modifier.fillMaxWidth().background(p.toolFill).padding(horizontal = 10.dp, vertical = 6.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
+            com.opensolr.mail.ui.Dock(fill = false) {
             IconAction(R.drawable.ic_compose, active = false) { vm.go(Screen.Compose(ComposeInit())) }
             IconAction(R.drawable.ic_search, active = false) { vm.go(Screen.Search()) }
             // The chat with the mailbox: needs the Opensolr account and AI in the plan, like the AI answer.
@@ -260,6 +261,7 @@ fun ThreadListScreen(vm: AppViewModel, view: View) {
                 }
             }
             if (view !is View.Flagged && (rows.any { it.unread } || pinned.any { it.unread })) IconAction(R.drawable.ic_read_all, active = false) { vm.readAll(view) }
+            }
         }
         Hairline()
         RefreshBox(refreshing = vm.busy, onRefresh = { vm.refresh(manual = true) }, modifier = Modifier.weight(1f)) {
@@ -415,8 +417,7 @@ internal fun SelectionBar(count: Int, inBins: Int, onRead: () -> Unit, readIcon:
     val junkName = stringResource(R.string.tool_junk)
     val deleteName = stringResource(R.string.delete)
     val restoreName = restoreLabel?.let { stringResource(if (it == R.string.not_junk) R.string.tool_not_junk else R.string.tool_to_inbox) }
-    Column(Modifier.fillMaxWidth().background(p.dockFill)) {
-        Hairline()
+    Column(Modifier.fillMaxWidth()) {
         // One row of labelled icons, the Opensolr Photos dock; in Trash and Junk the way back to the Inbox comes first.
         com.opensolr.mail.ui.ToolRow(
             listOfNotNull(
