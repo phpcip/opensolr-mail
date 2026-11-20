@@ -62,6 +62,7 @@ class MailIndexer(private val context: Context) {
         com.opensolr.mail.util.Diag.init(context)
         if (prefs.indexStopped || !prefs.signedIn) { com.opensolr.mail.util.Diag.log("MailIndexer", "run skipped: stopped=" + prefs.indexStopped + " signedIn=" + prefs.signedIn); return@withLock Outcome.DONE }
         runUntil = deadline
+        _status.update { it.copy(ranSkipped = 0, ranWritten = 0, movedAt = System.currentTimeMillis()) }
         com.opensolr.mail.util.Diag.log("MailIndexer", "run start, " + ((deadline - System.currentTimeMillis()) / 1000) + "s allowed, pending=" + db.indexPending())
         _status.value = _status.value.copy(running = true, error = null, pending = db.indexPending())
         var solrForCount: SolrClient? = null
@@ -463,6 +464,7 @@ class MailIndexer(private val context: Context) {
                         // From here the other account's lanes skip these messages.
                         p.entries.forEach { (m, _) -> if (m.messageId.isNotBlank()) held += m.messageId }
                         writes.send(w)
+                        _status.update { it.copy(ranWritten = it.ranWritten + p.entries.size, movedAt = System.currentTimeMillis()) }
                     } catch (e: kotlinx.coroutines.CancellationException) {
                         throw e
                     } catch (e: Exception) {
@@ -494,8 +496,25 @@ class MailIndexer(private val context: Context) {
                                         return@launch
                                     }
                                     // Already in the index, with its vector, from another account or another phone: done without a read.
-                                    val have = db.messages(account.key, ids).filter { it.messageId.isNotBlank() && it.messageId in held }.map { it.id }
-                                    if (have.isNotEmpty()) source.done(have)
+                                    // A phone that just signed in has only the newest mail in its own list: for the rest
+                                    // Fastmail is asked for nothing but each message's Message-ID, so mail the index
+                                    // already holds is neither read, nor given a vector, nor written a second time.
+                                    val listed = db.messages(account.key, ids)
+                                    val here = listed.mapTo(HashSet()) { it.id }
+                                    val elsewhere = ids.filterNot { it in here }
+                                    val asked = try {
+                                        if (elsewhere.isEmpty()) emptyMap() else messageIdsOf(source.jmap, elsewhere)
+                                    } catch (e: kotlinx.coroutines.CancellationException) {
+                                        throw e
+                                    } catch (e: Exception) {
+                                        emptyMap()
+                                    }
+                                    val have = listed.filter { it.messageId.isNotBlank() && it.messageId in held }.map { it.id } +
+                                        asked.filter { it.value.isNotBlank() && it.value in held }.keys
+                                    if (have.isNotEmpty()) {
+                                        source.done(have)
+                                        _status.update { it.copy(ranSkipped = it.ranSkipped + have.size, movedAt = System.currentTimeMillis()) }
+                                    }
                                     val todo = if (have.isEmpty()) ids else ids.filterNot { it in have }
                                     if (todo.isEmpty()) continue
                                     try {
@@ -536,6 +555,17 @@ class MailIndexer(private val context: Context) {
         !prefs.vectorAllowed || prefs.embedPausedUntil > System.currentTimeMillis() || embedDownUntil > System.currentTimeMillis()
 
     /** Queues the next page of the whole mailbox history. False when the history has been walked to the end. */
+    /** The Message-ID of each of these messages, asked of Fastmail alone: no headers, no text. */
+    private suspend fun messageIdsOf(jmap: Jmap, ids: List<String>): Map<String, String> {
+        val list = jmap.call("Email/get", JSONObject().put("ids", JSONArray(ids)).put("properties", JSONArray(listOf("id", "messageId")))).getJSONArray("list")
+        val out = HashMap<String, String>(list.length())
+        for (i in 0 until list.length()) {
+            val o = list.getJSONObject(i)
+            out[o.optString("id")] = o.optJSONArray("messageId")?.optString(0).orEmpty()
+        }
+        return out
+    }
+
     private suspend fun backfillPage(jmap: Jmap, acc: String, notes: Mailbox?): Boolean {
         val anchor = db.state(acc, MailSync.STATE_BACKFILL) ?: return false
         if (anchor == "done") return false
@@ -1014,6 +1044,10 @@ class MailIndexer(private val context: Context) {
         /** Mail indexes of other phones the reader can re-use; the indexer waits until one is chosen or declined. */
         val error: String? = null,
         val at: Long = 0,
+        /** Of the run at work: messages found in the index and left as they are, messages written, and when either last moved. */
+        val ranSkipped: Long = 0,
+        val ranWritten: Long = 0,
+        val movedAt: Long = 0,
     ) {
         /** Messages at Fastmail not yet in the index as they should be, or still queued to be written (a repair). */
         val messagesLeft: Long get() = when {

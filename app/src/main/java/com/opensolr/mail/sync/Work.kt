@@ -153,10 +153,14 @@ class IndexWorker(context: Context, params: WorkerParameters) : CoroutineWorker(
             }
         }
         // Check again even when the status stops changing, so a long quiet stretch still shows.
+        // and every 20 seconds after that, so it says so when nothing has moved for a while.
         val ticker = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.Default).launch(com.opensolr.mail.ui.Guard) {
             kotlinx.coroutines.delay(16_000L)
-            val st = MailIndexer.status.value
-            if (worthShowing(st)) goForeground(st)
+            while (true) {
+                val st = MailIndexer.status.value
+                if (worthShowing(st)) goForeground(st)
+                kotlinx.coroutines.delay(20_000L)
+            }
         }
         return try {
             // Without the foreground notification Android stops a job after 10 minutes, so a run ends by
@@ -217,6 +221,12 @@ class IndexWorker(context: Context, params: WorkerParameters) : CoroutineWorker(
             .setSmallIcon(R.drawable.ic_notify)
             .setContentTitle(title)
             .apply { if (text != null) setContentText(text) }
+            .setStyle(NotificationCompat.BigTextStyle().bigText(listOfNotNull(
+                text,
+                // what this run did so far: mail the index already held is left as it is, the rest is written
+                words.getString(R.string.notif_run, n(s.ranSkipped), n(s.ranWritten)),
+                (System.currentTimeMillis() - s.movedAt).takeIf { s.movedAt > 0 && it >= 90_000L }?.let { words.getString(R.string.notif_quiet, (it / 60_000L).coerceAtLeast(1).toString()) },
+            ).joinToString("\n")))
             .apply { if (progress != null) setProgress(1000, (progress.first * 1000 / progress.second).toInt(), false) }
             .setOngoing(true)
             .setSilent(true)

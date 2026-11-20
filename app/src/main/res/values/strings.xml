@@ -258,6 +258,8 @@
     <string name="show_all_people">Show all %1$d</string>
     <string name="hide_all">Hide</string>
     <string name="idx_row_msgs_left">Messages left to index</string>
+    <string name="notif_run">This run: %1$s already in the index, %2$s written</string>
+    <string name="notif_quiet">Nothing has moved for %1$s min</string>
     <string name="notif_left">Left: %1$s messages, %2$s with attachments</string>
     <string name="idx_progress">%1$d%% done</string>
     <string name="att_opening">Opening %1$s…</string>

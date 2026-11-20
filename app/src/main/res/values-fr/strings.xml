@@ -250,6 +250,8 @@
     <string name="show_all_people">Afficher les %1$d</string>
     <string name="hide_all">Masquer</string>
     <string name="idx_row_msgs_left">Messages restant à indexer</string>
+    <string name="notif_run">Ce passage : %1$s déjà dans l\'index, %2$s écrits</string>
+    <string name="notif_quiet">Rien n\'a bougé depuis %1$s min</string>
     <string name="notif_left">Restant : %1$s messages, %2$s avec pièces jointes</string>
     <string name="idx_progress">%1$d%% terminé</string>
     <string name="att_opening">Ouverture de %1$s…</string>

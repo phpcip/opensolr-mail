@@ -250,6 +250,8 @@
     <string name="show_all_people">Arată toți %1$d</string>
     <string name="hide_all">Ascunde</string>
     <string name="idx_row_msgs_left">Mesaje rămase de indexat</string>
+    <string name="notif_run">Rularea asta: %1$s deja în index, %2$s scrise</string>
+    <string name="notif_quiet">Nimic nu s-a mișcat de %1$s min</string>
     <string name="notif_left">Rămase: %1$s mesaje, %2$s cu atașamente</string>
     <string name="idx_progress">%1$d%% gata</string>
     <string name="att_opening">Se deschide %1$s…</string>

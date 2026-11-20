@@ -250,6 +250,8 @@
     <string name="show_all_people">显示全部 %1$d 个</string>
     <string name="hide_all">收起</string>
     <string name="idx_row_msgs_left">待索引邮件</string>
+    <string name="notif_run">本次：%1$s 封已在索引中，已写入 %2$s 封</string>
+    <string name="notif_quiet">已有 %1$s 分钟没有进展</string>
     <string name="notif_left">剩余：%1$s 封邮件，%2$s 封带附件</string>
     <string name="idx_progress">已完成 %1$d%%</string>
     <string name="att_opening">正在打开 %1$s…</string>
